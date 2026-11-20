@@ -13,7 +13,7 @@ import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay } from '../freeAgency.ts';
 import { ifaDay } from '../intl.ts';
-import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
+import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
 import { ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
@@ -124,6 +124,7 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
     p.lastPitchedDay = league.day;
     p.lastPitchCount = line.pitches;
     if (isStarter) p.lastStartDay = league.day;
+    else p.recentApps = [...(p.recentApps ?? []).filter((d) => d > league.day - 7 && d <= league.day), league.day];
   }
   // Getting up in the bullpen counts as work too.
   for (const { p, pitches } of out.warmed ?? []) {
@@ -332,6 +333,8 @@ function beginRegularDay(league: League): string | null {
     if (!league.draft.done && advanceDraft(league)) return "You're on the clock in the amateur draft. Make your pick on the Draft page.";
   }
   if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
+  // Draft picks negotiate every day of the signing period.
+  else if (league.draft && league.draft.season === league.season && league.draft.done) draftSigningDay(league);
   // Clubs decide whether to buy or sell as the deadline approaches.
   if ([95, 110, 120].includes(league.day)) updateStrategies(league, true);
   // Clubs fix their rosters (including moves the user just made) before first pitch.

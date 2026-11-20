@@ -1,7 +1,9 @@
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href, go, useRoute } from '../../router.ts';
 import type { Player } from '../../core/types.ts';
-import { advanceDraft, availableProspects, canSign, isProspect, onTheClock, poolSpent, poolTotal, signPick, userAutoPick, userPick, POOL_ROUNDS } from '../../core/draft.ts';
+import { advanceDraft, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
+import { useState } from 'react';
+import type { DraftPick } from '../../core/types.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { dayLabel, dayShort } from '../../core/settings.ts';
@@ -25,7 +27,8 @@ export default function Draft() {
     { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
     { key: 'bt', label: 'B/T', value: bt },
     { key: 'age', label: 'Age', value: (p) => league.season - p.born },
-    { key: 'school', label: 'From', left: true, value: (p) => (p.prospect?.college ? 'College' : 'High school') },
+    { key: 'school', label: 'From', left: true, value: (p) => (p.prospect?.cls === 'SR' ? 'College senior' : p.prospect?.college ? 'College junior' : 'High school') },
+    { key: 'sign', label: 'Signability', left: true, value: (p) => signabilityLabel(league, p), render: (p) => { const t = signabilityLabel(league, p); return <span className={t.startsWith('Tough') ? 'neg' : t.includes('cheap') ? 'pos' : ''}>{t}</span>; } },
     ...ratingCols(league),
   ];
   if (myTurn) {
@@ -58,7 +61,19 @@ export default function Draft() {
       <h1>{league.season} Amateur Draft</h1>
       {!d && (
         <p>
-          The draft is {dayLabel(league.season, league.settings.draftDay)} (All-Star break), {league.settings.draftRounds} rounds. The top six picks go by lottery among non-playoff teams. Scout the class below.
+          The draft is {dayLabel(league.season, league.settings.draftDay)} (All-Star break), {league.settings.draftRounds} rounds. The top six picks go by lottery among non-playoff teams. Scout the class below.{' '}
+          {league.phase === 'regular' && league.day === league.settings.draftDay && (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                league.draft = createDraft(league);
+                advanceDraft(league);
+                changed();
+              }}
+            >
+              Start the draft
+            </button>
+          )}
         </p>
       )}
       {d && !d.done && (
@@ -76,7 +91,8 @@ export default function Draft() {
       )}
       {d?.done && (
         <p>
-          The draft is over. Signing deadline: <b>{dayShort(league.season, d.deadline)}</b>. Bonus pool {fmtMoney(pool)} · spent {fmtMoney(spent)} · {fmtMoney(pool - spent)} left (up to 5% over is allowed).
+          The draft is over. Signing deadline: <b>{dayShort(league.season, d.deadline)}</b>. Bonus pool {fmtMoney(pool)} · spent {fmtMoney(spent)} · <span className={spent > pool ? 'neg' : ''}>{fmtMoney(pool - spent)} left</span>.{' '}
+          {spent > pool && <span className="neg">Over the pool: {overageTier(spent - pool, pool).text}.</span>}
           {delegated(league, org, 'draft') && ' Your assistant GM signs your picks.'}
         </p>
       )}
@@ -87,34 +103,7 @@ export default function Draft() {
         {d && <button className={`btn btn-sm${tab === 'all' ? ' active' : ''}`} onClick={() => go('draft', [], { tab: 'all' })}>All picks</button>}
       </div>
       {tab === 'board' && <DataTable cols={cols} rows={avail} rowKey={(p) => p.id} defaultSort={{ key: 'pot', desc: true }} compact />}
-      {tab === 'mine' && d && (
-        <table className="data compact">
-          <thead><tr><th>Pick</th><th>Rd</th><th className="l">Player</th><th>Slot</th><th>Asking</th><th className="l">Status</th><th /></tr></thead>
-          <tbody>
-            {myPicks.map((pk) => {
-              const p = pk.pid !== null ? league.players[pk.pid] : null;
-              const why = canSign(league, pk);
-              return (
-                <tr key={pk.pick}>
-                  <td>{pk.pick}</td>
-                  <td>{pk.round}</td>
-                  <td className="l">{p ? <a href={href('player', [p.id])}>{p.first} {p.last}</a> : '-'} {p && <span className="muted small">{posLabel(p)}</span>}</td>
-                  <td>{pk.round <= POOL_ROUNDS ? fmtMoney(pk.slot) : '-'}</td>
-                  <td>{p?.prospect?.asking ? fmtMoney(p.prospect.asking) : p?.contract.bonus ? fmtMoney(p.contract.bonus) : '-'}</td>
-                  <td className="l">{pk.signed ? 'Signed' : pk.signed === false ? 'Did not sign' : p ? 'Unsigned' : ''}</td>
-                  <td>
-                    {p && pk.signed === null && (
-                      <button className="btn btn-sm" disabled={!!why} title={why ?? ''} onClick={() => { setMessage(signPick(league, pk, p)); changed(); }}>
-                        Sign
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      {tab === 'mine' && d && <MyPicks picks={myPicks} />}
       {tab === 'all' && d && (
         <table className="data compact">
           <thead><tr><th>Pick</th><th>Rd</th><th className="l">Team</th><th className="l">Player</th><th>Pos</th><th>Age</th><th className="l">Signed</th></tr></thead>
@@ -133,6 +122,80 @@ export default function Draft() {
           </tbody>
         </table>
       )}
+    </>
+  );
+}
+
+// Negotiate with your picks: set an offer, read the meter, make one official offer per pick per day.
+function MyPicks({ picks }: { picks: DraftPick[] }) {
+  const { league } = useStore();
+  const [amt, setAmt] = useState<Record<number, number>>({});
+  if (!league) return null;
+  const org = league.orgs[league.userOrgId];
+  const pool = poolTotal(league, org.id);
+  const spent = poolSpent(league, org.id);
+  return (
+    <>
+      <p className="muted small">
+        Slide an offer to see how likely he is to sign, as your amateur scouts read it (better scouting gives a truer meter). You get one official offer per pick per day; lowballing him can raise his price. Most players come down a little as the deadline nears, but high schoolers with strong college commitments don't. Unsigned 1st and 2nd rounders bring a compensation pick next year. Pool penalties: up to 5% over, 75% tax; 5-10%, lose next year's 1st; 10-15%, 100% tax and lose a 1st and 2nd; over 15%, 100% tax and two 1sts. An unsigned top-10-round pick's slot comes out of your pool.
+      </p>
+      <table className="data compact">
+        <thead><tr><th>Pick</th><th>Rd</th><th className="l">Player</th><th className="l">Signability</th><th>Slot</th><th>Offer</th><th /><th className="l">Meter</th><th /><th className="l">Status</th></tr></thead>
+        <tbody>
+          {picks.map((pk) => {
+            const p = pk.pid !== null ? league.players[pk.pid] : null;
+            if (!p) return <tr key={pk.pick}><td>{pk.pick}</td><td>{pk.round}</td><td className="l muted" colSpan={8}>-</td></tr>;
+            const open = pk.signed === null && !!p.prospect;
+            const lo = pk.round <= POOL_ROUNDS ? Math.round(pk.slot * 0.5) : 20_000;
+            const hi = pk.round <= POOL_ROUNDS ? Math.round(pk.slot * 2) : 3_000_000;
+            const def = pk.round <= POOL_ROUNDS ? pk.slot : LATE_ROUND_FREE;
+            const a = amt[pk.pick] ?? p.prospect?.lastAmount ?? def;
+            const w = open ? willingness(league, p, a) : 0;
+            const charge = pk.round <= POOL_ROUNDS ? a : Math.max(0, a - LATE_ROUND_FREE);
+            const after = spent + charge - pool;
+            const offeredToday = p.prospect?.lastOffer === league.day;
+            return (
+              <tr key={pk.pick}>
+                <td>{pk.pick}</td>
+                <td>{pk.round}{pk.label ? ` ${pk.label}` : ''}</td>
+                <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a> <span className="muted small">{posLabel(p)}, {league.season - p.born}</span></td>
+                <td className="l small">{p.prospect ? signabilityLabel(league, p) : ''}</td>
+                <td>{pk.round <= POOL_ROUNDS ? fmtMoney(pk.slot) : <span className="muted">$150k free</span>}</td>
+                {open ? (
+                  <>
+                    <td className="nowrap">
+                      <input type="number" step={0.05} min={0} style={{ width: 70 }} value={(a / 1e6).toFixed(2)} onChange={(e) => setAmt({ ...amt, [pk.pick]: Math.max(0, Number(e.target.value) * 1e6) })} /> $M
+                    </td>
+                    <td><input type="range" min={lo} max={hi} step={25_000} value={a} onChange={(e) => setAmt({ ...amt, [pk.pick]: Number(e.target.value) })} style={{ width: 110 }} /></td>
+                    <td className="l nowrap">
+                      <span className="meter"><span className="meter-fill" style={{ width: `${Math.round(w * 100)}%`, background: w >= 0.65 ? '#2e8b57' : w >= 0.35 ? '#d4a017' : '#c0392b' }} /></span>{' '}
+                      <span className="small">{willingnessBand(w)}</span>
+                      {after > 0 && <div className="neg small">{fmtMoney(after)} over pool: {overageTier(after, pool).text}</div>}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        disabled={offeredToday}
+                        title={offeredToday ? 'One offer per day: sim a day and try again' : ''}
+                        onClick={() => {
+                          const r = offerPick(league, pk, a);
+                          setMessage(r.text);
+                          changed();
+                        }}
+                      >
+                        {offeredToday ? 'Offered today' : 'Make offer'}
+                      </button>
+                    </td>
+                    <td className="l small">{p.prospect?.lastAmount ? `Last offer ${fmtMoney(p.prospect.lastAmount)}` : 'Unsigned'}</td>
+                  </>
+                ) : (
+                  <td className="l" colSpan={5}>{pk.signed ? `Signed for ${fmtMoney(p.contract.bonus ?? 0)}` : pk.signed === false ? 'Did not sign' : ''}</td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </>
   );
 }

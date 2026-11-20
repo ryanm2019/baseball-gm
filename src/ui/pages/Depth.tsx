@@ -25,6 +25,7 @@ export default function Depth() {
   const [drag, setDrag] = useState<{ from: 'lineup' | 'bench'; i: number; pid: number } | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
+  const [vs, setVs] = useState<'R' | 'L'>('R');
   // Clicking a row shows the player's ratings; clicks on the dropdowns don't count.
   const pick = (pid: number) => (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('select, option, a, button')) return;
@@ -56,11 +57,13 @@ export default function Depth() {
     }
     if (autoCache?.key !== `${league.id}-${key}`) {
       const lu = buildLineup(league, org.id, level);
+      const luL = buildLineup(league, org.id, level, 'L');
       autoCache = {
         key: `${league.id}-${key}`,
         d: {
           auto: saved?.auto ?? true,
           lineup: lu ? lu.batters.map((b) => ({ pid: b.p.id, pos: b.pos })) : [],
+          lineupL: luL ? luL.batters.map((b) => ({ pid: b.p.id, pos: b.pos })) : undefined,
           rotation: [],
           closer: lu?.closer?.id ?? null,
           setup: lu?.setup.map((p) => p.id) ?? [],
@@ -71,6 +74,12 @@ export default function Depth() {
     return JSON.parse(JSON.stringify(autoCache.d)) as DepthChart;
   };
   const d = draft?.key === key ? draft.d : current();
+  // The card being edited: vs right-handers (the default lineup) or vs left-handers.
+  const cardOf = (x: DepthChart) => {
+    if (vs === 'R') return x.lineup;
+    if (!x.lineupL || x.lineupL.length !== 9) x.lineupL = JSON.parse(JSON.stringify(x.lineup));
+    return x.lineupL!;
+  };
   const update = (fn: (x: DepthChart) => void) => {
     const x = JSON.parse(JSON.stringify(d)) as DepthChart;
     fn(x);
@@ -80,12 +89,13 @@ export default function Depth() {
     d.rotation = [...pitchers].sort((a, b) => (b.pos === 'SP' ? 1 : 0) - (a.pos === 'SP' ? 1 : 0) || scoutedOvr(league, b) - scoutedOvr(league, a)).slice(0, 5).map((p) => p.id);
   }
   while (d.lineup.length < 9) d.lineup.push({ pid: healthyHitters[d.lineup.length]?.id ?? 0, pos: POSITIONS[d.lineup.length] });
+  const cur = cardOf(d);
   // A player who has since left the level keeps his slot until you replace him.
-  for (const s of d.lineup) {
+  for (const s of [...d.lineup, ...(d.lineupL ?? [])]) {
     const p = league.players[s.pid];
     if (p && !hitters.includes(p) && p.orgId === org.id && !isPitcher(p)) hitters.push(p);
   }
-  const bench = hitters.filter((h) => !d.lineup.some((s) => s.pid === h.id));
+  const bench = hitters.filter((h) => !cur.some((s) => s.pid === h.id));
 
   // Drop onto lineup spot i: a lineup player moves to that spot (with his
   // position); a bench player takes over that spot's position.
@@ -93,10 +103,12 @@ export default function Depth() {
     if (!drag) return;
     update((x) => {
       if (drag.from === 'lineup') {
-        const [moved] = x.lineup.splice(drag.i, 1);
-        x.lineup.splice(i, 0, moved);
+        const c = cardOf(x);
+        const [moved] = c.splice(drag.i, 1);
+        c.splice(i, 0, moved);
       } else {
-        x.lineup[i] = { pid: drag.pid, pos: x.lineup[i].pos };
+        const c = cardOf(x);
+        c[i] = { pid: drag.pid, pos: c[i].pos };
       }
     });
     setDrag(null);
@@ -104,13 +116,13 @@ export default function Depth() {
   };
 
   const name = (p: Player) => `${p.first} ${p.last} (${posLabel(p)}, ${scoutedOvr(league, p)})`;
-  const ids = d.lineup.map((s) => s.pid);
+  const ids = cur.map((s) => s.pid);
   const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
-  const posList = d.lineup.map((s) => s.pos);
+  const posList = cur.map((s) => s.pos);
   const missingPos = POSITIONS.filter((p) => !posList.includes(p));
   const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id)) && d.closer !== null;
   const dirty = draft?.key === key;
-  const shown = league.players[sel ?? d.lineup[0]?.pid ?? -1] ?? null;
+  const shown = league.players[sel ?? cur[0]?.pid ?? -1] ?? null;
   const relievers = pitchers.filter((p) => !d.rotation.includes(p.id));
   const roleOf = (pid: number): PenRole => (d.closer === pid ? 'CL' : d.setup.includes(pid) ? 'SU' : d.pen?.[pid] && d.pen[pid] !== 'CL' && d.pen[pid] !== 'SU' ? d.pen[pid] : 'MR');
   const setRole = (pid: number, role: PenRole) =>
@@ -156,11 +168,15 @@ export default function Depth() {
       <div className="cards">
         <div className="box">
           <h3>Lineup</h3>
-          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. Click a player to see his ratings.</p>
+          <div className="btn-group tabs">
+            <button className={`btn btn-sm${vs === 'R' ? ' active' : ''}`} onClick={() => setVs('R')}>vs RHP</button>
+            <button className={`btn btn-sm${vs === 'L' ? ' active' : ''}`} onClick={() => setVs('L')}>vs LHP</button>
+          </div>
+          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
           <table className="data compact">
             <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th></tr></thead>
             <tbody>
-              {d.lineup.map((s, i) => {
+              {cur.map((s, i) => {
                 const p = league.players[s.pid];
                 const def = p && s.pos !== 'DH' && s.pos !== 'SP' && s.pos !== 'RP' ? Math.round(posRating(p.ratings.def, s.pos)) : '-';
                 const out = p ? outReason(p) : null;
@@ -179,13 +195,13 @@ export default function Depth() {
                     <td>{i + 1}</td>
                     <td className="grip" title="Drag">⋮⋮</td>
                     <td className="l">
-                      <select value={s.pid} onChange={(e) => update((x) => { x.lineup[i].pid = Number(e.target.value); })}>
+                      <select value={s.pid} onChange={(e) => update((x) => { cardOf(x)[i].pid = Number(e.target.value); })}>
                         {hitters.map((h) => <option key={h.id} value={h.id}>{name(h)}{outReason(h) ? ` [${outReason(h)}]` : ''}</option>)}
                       </select>
                       {out && <span className="tag tag-il" title="The manager plays the best available sub in this spot until he's back">{out}: sub plays</span>}
                     </td>
                     <td>
-                      <select value={s.pos} onChange={(e) => update((x) => { x.lineup[i].pos = e.target.value as Pos; })}>
+                      <select value={s.pos} onChange={(e) => update((x) => { cardOf(x)[i].pos = e.target.value as Pos; })}>
                         {POSITIONS.map((p) => <option key={p}>{p}</option>)}
                       </select>
                     </td>

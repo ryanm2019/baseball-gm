@@ -171,3 +171,5 @@ tr.selected td { background: #fff7d6; }
 .live-row .box { min-width: 0; }
 @media (max-width: 1000px) { .live-row { grid-template-columns: 1fr; } }
 .tag-block { background: #fff3cd; color: #7a5b00; }
+.meter { display: inline-block; width: 90px; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; vertical-align: middle; }
+.meter-fill { display: block; height: 100%; }

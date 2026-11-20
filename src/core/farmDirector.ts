@@ -12,6 +12,7 @@ import {
   assignPlayer,
   canActivate,
   canOption,
+  canRecall,
   designate,
   makeFreeAgent,
   optionPlayer,
@@ -22,6 +23,7 @@ import {
   signFreeAgent,
 } from './rules.ts';
 import { generatePlayer } from './playerGen.ts';
+import { rand } from './random.ts';
 import { delegated, staffOf } from './staff.ts';
 import { isFreeAgent, isMinorFA } from './freeAgency.ts';
 import { milbContract } from './contracts.ts';
@@ -109,8 +111,12 @@ export function manageOrg(league: League, org: Org): void {
   if (!isUser || delegated(league, org, 'roster')) {
     for (let g = 0; g < 5 && fortyMan(league, org.id).length > league.settings.fortyMax; g++) if (!makeFortyRoom(league, org)) break;
   }
-  if (isManaged(league, org, 'MLB')) fillMlb(league, org, !isUser);
-  if (delegated(league, org, 'roster')) trimMlb(league, org, !isUser);
+  // When the assistant GM runs your MLB roster he can clear 40-man space too
+  // (otherwise a full 40-man could leave the active roster short).
+  const aiRoster = !isUser || delegated(league, org, 'roster');
+  if (isManaged(league, org, 'MLB')) fillMlb(league, org, aiRoster);
+  if (delegated(league, org, 'roster')) trimMlb(league, org, aiRoster);
+  if (aiRoster && league.phase === 'regular') shuttleRelievers(league, org);
 
   // 4. DFA and waivers bookkeeping.
   for (const p of players) {
@@ -137,6 +143,24 @@ export function manageOrg(league: League, org: Org): void {
       addNews(league, org.id, `${who}: ${tx.map((t) => t.text).join('; ')}.`, [...new Set(tx.flatMap((t) => t.pids))]);
     }
   }
+}
+
+// Real clubs cycle tired relievers: option one who's been worked hard and
+// recall a rested arm from Triple-A (at most one swap a day).
+function shuttleRelievers(league: League, org: Org): void {
+  if (rand() > 0.5) return;
+  const day = league.day;
+  const worked = (p: Player) => (p.recentApps ?? []).filter((d) => d > day - 5).length;
+  const tired = activeAt(league, org.id, 'MLB')
+    .filter((p) => p.pos === 'RP' && !p.il && worked(p) >= 3 && !canOption(league, p) && org.depth.MLB?.closer !== p.id)
+    .sort((a, b) => worked(b) - worked(a) || ovr(a) - ovr(b))[0];
+  if (!tired) return;
+  const fresh = fortyMan(league, org.id)
+    .filter((p) => p.level === 'AAA' && isPitcher(p) && !p.injury && !p.il && !canRecall(league, p) && day - p.lastPitchedDay >= 2)
+    .sort((a, b) => ovr(b) - ovr(a))[0];
+  if (!fresh || ovr(fresh) < ovr(tired) - 6) return;
+  optionPlayer(league, tired, 'AAA');
+  recallPlayer(league, fresh);
 }
 
 function makeFortyRoom(league: League, org: Org): boolean {

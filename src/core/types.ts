@@ -124,8 +124,13 @@ export interface ArbCase {
 export interface DraftInfo {
   year: number;
   college: boolean;
+  cls?: 'HS' | 'JR' | 'SR'; // high school, draft-eligible junior, senior
+  commit?: number; // high schoolers: strength of college commitment, 0..1
   slot?: number;
-  asking?: number;
+  asking?: number; // hidden demand once drafted
+  stiff?: number; // grows when lowballed
+  lastOffer?: number; // league day of the last official offer
+  lastAmount?: number;
   orgId?: number; // drafted by, unsigned
   round?: number;
   pick?: number;
@@ -245,6 +250,7 @@ export interface Player {
   lastPitchCount: number;
   consecutiveDays: number;
   lastStartDay: number;
+  recentApps?: number[]; // league days of recent relief appearances (workload)
 
   stats: StatEntry[];
 }
@@ -425,7 +431,8 @@ export const PEN_ROLES: { key: PenRole; label: string; help: string }[] = [
 
 export interface DepthChart {
   auto: boolean;
-  lineup: { pid: number; pos: Pos }[]; // 9 batters in order, DH included
+  lineup: { pid: number; pos: Pos }[]; // 9 batters in order, DH included (vs right-handed starters)
+  lineupL?: { pid: number; pos: Pos }[]; // vs left-handed starters (falls back to lineup)
   rotation: number[];
   closer: number | null;
   setup: number[];
@@ -624,6 +631,7 @@ export interface Settings {
 export interface DraftAdjust {
   comp: { orgId: number; after: 'R1' | 'CBB' | 'R4' }[];
   forfeit: { orgId: number; round: number }[];
+  unsigned?: { orgId: number; round: number; pos: number }[]; // comp picks for unsigned 1st/2nd rounders
 }
 
 export interface DraftPick {
@@ -695,6 +703,8 @@ export interface League {
   farmSnap?: { season: number; totals: Record<number, number[]> };
   devSnap?: { season: number; ratings: Record<number, number[]> };
   lastWins?: Record<number, number>; // last season's MLB wins by org
+  futureForfeits?: { season: number; orgId: number; round: number }[]; // draft-pool penalties two years out
+  draftTax?: { season: number; orgId: number; over: number; tax: number; penalty: string }[];
   preview?: SeasonPreview;
   ovrBaseline?: { season: number; ovr: Record<number, number> }; // true overall at the start of the season
 }

@@ -459,6 +459,8 @@ function runRollover(league: League): void {
     org.deadMoney = org.deadMoney.filter((d) => d.season > prevSeason);
   }
 
+  pruneLeague(league);
+
   // For the season preview: ratings before winter development, and last summer's first round.
   // Compare against the start of last season (a full year of change).
   const preOvr = new Map<number, number>();
@@ -491,6 +493,10 @@ function runRollover(league: League): void {
     if (!p.prospect) {
       yearlyPotentialDrift(league, p);
       for (let i = 0; i < 3; i++) developPlayer(league, p);
+    } else if (p.prospect.year > league.season) {
+      // In college: a full year of development before he's draft-eligible again.
+      yearlyPotentialDrift(league, p);
+      for (let i = 0; i < 9; i++) developPlayer(league, p);
     }
   }
   recenterRatings(league);
@@ -594,4 +600,15 @@ export function setOvrBaseline(league: League): void {
   const o: Record<number, number> = {};
   for (const p of Object.values(league.players)) if (!p.retired && p.orgId !== null && !p.prospect && !p.ifa) o[p.id] = Math.round(ovr(p) * 10) / 10;
   league.ovrBaseline = { season: league.season, ovr: o };
+}
+
+// Keeps saves small: retired players who never reached the majors, and
+// free agents no club will ever sign, are removed.
+export function pruneLeague(league: League): void {
+  for (const p of Object.values(league.players)) {
+    const mlb = p.stats.some((s) => s.level === 'MLB');
+    if (p.retired && !mlb) delete league.players[p.id];
+    else if (!p.retired && p.orgId === null && !p.prospect && !p.ifa && !mlb && league.season - p.born >= 26 && ovr(p) < 42) delete league.players[p.id];
+  }
+  touchRosters();
 }

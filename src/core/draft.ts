@@ -1,6 +1,6 @@
 // The amateur draft, held at the All-Star break: draft class generation, the
 // lottery for the top six picks, slot values and bonus pools, and signings.
-import type { DraftPick, DraftState, League, Player } from './types.ts';
+import type { DraftInfo, DraftPick, DraftState, League, Player } from './types.ts';
 import { generatePlayer } from './playerGen.ts';
 import { clamp, normal, rand, seededNormal, shuffle } from './random.ts';
 import { ovr, potOvr, scoutFactor } from './ratings.ts';
@@ -16,6 +16,7 @@ export function normalizeAdjust(a: unknown): DraftAdjust {
   return {
     comp: x.comp.map((c) => (typeof c === 'number' ? { orgId: c, after: 'CBB' as const } : (c as DraftAdjust['comp'][0]))),
     forfeit: x.forfeit.map((f) => (typeof f === 'number' ? { orgId: f, round: 2 } : (f as DraftAdjust['forfeit'][0]))),
+    unsigned: ((x as { unsigned?: DraftAdjust['unsigned'] }).unsigned ?? []).slice(),
   };
 }
 
@@ -54,7 +55,7 @@ export function generateDraftClass(league: League, season: number): void {
     });
     p.level = null;
     p.proSeasons = 0;
-    p.prospect = { year: season, college };
+    p.prospect = { year: season, college, ...amateurProfile(season - p.born, college) };
     milbContract(p, season, 'A');
     league.players[p.id] = p;
   }
@@ -81,9 +82,154 @@ export function generateDraftClass(league: League, season: number): void {
     league.nextId.player++;
     best.level = null;
     best.proSeasons = 0;
-    best.prospect = { year: season, college: season - best.born >= 20 };
+    best.prospect = { year: season, college: season - best.born >= 20, ...amateurProfile(season - best.born, season - best.born >= 20) };
     milbContract(best, season, 'A');
     league.players[best.id] = best;
+  }
+}
+
+// ---------- signability ----------
+
+// High schoolers' leverage is their college commitment; draft-eligible juniors
+// can go back to school; seniors have nowhere else to go.
+export function amateurProfile(age: number, college: boolean): { cls: 'HS' | 'JR' | 'SR'; commit?: number } {
+  if (college) return { cls: age >= 22 ? 'SR' : 'JR' };
+  const r = rand();
+  const commit = r < 0.3 ? 0.75 + 0.25 * rand() : r < 0.7 ? 0.35 + 0.35 * rand() : 0.05 + 0.3 * rand();
+  return { cls: 'HS', commit };
+}
+
+export function leverage(info: DraftInfo): number {
+  const cls = info.cls ?? (info.college ? 'JR' : 'HS');
+  if (cls === 'SR') return 0.05;
+  if (cls === 'JR') return 0.35;
+  return 0.5 + 0.9 * (info.commit ?? 0.5);
+}
+
+// How a club's scouts read his signability (noisier with worse amateur scouting).
+export function signabilityLabel(league: League, p: Player, orgId = league.userOrgId): string {
+  const info = p.prospect!;
+  const cls = info.cls ?? (info.college ? 'JR' : 'HS');
+  if (cls === 'SR') return 'College senior: signs cheap';
+  if (cls === 'JR') return 'College junior: can return to school';
+  const sd = 0.12 * scoutFactor(league, league.orgs[orgId], 'amateur');
+  const seen = (info.commit ?? 0.5) + sd * seededNormal(p.scoutSeed, orgId + 1, 6161);
+  if (seen >= 0.75) return 'Tough sign: strong college commitment';
+  if (seen >= 0.4) return 'College commitment: will cost over slot';
+  return 'Signable';
+}
+
+function prospectValue(p: Player): number {
+  return 0.72 * potOvr(p) + 0.28 * ovr(p);
+}
+
+// What a pick wants: his slot, pulled up toward what his talent is worth if he
+// fell, and pushed up by his leverage. Seniors take what they can get.
+function setDemand(league: League, pick: DraftPick, p: Player): void {
+  const info = p.prospect!;
+  const v = prospectValue(p);
+  const rank = Object.values(league.players).filter((q) => isProspect(q, league.season) && prospectValue(q) > v).length;
+  const per = Math.max(30, Math.round(league.draft ? league.draft.picks.length / league.settings.draftRounds : 36));
+  const expRound = Math.floor(rank / per) + 1;
+  const worth = expRound <= POOL_ROUNDS ? slotValue(rank + 1, expRound) : LATE_ROUND_FREE;
+  // Asking multiple over his slot: strongly committed high schoolers want up to
+  // ~1.35x, juniors about slot, seniors take roughly half.
+  const cls = info.cls ?? (info.college ? 'JR' : 'HS');
+  const mult = cls === 'SR' ? 0.4 + 0.25 * rand() : cls === 'JR' ? 0.88 + 0.14 * rand() : 0.85 + 0.45 * Math.pow(info.commit ?? 0.5, 1.5);
+  // A player who fell below his talent wants part of the difference.
+  const base = Math.max(pick.slot, 0.65 * pick.slot + 0.35 * worth);
+  let demand: number;
+  if (pick.round > POOL_ROUNDS) demand = (cls === 'HS' ? Math.max(LATE_ROUND_FREE, worth) * mult * 1.4 : Math.min(LATE_ROUND_FREE, Math.max(40_000, worth * mult))) * Math.exp(normal(0, 0.12));
+  else demand = base * mult * Math.exp(normal(0, 0.08));
+  info.asking = Math.max(20_000, roundSalary(demand));
+  info.stiff = 1;
+}
+
+// Demand today: most players soften as the deadline nears; strongly committed
+// high schoolers don't. Lowball offers stiffen it.
+export function demandNow(league: League, info: DraftInfo): number {
+  const d = league.draft;
+  const progress = d ? clamp((league.day - league.settings.draftDay) / Math.max(1, d.deadline - league.settings.draftDay), 0, 1) : 0;
+  const soften = info.cls === 'HS' && (info.commit ?? 0) > 0.7 ? 0 : 0.12 * progress;
+  return (info.asking ?? info.slot ?? LATE_ROUND_FREE) * (info.stiff ?? 1) * (1 - soften);
+}
+
+function acceptChance(info: DraftInfo, amount: number, demand: number): number {
+  const w = 0.06 + 0.04 * leverage(info);
+  return 1 / (1 + Math.exp(-(amount / demand - 1) / w));
+}
+
+// The meter: how likely he is to accept, as your scouts read it.
+export function willingness(league: League, p: Player, amount: number, orgId = league.userOrgId): number {
+  const info = p.prospect!;
+  const misread = Math.exp(0.14 * scoutFactor(league, league.orgs[orgId], 'amateur') * seededNormal(p.scoutSeed, orgId + 1, 5150));
+  return acceptChance(info, amount, demandNow(league, info) * misread);
+}
+
+export function willingnessBand(x: number): string {
+  return x < 0.1 ? 'No chance' : x < 0.35 ? 'Unlikely' : x < 0.65 ? '50/50' : x < 0.9 ? 'Likely' : 'Will sign';
+}
+
+// One official offer per pick per day.
+export function offerPick(league: League, pk: DraftPick, amount: number): { signed: boolean; text: string } {
+  if (pk.pid === null || pk.signed !== null) return { signed: false, text: 'Not available' };
+  const p = league.players[pk.pid];
+  const info = p.prospect;
+  if (!info) return { signed: false, text: 'Not available' };
+  if (info.lastOffer === league.day) return { signed: false, text: `You already made ${pname(p)} an offer today.` };
+  amount = Math.max(10_000, roundSalary(amount));
+  const d = demandNow(league, info);
+  info.lastOffer = league.day;
+  info.lastAmount = amount;
+  if (rand() < acceptChance(info, amount, d)) {
+    signPick(league, pk, p, true, amount);
+    return { signed: true, text: `${pname(p)} signed for ${(amount / 1e6).toFixed(2)}M.` };
+  }
+  if (amount < d * 0.8) {
+    info.stiff = Math.min(1.15, (info.stiff ?? 1) * 1.04);
+    return { signed: false, text: `${pname(p)}'s camp was insulted by the offer. His price went up.` };
+  }
+  return { signed: false, text: `${pname(p)} turned it down${amount >= d * 0.97 ? ', but it was close' : ''}.` };
+}
+
+// AI clubs (and your assistant GM, if he has the draft) negotiate every day of
+// the signing period, mostly staying inside their pools.
+export function draftSigningDay(league: League): void {
+  const d = league.draft;
+  if (!d || !d.done || league.day >= d.deadline) return;
+  const user = league.orgs[league.userOrgId];
+  for (const pk of d.picks) {
+    if (pk.pid === null || pk.signed !== null) continue;
+    const isUser = pk.orgId === league.userOrgId;
+    if (isUser && !delegated(league, user, 'draft')) continue;
+    const p = league.players[pk.pid];
+    const info = p.prospect;
+    if (!info || info.lastOffer === league.day) continue;
+    // What his scouts think he wants.
+    const misread = (x: Player, org: number) => Math.exp(0.14 * scoutFactor(league, league.orgs[org], 'amateur') * seededNormal(x.scoutSeed, org + 1, 5150));
+    const want = demandNow(league, info) * misread(p, pk.orgId);
+    const aggressive = league.orgs[pk.orgId].owner.type === 'Big spender' || league.orgs[pk.orgId].owner.type === 'Win-now';
+    // Budget: the pool, less what's spent, less what the club expects its other
+    // unsigned top-10-round picks to cost (at most their slots).
+    const others = d.picks.filter((x) => x !== pk && x.orgId === pk.orgId && x.round <= POOL_ROUNDS && x.pid !== null && x.signed === null);
+    // Reserve each other unsigned pick's full slot: if he doesn't sign, that slot leaves the pool.
+    const expected = others.reduce((t, x) => t + x.slot, 0);
+    // Clubs will pay the 75% tax to go up to 5% over, never into pick-losing territory.
+    const stretch = aggressive ? 1.045 : 1.035;
+    // The cushion only applies to money that's certain (if others don't sign, the pool shrinks).
+    const room = (poolTotal(league, pk.orgId) - expected) * stretch - poolSpent(league, pk.orgId);
+    // Start near what the scouts think he wants; after a "no", come up.
+    let offer = Math.max(want * (1 + rand() * 0.08), (info.lastAmount ?? 0) * (1.05 + rand() * 0.04));
+    if (pk.round <= POOL_ROUNDS) {
+      // Top-10-round picks get signed: an unsigned pick's slot leaves the pool.
+      offer = Math.min(offer, room);
+    } else {
+      // Late rounds: $150k, plus only real savings.
+      const savings = poolTotal(league, pk.orgId) - poolSpent(league, pk.orgId) - others.reduce((t, x) => t + x.slot, 0);
+      offer = Math.min(offer, LATE_ROUND_FREE + Math.max(0, savings * 0.3));
+    }
+    if (offer < want * 0.75) continue; // can't afford him
+    offerPick(league, pk, offer);
   }
 }
 
@@ -95,7 +241,17 @@ function draftValue(league: League, orgId: number, p: Player): number {
   const base = orgId === league.userOrgId ? agmEvalSd(league, org) : fd ? Math.max(1, ((80 - fd.evaluation) / 60) * 5) : 5;
   const sd = base * scoutFactor(league, org, 'amateur');
   const noise = sd * seededNormal(p.scoutSeed, orgId, 4242);
-  return 0.72 * potOvr(p) + 0.28 * ovr(p) + noise - (p.prospect?.college ? 0 : 0.5);
+  // Clubs shy away from tough signs, more so once the premium picks are gone
+  // and when their pool can't cover an over-slot deal.
+  const cur = league.draft ? league.draft.picks[league.draft.index] : undefined;
+  const round = cur?.round ?? 1;
+  let tough = 0;
+  if (!p.prospect?.college && (p.prospect?.commit ?? 0) > 0.75) {
+    tough = round >= 3 ? 2.5 : 1.5;
+    const pool = league.draft?.pools[orgId] ?? 0;
+    if (cur && pool > 0 && cur.slot * 0.4 > pool * 0.08) tough += 3; // a big overslot would eat the pool
+  }
+  return 0.72 * potOvr(p) + 0.28 * ovr(p) + noise - (p.prospect?.college ? 0 : 0.5) - tough;
 }
 
 // Order teams worst to best by last season (or by roster strength for a brand-new league).
@@ -142,6 +298,8 @@ export function createDraft(league: League): DraftState {
   round1 = [...round1];
   const picks: DraftPick[] = [];
   const adj = normalizeAdjust(league.draftAdjust);
+  for (const f of (league.futureForfeits ?? []).filter((x) => x.season === league.season)) adj.forfeit.push({ orgId: f.orgId, round: f.round });
+  league.futureForfeits = (league.futureForfeits ?? []).filter((x) => x.season > league.season);
   const forfeits = (orgId: number, round: number) => adj.forfeit.some((f) => f.orgId === orgId && f.round === round);
   const byOrder = (ids: number[]) => [...ids].sort((a, b) => round1.indexOf(a) - round1.indexOf(b));
   let overall = 1;
@@ -151,7 +309,14 @@ export function createDraft(league: League): DraftState {
   };
   const cb = league.cbPicks.filter((c) => c.season === league.season);
   for (let round = 1; round <= league.settings.draftRounds; round++) {
-    for (const orgId of round1) if (!forfeits(orgId, round)) push(orgId, round);
+    // Compensation for last year's unsigned 1st/2nd rounders: the pick right after the original slot.
+    const comps = (adj.unsigned ?? []).filter((c) => c.round === round).sort((a, b) => a.pos - b.pos);
+    let k = 0;
+    round1.forEach((orgId, idx) => {
+      if (!forfeits(orgId, round)) push(orgId, round);
+      while (k < comps.length && comps[k].pos <= idx) push(comps[k++].orgId, round, 'Comp (unsigned)');
+    });
+    while (k < comps.length) push(comps[k++].orgId, round, 'Comp (unsigned)');
     if (round === 1) {
       for (const c of byOrder(adj.comp.filter((c) => c.after === 'R1').map((c) => c.orgId))) push(c, 1, 'Comp');
       for (const c of [...cb.filter((x) => x.round === 'A')].sort((a, b) => round1.indexOf(a.originalOrg) - round1.indexOf(b.originalOrg))) push(c.orgId, 1, 'CB-A');
@@ -165,7 +330,7 @@ export function createDraft(league: League): DraftState {
   const pools: Record<number, number> = {};
   for (const o of league.orgs) pools[o.id] = 0;
   for (const p of picks) if (p.round <= POOL_ROUNDS) pools[p.orgId] += p.slot;
-  league.draftAdjust = { comp: [], forfeit: [] };
+  league.draftAdjust = { comp: [], forfeit: [], unsigned: [] };
   for (const c of cb) c.orgId = -1; // used
   league.cbPicks = league.cbPicks.filter((c) => c.season !== league.season);
   const st: DraftState = { season: league.season, picks, index: 0, done: false, deadline: league.day + league.settings.draftSigningDays, pools, lottery };
@@ -185,9 +350,7 @@ export function makePick(league: League, pick: DraftPick, p: Player): void {
   info.round = pick.round;
   info.pick = pick.pick;
   info.slot = pick.slot;
-  // HS players with college options and top talents ask for more.
-  const leverage = info.college ? 1 : 1.12;
-  info.asking = roundSalary(Math.max(pick.round > POOL_ROUNDS ? 25_000 : pick.slot * 0.75, pick.slot * clamp(normal(1.0, 0.12), 0.75, 1.35) * leverage));
+  setDemand(league, pick, p);
   addTransaction(league, pick.orgId, 'Draft', `Drafted ${p.pos} ${pname(p)} (${info.college ? 'college' : 'high school'}) with pick #${pick.pick}, round ${pick.round}`, [p.id]);
 }
 
@@ -253,14 +416,8 @@ function finishDraft(league: League): void {
   if (d.done) return;
   d.done = true;
   addNews(league, null, `The ${league.season} draft is complete. Picks have until the signing deadline to sign.`);
-  // AI clubs sign almost all of their picks right away.
-  for (const pk of d.picks) {
-    if (pk.pid === null || pk.orgId === league.userOrgId) continue;
-    const p = league.players[pk.pid];
-    const r = rand();
-    if (pk.round <= POOL_ROUNDS ? r < 0.95 : r < 0.75) signPick(league, pk, p, true);
-  }
-  if (delegated(league, league.orgs[league.userOrgId], 'draft')) autoSignUser(league);
+  // Negotiations start right away.
+  draftSigningDay(league);
 }
 
 export function poolSpent(league: League, orgId: number): number {
@@ -284,25 +441,32 @@ export function poolTotal(league: League, orgId: number): number {
   return t;
 }
 
-export function canSign(league: League, pk: DraftPick): string | null {
+export function canSign(_league: League, pk: DraftPick): string | null {
   if (pk.pid === null) return 'No player';
   if (pk.signed) return 'Already signed';
   if (pk.signed === false) return 'Did not sign';
-  const p = league.players[pk.pid];
-  const ask = p.prospect?.asking ?? pk.slot;
-  const extra = pk.round <= POOL_ROUNDS ? ask : Math.max(0, ask - LATE_ROUND_FREE);
-  const limit = poolTotal(league, pk.orgId) * 1.05; // up to 5% over (taxed)
-  if (poolSpent(league, pk.orgId) + extra > limit) return 'Would exceed your bonus pool by more than 5%';
   return null;
 }
 
-export function signPick(league: League, pk: DraftPick, p: Player, ai = false): string | null {
+// Pool overage penalties (MLB): 0-5% over: 75% tax; 5-10%: 75% tax and next
+// year's 1st-rounder; 10-15%: 100% tax and next year's 1st and 2nd; 15%+:
+// 100% tax and 1st-rounders in each of the next two drafts.
+export function overageTier(over: number, pool: number): { tax: number; text: string } {
+  if (over <= 0 || pool <= 0) return { tax: 0, text: '' };
+  const r = over / pool;
+  if (r <= 0.05) return { tax: 0.75, text: '75% tax on the overage' };
+  if (r <= 0.1) return { tax: 0.75, text: "75% tax and next year's 1st-round pick" };
+  if (r <= 0.15) return { tax: 1, text: "100% tax and next year's 1st- and 2nd-round picks" };
+  return { tax: 1, text: '100% tax and 1st-round picks in the next two drafts' };
+}
+
+export function signPick(league: League, pk: DraftPick, p: Player, ai = false, amount?: number): string | null {
   if (!ai) {
     const why = canSign(league, pk);
     if (why) return why;
   }
   const info = p.prospect!;
-  const bonus = info.asking ?? pk.slot;
+  const bonus = amount ?? info.asking ?? pk.slot;
   pk.signed = true;
   p.orgId = pk.orgId;
   touchRosters();
@@ -320,35 +484,52 @@ export function signPick(league: League, pk: DraftPick, p: Player, ai = false): 
 }
 
 export function autoSignUser(league: League): void {
-  const d = league.draft;
-  if (!d) return;
-  const mine = d.picks.filter((pk) => pk.orgId === league.userOrgId && pk.pid !== null && pk.signed === null).sort((a, b) => a.pick - b.pick);
-  for (const pk of mine) if (!canSign(league, pk)) signPick(league, pk, league.players[pk.pid!]);
+  draftSigningDay(league);
 }
 
-// Signing deadline: unsigned picks go back into next year's pool.
+// Signing deadline: unsigned picks go back to school (and their clubs get a
+// compensation pick next year for 1st and 2nd rounders); pool overages are penalized.
 export function draftDeadline(league: League): void {
   const d = league.draft;
   if (!d) return;
+  const adj = normalizeAdjust(league.draftAdjust);
   for (const pk of d.picks) {
     if (pk.pid === null || pk.signed !== null) continue;
     pk.signed = false;
     const p = league.players[pk.pid];
-    if (p.prospect) {
-      const age = league.season - p.born;
-      if (age <= 22) {
-        p.prospect = { year: league.season + 1, college: true };
-      } else {
-        delete p.prospect;
-      }
+    if (pk.round <= 2 && !pk.label) {
+      const inRound = d.picks.filter((x) => x.round === pk.round && !x.label);
+      adj.unsigned!.push({ orgId: pk.orgId, round: pk.round, pos: inRound.indexOf(pk) });
     }
-    if (pk.orgId === league.userOrgId) addNews(league, pk.orgId, `${pname(p)} (round ${pk.round}) did not sign before the deadline.`, [p.id]);
+    if (p.prospect) {
+      const cls = p.prospect.cls ?? (p.prospect.college ? 'JR' : 'HS');
+      if (cls === 'HS') p.prospect = { year: league.season + 3, college: true, cls: 'JR' };
+      else if (cls === 'JR') p.prospect = { year: league.season + 1, college: true, cls: 'SR' };
+      else delete league.players[p.id];
+    }
+    if (pk.orgId === league.userOrgId) {
+      addNews(league, pk.orgId, `${pname(p)} (round ${pk.round}) did not sign before the deadline${pk.round <= 2 ? '; you get a compensation pick next year' : ''}.`, [p.id]);
+    }
   }
+  // Pool overage penalties.
+  for (const org of league.orgs) {
+    const pool = poolTotal(league, org.id);
+    const over = poolSpent(league, org.id) - pool;
+    if (over <= 0) continue;
+    const tier = overageTier(over, pool);
+    const r = over / pool;
+    if (r > 0.05) adj.forfeit.push({ orgId: org.id, round: 1 });
+    if (r > 0.1 && r <= 0.15) adj.forfeit.push({ orgId: org.id, round: 2 });
+    if (r > 0.15) (league.futureForfeits ??= []).push({ season: league.season + 2, orgId: org.id, round: 1 });
+    (league.draftTax ??= []).push({ season: league.season, orgId: org.id, over, tax: over * tier.tax, penalty: tier.text });
+    addNews(league, org.id, `The ${org.affiliates.MLB.name} exceeded their draft bonus pool by ${(over / 1e6).toFixed(2)}M (${(r * 100).toFixed(1)}%): ${tier.text}.`);
+  }
+  league.draftAdjust = adj;
   // Undrafted prospects either return next year (college) or leave the pool.
   for (const p of Object.values(league.players)) {
     if (!p.prospect || p.orgId !== null || p.prospect.year !== league.season) continue;
     const age = league.season - p.born;
-    if (age <= 21 && rand() < 0.5) p.prospect = { year: league.season + 1, college: true };
+    if (age <= 21 && rand() < 0.5) p.prospect = { year: league.season + 1, college: true, ...amateurProfile(age + 1, true) };
     else delete league.players[p.id];
   }
   addNews(league, null, 'The draft signing deadline has passed.');

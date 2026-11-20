@@ -3,10 +3,10 @@
 // own timeline, weighing money, years, the team's chances and loyalty.
 import type { FaOffer, League, Org, Player } from './types.ts';
 import { clamp, rand, randInt } from './random.ts';
-import { isPitcher, ovr } from './ratings.ts';
+import { isPitcher, ovr, potOvr } from './ratings.ts';
 import { fmtMoney, marketValue, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
-import { posLabel } from './rules.ts';
+import { designate, posLabel } from './rules.ts';
 import { revenueStatus } from './owners.ts';
 import { normalizeAdjust } from './draft.ts';
 import { logMove, side } from './moves.ts';
@@ -201,11 +201,14 @@ export function faDay(league: League): void {
 
   // AI offers
   const ranked = [...fas].sort((a, b) => ovr(b) - ovr(a)).slice(0, 80);
+  // Offers still on the table count against a club's budget until they're answered.
+  const pending = new Map<number, number>();
+  for (const p of fas) for (const o of p.fa!.offers) pending.set(o.orgId, (pending.get(o.orgId) ?? 0) + o.aav);
   for (const org of league.orgs) {
     if (org.id === league.userOrgId) continue;
     if (rand() > (offseason ? 0.35 : 0.2)) continue;
-    if ((fortyCount.get(org.id) ?? 0) >= league.settings.fortyMax) continue;
-    let budget = payrollTarget(org) * (0.92 + rand() * 0.16) - committed(league, org.id, nextSeason);
+    const fullForty = (fortyCount.get(org.id) ?? 0) >= league.settings.fortyMax;
+    let budget = payrollTarget(org) * (0.92 + rand() * 0.16) - committed(league, org.id, nextSeason) - (pending.get(org.id) ?? 0);
     let made = 0;
     for (const p of ranked) {
       if (made >= 3 || budget <= 0) break;
@@ -215,6 +218,8 @@ export function faDay(league: League): void {
       const cheap = p.fa!.asking.aav <= 4e6;
       const need = ovr(p) - incumbent(depth, org.id, p, cheap);
       if (need < (cheap ? 0.5 : 1.5)) continue;
+      // A full 40-man only stops a club for marginal players; for a real upgrade it makes room.
+      if (fullForty && (cheap || need < 4)) continue;
       const mv = marketValue(p, league.settings);
       const eager = org.strategy === 'Contend' ? 1.08 : org.strategy === 'Rebuild' ? 0.95 : 1;
       const aav = roundSalary(Math.min(mv * 1.15 * eager, p.fa!.asking.aav * (0.86 + rand() * 0.22) * eager));
@@ -229,13 +234,19 @@ export function faDay(league: League): void {
   // Decisions
   for (const p of fas) {
     const fa = p.fa!;
-    const valid = fa.offers.filter((o) => (fortyCount.get(o.orgId) ?? 0) < league.settings.fortyMax);
+    const valid = fa.offers.filter((o) => o.orgId !== league.userOrgId || (fortyCount.get(o.orgId) ?? 0) < league.settings.fortyMax);
     const scored = valid.map((o) => ({ o, s: offerScore(league, p, o) })).sort((a, b) => b.s - a.s);
     const best = scored[0];
     const due = league.day >= fa.decideDay;
     const early = best && best.s >= 1.12 && rand() < 0.25;
     if (!due && !early) continue;
     if (best && best.s >= 0.85) {
+      // AI club with a full 40-man: designate its least valuable player off the 40-man first.
+      if (best.o.orgId !== league.userOrgId && fortyMan(league, best.o.orgId).length >= league.settings.fortyMax) {
+        const cut = fortyMan(league, best.o.orgId).filter((q) => q.level !== 'MLB' && !q.il).sort((x, y) => ovr(x) + 0.5 * potOvr(x) - (ovr(y) + 0.5 * potOvr(y)))[0];
+        if (!cut) continue;
+        designate(league, cut);
+      }
       signFreeAgentOffer(league, p, best.o);
       fortyCount.set(best.o.orgId, (fortyCount.get(best.o.orgId) ?? 0) + 1);
       continue;

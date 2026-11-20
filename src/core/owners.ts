@@ -219,6 +219,12 @@ export function reviewGm(league: League): void {
   }
   const tax = cbtTax(pay.cbt, org.cbtPayerYears, league.settings).tax;
   if (tax > 0 && org.owner.type !== 'Big spender') delta -= (tax / 1e6) * 0.4 * moneyW;
+  // Draft bonus pool tax.
+  const dtax = (league.draftTax ?? []).filter((t) => t.season === league.season && t.orgId === org.id).reduce((t, x) => t + x.tax, 0);
+  if (dtax > 0) {
+    delta -= (dtax / 1e6) * 0.6 * moneyW;
+    results.push(`Paid ${fmtMoney(dtax)} in draft pool tax`);
+  }
   // Department spending over the operating budget.
   const opsOver = deptSpend(org) - org.opBudget;
   if (opsOver > 0) {

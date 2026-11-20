@@ -431,6 +431,10 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       if (daysSince === 1 && (p.lastPitchCount > 22 || p.consecutiveDays >= 2 || rand() < 0.45)) return false;
       if (daysSince === 2 && p.lastPitchCount > 45) return false;
       if (p.lastStartDay > opts.day - 4) return false;
+      // Workload: at most three times in any five days, or four in a week.
+      const recent = (p.recentApps ?? []).filter((d) => d > opts.day - 7 && d < opts.day);
+      if (recent.length >= 4 || recent.filter((d) => d > opts.day - 6).length >= 3) return false;
+      if (daysSince === 1 && recent.filter((d) => d > opts.day - 3).length >= 2) return false;
       return true;
     });
     if (avail.length === 0) {
@@ -530,7 +534,12 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     const outsRecorded = a.line.outs;
     if (outs === 0 && outsRecorded >= 3 && inning > a.enteredInning) {
       const long = a.p.ratings.pit.stamina >= 38 && Math.abs(leadFor(fIdx)) >= 4;
-      return !long || outsRecorded >= 9;
+      if (long && outsRecorded < 9) return false;
+      // An efficient middle or long man often stays for a second inning.
+      const role = fs.lu.roles.get(a.p.id);
+      const stay = role === 'LR' || role === 'MU' ? 0.65 : role === 'MR' ? 0.4 : 0.08;
+      if (outsRecorded < 6 && pc < 18 && a.runsThisOuting === 0 && rand() < stay) return false;
+      return true;
     }
     return false;
   };

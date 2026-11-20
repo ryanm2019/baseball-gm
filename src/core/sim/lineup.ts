@@ -115,11 +115,13 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
 
   let batters: { p: Player; pos: Pos }[] = [];
   const manual = !!depth && !depth.auto && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, org, 'depth'));
-  if (manual && depth.lineup.length === 9) {
+  // Platoon: a separate card against left-handed starters, if you've set one.
+  const card = oppHand === 'L' && depth?.lineupL?.length === 9 ? depth.lineupL : depth?.lineup;
+  if (manual && card && card.length === 9) {
     // Your lineup stands; anyone hurt or off the active roster is replaced in
     // his own spot by the best available bench player at that position.
     const used = new Set<number>();
-    const slots: ({ p: Player; pos: Pos } | null)[] = depth.lineup.map((s) => {
+    const slots: ({ p: Player; pos: Pos } | null)[] = card.map((s) => {
       const p = league.players[s.pid];
       if (!p || !hitters.includes(p) || used.has(p.id)) return null;
       used.add(p.id);
@@ -127,7 +129,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
     });
     for (let i = 0; i < slots.length; i++) {
       if (slots[i]) continue;
-      const pos = depth.lineup[i].pos;
+      const pos = card[i].pos;
       let best: Player | null = null;
       let bestV = -Infinity;
       for (const p of hitters) {
