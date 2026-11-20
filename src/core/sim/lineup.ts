@@ -113,11 +113,39 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   let batters: { p: Player; pos: Pos }[] = [];
   const manual = !!depth && !depth.auto && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, org, 'depth'));
   if (manual && depth.lineup.length === 9) {
-    const ok = depth.lineup.every((s) => {
+    // Your lineup stands; anyone hurt or off the active roster is replaced in
+    // his own spot by the best available bench player at that position.
+    const used = new Set<number>();
+    const slots: ({ p: Player; pos: Pos } | null)[] = depth.lineup.map((s) => {
       const p = league.players[s.pid];
-      return p && hitters.includes(p);
+      if (!p || !hitters.includes(p) || used.has(p.id)) return null;
+      used.add(p.id);
+      return { p, pos: s.pos };
     });
-    if (ok) batters = depth.lineup.map((s) => ({ p: league.players[s.pid], pos: s.pos }));
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i]) continue;
+      const pos = depth.lineup[i].pos;
+      let best: Player | null = null;
+      let bestV = -Infinity;
+      for (const p of hitters) {
+        if (used.has(p.id)) continue;
+        let v = offVs(p, oppHand);
+        if (pos !== 'DH' && pos !== 'SP' && pos !== 'RP') {
+          v += 0.6 * (posRating(p.ratings.def, pos) - 50);
+          if (pos === 'C' && p.pos !== 'C') v -= 40;
+          if (p.pos === pos) v += 4;
+        }
+        if (v > bestV) {
+          bestV = v;
+          best = p;
+        }
+      }
+      if (best) {
+        used.add(best.id);
+        slots[i] = { p: best, pos };
+      }
+    }
+    if (slots.every(Boolean)) batters = slots as { p: Player; pos: Pos }[];
   }
   if (batters.length !== 9) batters = autoLineup(hitters, oppHand, level);
   // Too few healthy hitters: borrow pitchers to fill out the card.

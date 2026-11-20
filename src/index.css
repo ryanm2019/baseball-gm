@@ -144,3 +144,9 @@ input[type='number'] { width: 110px; }
 .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding-top: 120px; }
 .modal { background: #fff; border-radius: 6px; padding: 16px 18px; width: min(460px, 92vw); box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
 select.move { width: 92px; }
+
+/* drag-and-drop lineup */
+tr.draggable { cursor: grab; }
+tr.draggable.dragging { opacity: 0.4; }
+tr.drop-target td { border-top: 2px solid #2f6fd6; background: #eef4ff; }
+td.grip { color: #aaa; cursor: grab; user-select: none; width: 14px; }
