@@ -41,7 +41,7 @@ function bump(p: Player, key: Key, amt: number): void {
 }
 
 // A temporary change that wears off after `days`.
-function temp(league: League, p: Player, text: string, days: number, add: Partial<Record<Key, number>>): void {
+export function temp(league: League, p: Player, text: string, days: number, add: Partial<Record<Key, number>>): void {
   for (const [k, v] of Object.entries(add)) bump(p, k as Key, v!);
   p.storyFx = [...(p.storyFx ?? []), { text, until: absDay(league) + days, add: add as Record<string, number> }];
 }

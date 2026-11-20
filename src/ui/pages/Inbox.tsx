@@ -43,7 +43,7 @@ export default function Inbox() {
             <div className="small muted">{dayShort(m.season, m.day)} · {m.from}</div>
             <div><b>{m.subject}</b>{p?.morale && <span className="small muted"> · {p.first} {p.last} is {moraleLabel(p.morale.value).toLowerCase()} ({Math.round(p.morale.value)})</span>}</div>
             <div className="small"><LinkedText league={league} text={m.text} pids={m.pids} /></div>
-            {m.link && <a className="small" href={href(m.link.page, m.link.args ?? [])}>Open</a>}
+            {m.link && <a className="small" href={href(m.link.page, m.link.args ?? [], m.link.query ?? {})}>Open</a>}
             {m.actions && !m.resolved && (
               <div style={{ marginTop: 4 }}>
                 {m.actions.map((a) => (

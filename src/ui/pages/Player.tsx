@@ -6,6 +6,7 @@ import { contact, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '..
 import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
+import { project } from '../../core/projections.ts';
 
 const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
@@ -290,6 +291,27 @@ export default function PlayerPage() {
               <>
                 <div />
                 <div><a className="btn btn-sm" href={href('negotiate', ['ext', p.id])}>Negotiate extension</a></div>
+              </>
+            )}
+            {p.orgId !== null && !p.retired && (() => {
+              const pr = project(league, p);
+              return (
+                <>
+                  <div>{pr.season} projection</div>
+                  <div className="small">
+                    {isPitcher(p) ? `${pr.ip.toFixed(0)} IP${pr.basis === 'stats' ? `, ${pr.era.toFixed(2)} ERA, ${pr.k9.toFixed(1)} K/9` : ''}` : `${pr.pa} PA${pr.basis === 'stats' ? `, ${pr.avg.toFixed(3).replace(/^0/, '')}/${pr.obp.toFixed(3).replace(/^0/, '')}/${pr.slg.toFixed(3).replace(/^0/, '')}, ${pr.hr} HR` : ''}`}, {pr.war.toFixed(1)} WAR
+                    <span className="muted"> ({pr.basis === 'stats' ? 'from MLB stats' : 'from ratings'})</span>
+                  </div>
+                </>
+              );
+            })()}
+            {(league.awards ?? []).some((a) => a.pid === p.id) && (
+              <>
+                <div>Awards</div>
+                <div className="small">
+                  {(league.hof ?? []).some((h) => h.pid === p.id) && <b>Hall of Fame · </b>}
+                  {(league.awards ?? []).filter((a) => a.pid === p.id).map((a) => `${a.season} ${a.lg} ${a.award}${a.pos ? ` (${a.pos})` : ''}`).join(' · ')}
+                </div>
               </>
             )}
             {p.agent !== undefined && league.agents?.[p.agent] && (

@@ -1,5 +1,7 @@
 // Owners, payroll budgets and team strategy (contend / retool / rebuild).
 import type { League, Org, Owner, OwnerGoal, OwnerType, Strategy } from './types.ts';
+import { addInbox } from './morale.ts';
+import { revenueFactor } from './finances.ts';
 import { randomStaffName } from './names.ts';
 import { clamp, rand, weightedChoice } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
@@ -32,9 +34,19 @@ export function computeBudget(org: Org, league?: League, committed?: number): nu
   let b = baseBudget(org) * OWNER_MULT[org.owner.type];
   if (org.owner.type === 'Win-now' && org.strategy === 'Contend') b *= 1.08;
   if (org.strategy === 'Rebuild') b *= 0.85;
+  // Budgets follow revenue (attendance, merchandise, playoff gates) once
+  // there's a season of books; before that, last season's wins.
+  const rf = revenueFactor(org);
   const wins = league?.lastWins?.[org.id];
-  if (wins !== undefined) b *= 1 + clamp((wins - 81) * 0.004, -0.06, 0.08);
-  if (committed !== undefined) b = Math.max(b, Math.min(committed * 1.03, b * FLEX_CAP[org.owner.type]));
+  if (rf !== null) b *= rf;
+  else if (wins !== undefined) b *= 1 + clamp((wins - 81) * 0.004, -0.06, 0.08);
+  if (committed !== undefined) {
+    b = Math.max(b, Math.min(committed * 1.03, b * FLEX_CAP[org.owner.type]));
+    // Owners don't cut the budget far below money already on the books.
+    b = Math.max(b, committed * 0.92);
+  }
+  // Even the richest owners balk past ~$375M.
+  if (b > 375e6) b = 375e6 + (b - 375e6) * 0.25;
   return Math.round(b / 1e6) * 1e6;
 }
 
@@ -210,7 +222,9 @@ export function ownerCheckin(league: League): string | null {
   org.owner.patience = clamp(Math.round(org.owner.patience + delta), league.settings.allowFiring ? 1 : 5, 100);
   const msg = `Owner check-in from ${org.owner.first} ${org.owner.last}: ${lines.join(' ')} (Job security ${org.owner.patience}/100.)`;
   addNews(league, org.id, msg);
-  return msg;
+  addInbox(league, { from: `Owner ${org.owner.first} ${org.owner.last}`, subject: delta < 0 ? 'Owner check-in: concerns' : 'Owner check-in', kind: 'info', pids: [], text: msg });
+  // Good news goes to the Inbox; the sim only stops when he's unhappy.
+  return delta < 0 ? msg : null;
 }
 
 // Owner patience with the user, updated at the end of each season.

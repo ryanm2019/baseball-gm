@@ -101,3 +101,15 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
 ## Next milestones
 
 1. Contract extensions, rehab assignments, full finances.
+
+## Contracts, morale, storylines, history (latest)
+- **Roster Moves**: OOTP-style drag-and-drop boxes (active, 40-man, any level, IL, 60-day IL, DFA) with sortable ratings / hitting / pitching views.
+- **Contracts**: year-by-year salaries; club, player, mutual and vesting options with buyouts; opt-outs; full or partial no-trade clauses; deferred money (CBT AAV at present value). **Extensions** value each pre-arb / arbitration / free-agent year, settle pending arbitration, and some players refuse in-season talks.
+- **Agents, morale and the Inbox**: agents with reputations; six-part morale with small effects on games, development and negotiations; clubhouse leaders; agent requests and promises.
+- **Storylines**: development, streaks and slumps, freak injuries, suspensions, clubhouse fights you resolve, career-ending events (settings).
+- **Awards and history**: All-Stars, MVP, Cy Young, Rookie and Reliever of the Year, Gold Gloves, Silver Sluggers; Hall of Fame voting; season archive, franchise history, single-season and career records.
+- **Projections**: Marcel-style player projections and projected standings on the Season Preview.
+- **Rehab assignments** before activation from longer IL stints (activate early and he's rusty).
+- **Trade deadline drama**: sellers shop expiring veterans, actionable rumors in the Inbox, deadline countdown.
+- **Finances**: attendance, hype, ticket prices, revenue; owner budgets follow revenue.
+- **League balance**: day-to-day team form, run-environment and star-pipeline correction, budget floors and caps, salary dumps.

@@ -4,7 +4,7 @@
 import type { FaOffer, League, Org, Player } from './types.ts';
 import { clamp, rand, randInt, shuffle } from './random.ts';
 import { isPitcher, ovr, potOvr } from './ratings.ts';
-import { fmtMoney, marketValue, roundSalary } from './contracts.ts';
+import { fmtMoney, marketValue, roundSalary, serviceYears, orgPayroll } from './contracts.ts';
 import { addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { designate, posLabel } from './rules.ts';
 import { revenueStatus } from './owners.ts';
@@ -86,7 +86,11 @@ export function committed(league: League, orgId: number, season: number): number
     // CBT terms: a scheduled deal counts its AAV, not this year's (maybe back-loaded) salary.
     if (p.contract.exp >= season) t += p.contract.oneWay ? (p.contract.aav ?? p.contract.salary) : league.settings.minSalary;
     else if (p.arb) t += p.arb.settled ?? p.arb.projected;
+    // Pre-arb players on the 40-man are renewed at about the minimum.
+    else if (p.on40 && serviceYears(p.mlServiceDays, league.settings) < 3) t += league.settings.minSalary * 1.05;
   }
+  // Player benefits count against the CBT payroll too.
+  t += league.settings.playerBenefits;
   for (const d of league.orgs[orgId].deadMoney) if (d.season === season) t += d.amount;
   return t;
 }
@@ -205,7 +209,7 @@ export function aiTerms(league: League, org: Org, p: Player, years: number, aav:
   const shape = years >= 4 && org.strategy === 'Contend' && rand() < 0.35 ? 'back' : years >= 3 && rand() < 0.15 ? 'front' : 'flat';
   let total = aav * years;
   const t: Terms = { sched: [] };
-  if (o >= 62 && years >= 4 && rand() < 0.5) {
+  if (o >= 58 && years >= 3 && rand() < 0.55) {
     t.optOuts = [Math.min(years - 2, rand() < 0.5 ? 1 : 2)];
     total *= 0.96; // he gives a little salary back for the opt-out
   }
@@ -220,9 +224,9 @@ export function aiTerms(league: League, org: Org, p: Player, years: number, aav:
   } else if (years >= 2 && age <= 33 && o >= 55 && rand() < 0.12) {
     t.option = { type: 'player', season: 0, salary: roundSalary(aav), buyout: 0 };
   }
-  if (aav * years >= 120e6 && rand() < 0.45) t.ntc = 'full';
-  else if (aav * years >= 40e6 && rand() < 0.35) t.ntc = shuffle(league.orgs.filter((x) => x.id !== org.id)).slice(0, randInt(4, 10)).map((x) => x.id);
-  if (aav * years >= 150e6 && org.market >= 1.2 && rand() < 0.25) t.deferPct = Math.round((0.1 + rand() * 0.2) * 20) / 20;
+  if (aav * years >= 100e6 && rand() < 0.55) t.ntc = 'full';
+  else if (aav * years >= 30e6 && rand() < 0.45) t.ntc = shuffle(league.orgs.filter((x) => x.id !== org.id)).slice(0, randInt(4, 10)).map((x) => x.id);
+  if (aav * years >= 100e6 && rand() < (org.market >= 1.2 ? 0.4 : 0.2)) t.deferPct = Math.round((0.1 + rand() * 0.25) * 20) / 20;
   t.sched = shapeSchedule(total, years, shape);
   return t;
 }
@@ -234,6 +238,8 @@ export function faDay(league: League): void {
   const offseasonPhase = league.phase === 'offseason' || league.phase === 'preseason';
   // In season the market is thin; check it every few days.
   if (!offseasonPhase && league.day % 3 !== 0) return;
+  // A free agent with no market status (an old generation bug) gets one.
+  for (const p of Object.values(league.players)) if (!p.fa && isFreeAgent(p) && ovr(p) >= 45) openFreeAgent(league, p, null);
   const fas = Object.values(league.players).filter((p) => p.fa && isFreeAgent(p) && !isMinorFA(league, p));
   if (!fas.length) return;
   const depth = buildDepth(league);
@@ -255,6 +261,9 @@ export function faDay(league: League): void {
     if (org.id === league.userOrgId) continue;
     if (rand() > (offseason ? 0.35 : 0.2)) continue;
     const fullForty = (fortyCount.get(org.id) ?? 0) >= league.settings.fortyMax;
+    const overNow = orgPayroll(league, org).cbt > org.budget;
+    // Last year's juggernauts don't get first dibs on every star.
+    const juggernaut = (league.lastWins?.[org.id] ?? 0) >= 98;
     let budget = payrollTarget(org) * (0.92 + rand() * 0.16) - committed(league, org.id, nextSeason) - (pending.get(org.id) ?? 0);
     let made = 0;
     for (const p of ranked) {
@@ -263,8 +272,9 @@ export function faDay(league: League): void {
       const ageNext = nextSeason - p.born;
       if (org.strategy === 'Rebuild' && (ageNext >= 30 || p.fa!.asking.years > 2) && p.fa!.asking.aav > 5e6) continue;
       const cheap = p.fa!.asking.aav <= 4e6;
+      if (overNow && !cheap) continue;
       const need = ovr(p) - incumbent(depth, org.id, p, cheap);
-      if (need < (cheap ? 0.5 : 1.5)) continue;
+      if (need < (cheap ? 0.5 : juggernaut ? 3.5 : 1.5)) continue;
       // A full 40-man only stops a club for marginal players; for a real upgrade it makes room.
       if (fullForty && (cheap || need < 4)) continue;
       const mv = marketValue(p, league.settings);

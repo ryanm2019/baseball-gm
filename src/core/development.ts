@@ -21,7 +21,7 @@ function decline(a: number, p: Player): number {
   if (a < 32) return 0;
   const elite = ovr(p) >= 60 ? 0.75 : 1;
   const work = 1.1 - (0.2 * (p.personality.workEthic - 20)) / 60;
-  return (a - 31) * 0.085 * elite * work;
+  return (a - 31) * 0.065 * elite * work;
 }
 
 export function developPlayer(league: League, p: Player): void {
@@ -30,7 +30,7 @@ export function developPlayer(league: League, p: Player): void {
   const fdm = devMultiplier(league, p);
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
-  const rate = ageRate(a) * we * fdm * playing * moraleDev(p);
+  const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * (a >= 23 && a <= 27 ? (league.devAdj ?? 1) : 1);
   const dec = decline(a, p);
   const tcr = 0.45;
 

@@ -1,4 +1,5 @@
 import { useStore } from '../../store.ts';
+import { finOf, revenueSoFar } from '../../core/finances.ts';
 import { href } from '../../router.ts';
 import { LEVELS } from '../../core/types.ts';
 import type { League, Org } from '../../core/types.ts';
@@ -175,6 +176,8 @@ export default function Dashboard() {
             <div>{fmtMoney(org.budget)}</div>
             <div>Departments</div>
             <div className={deptSpend(org) > org.opBudget ? 'neg' : ''}><a href={href('departments')}>{fmtMoney(deptSpend(org))}</a> of {fmtMoney(org.opBudget)}</div>
+            <div>Revenue</div>
+            <div><a href={href('finances')}>{fmtMoney(revenueSoFar(league, org).total)}</a> · hype {Math.round(finOf(league, org).hype)} · {finOf(league, org).games ? Math.round(finOf(league, org).attendance / finOf(league, org).games).toLocaleString() : '-'} per game</div>
             <div>Job security</div>
             <div>
               <span className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</span>

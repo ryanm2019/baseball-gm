@@ -206,7 +206,7 @@ export default function RosterBoard() {
       { key: 'svc', label: 'Svc', title: 'MLB service years', value: (p) => serviceYears(p.mlServiceDays, s), render: (p) => serviceYears(p.mlServiceDays, s).toFixed(3) },
       {
         key: 'status', label: 'Status', left: true, value: (p) => (p.injury ? p.injury.daysLeft : 0),
-        render: (p) => <span className="small">{p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}{p.il ? ` ${p.il.type}` : ''}{p.dfa ? ' DFA' : ''}{p.waivers ? ' waivers' : ''}</span>,
+        render: (p) => <span className="small">{p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}{p.il ? ` ${p.il.type}` : ''}{p.rehab ? ` · rehab ${p.rehab.level} (${p.rehab.daysLeft}d)` : ''}{p.dfa ? ' DFA' : ''}{p.waivers ? ' waivers' : ''}</span>,
       },
     ];
   };

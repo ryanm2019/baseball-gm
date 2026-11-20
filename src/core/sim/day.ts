@@ -4,7 +4,7 @@
 import type { Game, League, Level, PlayoffSeries } from '../types.ts';
 import { LEVELS } from '../types.ts';
 import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from './lineup.ts';
-import { createGame, simGame, type GameEngine, type GameOutput } from './game.ts';
+import { createGame, setOffenseAdj, simGame, type GameEngine, type GameOutput } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
 import { weeklyFarmReport } from '../farmReport.ts';
@@ -17,11 +17,13 @@ import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../dr
 import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { aiExtensions } from '../extensions.ts';
-import { addInbox, inboxStop, moraleWeek } from '../morale.ts';
+import { inboxStop, moraleWeek } from '../morale.ts';
 import { storylinesWeek } from '../storylines.ts';
+import { selectAllStars } from '../awards.ts';
+import { homeGate, hypeWeek } from '../finances.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
-import { rand } from '../random.ts';
+import { clamp, rand } from '../random.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
 let indexedFor: Game[] | null = null;
@@ -103,6 +105,7 @@ export const gameOpts = (league: League, g: Game, live = false) => ({ gid: g.id,
 function playGame(league: League, g: Game, recordStats: boolean): void {
   const lus = gameLineups(league, g);
   if (!lus) return;
+  setOffenseAdj(league.offenseAdj ?? 0);
   const out = simGame(lus.home, lus.away, gameOpts(league, g));
   applyGameOutput(league, g, out, recordStats);
 }
@@ -110,6 +113,7 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
 // Records a finished game: result, standings, stats, workloads, injuries, box score.
 export function applyGameOutput(league: League, g: Game, out: GameOutput, recordStats: boolean): void {
   g.result = { hs: out.homeRuns, as: out.awayRuns, innings: out.innings, wp: out.wp, lp: out.lp, sv: out.sv };
+  if (g.level === 'MLB') homeGate(league, g.home, !!g.playoff);
   if (recordStats) {
     updateStanding(league, g.level, g.home, out.homeRuns > out.awayRuns, out.homeRuns, out.awayRuns);
     updateStanding(league, g.level, g.away, out.awayRuns > out.homeRuns, out.awayRuns, out.homeRuns);
@@ -155,8 +159,21 @@ function dailyUpkeep(league: League): void {
     if (p.injury) {
       p.injury.daysLeft -= healDays(league, p);
       if (p.injury.daysLeft <= 0) {
+        const total = p.injury.totalDays;
+        const name = p.injury.name;
         p.injury = null;
-        if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} is healthy and can be activated from the IL.`, [p.id]);
+        // Longer MLB injuries end with a rehab assignment in Triple-A.
+        if (p.il && p.il.returnLevel === 'MLB' && inSeason && total >= 15 && !name.startsWith('Suspended')) {
+          const days = Math.round(isPitcher(p) ? clamp(total / 4, 5, 25) : clamp(total / 6, 3, 15));
+          p.rehab = { level: 'AAA', daysLeft: days, total: days };
+          if (p.orgId === league.userOrgId) addNews(league, p.orgId, `${pname(p)} began a rehab assignment with ${league.orgs[p.orgId].affiliates.AAA.name} (about ${days} days). You can activate him early, but he'll be rusty.`, [p.id]);
+        } else if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} is healthy and can be activated from the IL.`, [p.id]);
+      }
+    } else if (p.rehab) {
+      p.rehab.daysLeft--;
+      if (p.rehab.daysLeft <= 0 || !p.il) {
+        p.rehab = null;
+        if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} finished his rehab assignment and is ready to be activated.`, [p.id]);
       }
     }
     if (p.orgId === null || !inSeason) continue;
@@ -332,6 +349,7 @@ export interface DayResult {
 function beginRegularDay(league: League): string | null {
   // Amateur draft at the All-Star break.
   if (league.day === league.settings.draftDay) {
+    selectAllStars(league);
     if (!league.draft || league.draft.season !== league.season) league.draft = createDraft(league);
     if (!league.draft.done && advanceDraft(league)) return "You're on the clock in the amateur draft. Make your pick on the Draft page.";
   }
@@ -354,13 +372,11 @@ function finishRegularDay(league: League): DayResult {
   tradeDay(league);
   aiExtensions(league);
   dailyUpkeep(league);
-  if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
+  if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); hypeWeek(league); }
   league.day++;
   const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
   if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
-  const owner = ownerCheckin(league);
-  if (owner) addInbox(league, { from: 'Owner', subject: 'Owner check-in', kind: 'info', pids: [], text: owner });
-  return { stop: owner ?? inboxStop(league) };
+  return { stop: ownerCheckin(league) ?? inboxStop(league) };
 }
 
 // ---------- live games ----------
@@ -410,6 +426,7 @@ export function startLiveDay(league: League): LiveDay | { stop: string } {
   if (!game) return { stop: 'You have no game today.' };
   const lus = gameLineups(league, game);
   if (!lus) return { stop: 'Your team could not field a lineup.' };
+  setOffenseAdj(league.offenseAdj ?? 0);
   const engine = createGame(lus.home, lus.away, gameOpts(league, game, true));
   return { game, engine, userSide: game.home === u ? 1 : 0, series };
 }

@@ -44,6 +44,11 @@ const sc = (r: number, coef: number) => Math.exp((coef * (r - 50)) / 10);
 
 // Diminishing returns at the top of the scale: elite ratings still help, but a
 // single star can't carry a lineup or staff to absurd lines (think Trout).
+// League offense correction (rating points for hitters), set each day from
+// league.offenseAdj so the run environment doesn't drift as players develop.
+let OFFENSE_ADJ = 0;
+export function setOffenseAdj(x: number): void { OFFENSE_ADJ = x; }
+
 const SOFT_AT = 57;
 const soft = (r: number): number => (r <= SOFT_AT ? r : SOFT_AT + (r - SOFT_AT) * 0.4);
 
@@ -277,6 +282,17 @@ export function simGame(home: GameLineup, away: GameLineup, opts: GameOpts): Gam
 }
 
 export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): GameEngine {
+  // Day-to-day form: everyone is a little better or worse on a given day, so
+  // the best teams lose more often than their ratings alone would say.
+  // A shared team component matters most: independent player noise averages
+  // out over nine hitters, but a whole club having a good or bad day doesn't.
+  const teamDay = new Map<number, number>([[home.orgId, normal(0, 3)], [away.orgId, normal(0, 3)]]);
+  const formMap = new Map<number, number>();
+  const form = (p: Player) => {
+    let f = formMap.get(p.id);
+    if (f === undefined) { f = clamp(normal(0, 2.5) + (p.orgId !== null ? (teamDay.get(p.orgId) ?? 0) : 0), -9, 9); formMap.set(p.id, f); }
+    return f;
+  };
   const level = home.level;
   const env = ENV[level];
   // Big-league workloads and intensity: a bit more injury risk than the minors.
@@ -668,12 +684,12 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     if (app.coldPAs > 0) app.coldPAs--;
     if (app.boost > 0) app.boost--;
 
-    const pm = moraleBoost(pit);
+    const pm = moraleBoost(pit) + form(pit);
     const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold + pm;
     const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm;
     const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5 + pm;
     const raw = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
-    const bm = moraleBoost(batter);
+    const bm = moraleBoost(batter) + form(batter) + OFFENSE_ADJ;
     const split = { ...raw, avoidK: soft(raw.avoidK) + bm, eye: soft(raw.eye) + bm, power: soft(raw.power) + bm, babip: soft(raw.babip) + bm, gap: soft(raw.gap) + bm };
     const speed = batter.ratings.run.speed;
 

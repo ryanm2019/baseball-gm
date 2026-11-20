@@ -16,7 +16,7 @@ import type { League, Org, Player } from './types.ts';
 import { LEVELS } from './types.ts';
 import { dayToDate } from './settings.ts';
 import { cbtTax, fmtMoney, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
-import { isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
+import { displayOvr, isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, sumBat, sumPit, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffContractsExpire, staffOf } from './staff.ts';
 import { firstContractSeason, isFreeAgent, openFreeAgent } from './freeAgency.ts';
@@ -29,10 +29,12 @@ import { generateCbPicks, generateDraftClass } from './draft.ts';
 import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { generateIfaClass, isIfa, negotiationDay, openIfaPeriod, postPlayers, setupIfaPools } from './intl.ts';
 import { logMove, side } from './moves.ts';
-import { marketOvr } from './war.ts';
+import { marketOvr, seasonCtx } from './war.ts';
 import { setDeptBudgets, updateFacilities } from './depts.ts';
 import { salaryIn, syncContract } from './terms.ts';
 import { addInbox } from './morale.ts';
+import { archiveSeason, hallOfFameVote, seasonAwards } from './awards.ts';
+import { closeBooks } from './finances.ts';
 
 export interface CalEvent {
   key: string;
@@ -76,6 +78,20 @@ export function onSeasonEnd(league: League): void {
   const st = league.standings.MLB;
   league.lastStandings = league.orgs.map((o) => o.id).sort((a, b) => st[a].w - st[a].l - (st[b].w - st[b].l));
   league.lastWins = Object.fromEntries(league.orgs.map((o) => [o.id, st[o.id].w]));
+  seasonAwards(league);
+  archiveSeason(league);
+  closeBooks(league);
+  // Keep the star pipeline steady: if fewer than ~70 MLB players rate 60+,
+  // young players develop a little faster next year (and slower if more).
+  {
+    const n60 = Object.values(league.players).filter((p) => p.orgId !== null && p.level === 'MLB' && displayOvr(p, ovr(p)) >= 60).length;
+    if (n60 > 0) league.devAdj = clamp((league.devAdj ?? 1) * clamp(Math.sqrt(66 / n60), 0.9, 1.15), 0.85, 1.6);
+  }
+  // Hold the run environment near 4.45 runs per game as talent shifts.
+  {
+    const rg = seasonCtx(league, league.season).ra9;
+    if (rg > 2 && rg < 8) league.offenseAdj = clamp((league.offenseAdj ?? 0) + clamp((4.45 - rg) * 4, -3, 3), -10, 10);
+  }
   league.lastPlayoffTeams = league.playoffs ? [...league.playoffs.seeds.AL, ...league.playoffs.seeds.NL] : [];
   for (const org of league.orgs) {
     const pay = orgPayroll(league, org);
@@ -577,6 +593,7 @@ function runRollover(league: League): void {
   setBudgets(league, (org) => orgPayroll(league, org).cbt);
   setDeptBudgets(league);
   setOwnerGoals(league);
+  hallOfFameVote(league);
   generateDraftClass(league, league.season);
   generateCbPicks(league, league.season);
   // Who got better and who got worse over the winter (relative to everyone else).

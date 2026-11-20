@@ -4,6 +4,7 @@
 // the move is not allowed, so the UI can show why.
 import type { IlStatus, League, Level, Player } from './types.ts';
 import { salaryIn } from './terms.ts';
+import { temp } from './storylines.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname, touchRosters } from './util.ts';
 import { isPitcher, ovr } from './ratings.ts';
@@ -222,6 +223,11 @@ export function optionsLeft(league: League, p: Player): number {
 export function activateFromIL(league: League, p: Player): void {
   const il = p.il!;
   p.il = null;
+  // Cut his rehab short and he'll need a week or two to shake off the rust.
+  if (p.rehab) {
+    temp(league, p, 'Rusty (rehab cut short)', 10, isPitcher(p) ? { control: -3, stuff: -2 } : { bat: -3 });
+    p.rehab = null;
+  }
   p.level = il.returnLevel;
   addTransaction(league, p.orgId, 'Activate', `Activated ${posLabel(p)} ${pname(p)} from the injured list`, [p.id]);
 }

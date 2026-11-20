@@ -12,6 +12,7 @@ import { willingnessBand } from '../../core/draft.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutFactor } from '../../core/ratings.ts';
 import { seededNormal } from '../../core/random.ts';
+import { fortyMan } from '../../core/util.ts';
 
 type OptType = 'none' | ContractOption['type'];
 
@@ -91,6 +92,7 @@ export default function Negotiate() {
     meter = Math.max(0, Math.min(1, (sc - 0.8) / 0.35));
     meterText = interestLabel(sc);
     askLine = `Asking: ${p.fa.asking.years} yr × ${fmtMoney(p.fa.asking.aav)}. Decides around day ${p.fa.decideDay}. ${p.fa.offers.length} offer(s) on the table.`;
+    if (fortyMan(league, org.id).length >= league.settings.fortyMax) block = `Your 40-man roster is full (${league.settings.fortyMax}). Clear a spot before making an offer: he has to go on it when he signs.`;
   } else block = 'Not a free agent';
 
   const sched = terms.sched;

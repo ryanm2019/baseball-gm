@@ -257,6 +257,7 @@ export interface Player {
   ext?: { lastOffer?: number; stiff?: number; season?: number } | null; // extension talks this season
   agent?: number; // Agent id
   morale?: Morale;
+  rehab?: { level: Level; daysLeft: number; total: number } | null; // rehab assignment before coming off the IL
   storyFx?: { text: string; until: number; add: Record<string, number> }[]; // temporary rating changes from storylines
   arb?: ArbCase | null;
   rule5?: { fromOrg: number; season: number } | null;
@@ -487,7 +488,8 @@ export interface Org {
   rotationIndex: Partial<Record<Level, number>>;
   cbtPayerYears: number; // consecutive prior seasons over the CBT threshold
   deadMoney: { pid: number; name: string; amount: number; season: number }[];
-  deferred?: { pid: number; name: string; amount: number; season: number }[]; // deferred salary owed in later seasons
+  deferred?: { pid: number; name: string; amount: number; season: number }[];
+  fin?: import('./finances.ts').Fin; // attendance, revenue, hype // deferred salary owed in later seasons
   stance: TradeStance;
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
@@ -581,7 +583,7 @@ export interface InboxMsg {
   read?: boolean;
   stop?: boolean; // pauses the sim until you've seen it
   stopped?: boolean;
-  link?: { page: string; args?: (string | number)[] };
+  link?: { page: string; args?: (string | number)[]; query?: Record<string, string | number> };
   storyId?: string;
 }
 
@@ -593,6 +595,22 @@ export interface Promise_ {
   due: number;
   season: number;
 }
+
+export type AwardName = 'MVP' | 'Cy Young' | 'Rookie of the Year' | 'Reliever of the Year' | 'Gold Glove' | 'Silver Slugger' | 'All-Star';
+
+export interface AwardRec {
+  season: number;
+  award: AwardName;
+  lg: 'AL' | 'NL';
+  pid: number;
+  orgId: number;
+  pos?: string;
+  line: string; // stat line at the time
+}
+
+export interface HofRec { season: number; pid: number; pct: number; war: number; line: string; ballot: number }
+
+export interface SeasonRec { season: number; orgId: number; w: number; l: number; result: string }
 
 export interface NewsItem {
   id: number;
@@ -790,6 +808,12 @@ export interface League {
   devSnap?: { season: number; ratings: Record<number, number[]> };
   lastWins?: Record<number, number>; // last season's MLB wins by org
   scoops?: Scoop[];
+  devAdj?: number; // development speed for players 27 and under, tuned to keep the number of stars steady
+  offenseAdj?: number;
+  awards?: AwardRec[];
+  hof?: HofRec[];
+  hofBallot?: Record<number, number>; // pid -> years on the ballot
+  seasonRecs?: SeasonRec[]; // hitter rating points added league-wide to hold the run environment steady
   agents?: Agent[];
   inbox?: InboxMsg[];
   stories?: { id: number; season: number; day: number; title: string; text: string; pids: number[]; orgId: number | null }[];

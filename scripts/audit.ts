@@ -221,3 +221,15 @@ console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, playe
   const fx = Object.values(L.players).filter((p) => p.storyFx?.length).length;
   console.log(`Players with active story effects: ${fx}`);
 }
+
+// Awards, Hall of Fame, finances, rehab, projections.
+{
+  const aw = L.awards ?? [];
+  const seasonsWith = [...new Set(aw.filter((a) => a.award === 'MVP').map((a) => a.season))];
+  console.log(`Awards: seasons ${seasonsWith.join(',')} | All-Stars ${aw.filter((a) => a.award === 'All-Star').length} | last MVPs: ${aw.filter((a) => a.award === 'MVP').slice(-2).map((a) => `${a.lg} ${L.players[a.pid]?.last} (${a.line})`).join(' / ')}`);
+  console.log(`Hall of Fame: ${(L.hof ?? []).length} inducted (${(L.hof ?? []).map((h) => `${L.players[h.pid]?.last} ${h.pct.toFixed(0)}%`).join(', ')}) | on ballot ${Object.values(L.hofBallot ?? {}).filter((y) => y > 0).length}`);
+  const fins = L.orgs.map((o) => o.fin).filter(Boolean);
+  const revs = fins.map((f) => f!.last?.revenue ?? 0).sort((a, b) => a - b);
+  console.log(`Revenue last season min/med/max ${(revs[0] / 1e6).toFixed(0)}/${(revs[15] / 1e6).toFixed(0)}/${(revs[29] / 1e6).toFixed(0)}M | avg attendance ${Math.round(fins.reduce((t, f) => t + (f!.last?.avgAtt ?? 0), 0) / fins.length)} | hype range ${Math.round(Math.min(...fins.map((f) => f!.hype)))}-${Math.round(Math.max(...fins.map((f) => f!.hype)))} | budgets ${(Math.min(...L.orgs.map((o) => o.budget)) / 1e6).toFixed(0)}-${(Math.max(...L.orgs.map((o) => o.budget)) / 1e6).toFixed(0)}M`);
+  console.log(`Rehab assignments active now: ${Object.values(L.players).filter((p) => p.rehab).length} | season records ${(L.seasonRecs ?? []).length} | offenseAdj ${(L.offenseAdj ?? 0).toFixed(2)} devAdj ${(L.devAdj ?? 1).toFixed(2)}`);
+}

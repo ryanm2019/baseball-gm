@@ -350,8 +350,9 @@ function tryAiTrade(league: League): void {
 // needed. Mostly in the offseason and before the deadline.
 function trySalaryDump(league: League): void {
   const pay = new Map(league.orgs.map((o) => [o.id, orgPayroll(league, o).cbt]));
-  const dumpers = shuffle(league.orgs.filter((o) => o.id !== league.userOrgId && pay.get(o.id)! > o.budget * 1.02));
-  const org = dumpers[0];
+  // The furthest over budget goes first.
+  const dumpers = league.orgs.filter((o) => o.id !== league.userOrgId && pay.get(o.id)! > o.budget * 1.02).sort((a, b) => pay.get(b.id)! / b.budget - pay.get(a.id)! / a.budget);
+  const org = rand() < 0.7 ? dumpers[0] : shuffle(dumpers)[0];
   if (!org) return;
   const over = pay.get(org.id)! - org.budget;
   const cands = tradable(league, org.id)
@@ -365,12 +366,41 @@ function trySalaryDump(league: League): void {
     // The taker sends back a low-level piece if it has one; the dumper adds cash if needed.
     const filler = tradable(league, t.id).filter((q) => !q.on40 && q.level && ['A', 'CPX', 'DSL', 'A+'].includes(q.level)).map((q) => ({ q, v: tradeValue(league, t, q, false) })).sort((a, b) => a.v - b.v)[0];
     if (filler) prop.give[1].pids.push(filler.q.id);
-    for (let step = 0; step <= 4 && !aiAccepts(league, t, prop); step++) {
-      prop.give[0].cash = roundSalary(Math.min(p.contract.salary * seasonFraction(league) * 0.5, step * 0.12 * p.contract.salary));
+    for (let step = 0; step <= 5 && !aiAccepts(league, t, prop); step++) {
+      prop.give[0].cash = roundSalary(Math.min(p.contract.salary * Math.max(0.25, seasonFraction(league)) * 0.6, step * 0.15 * p.contract.salary));
     }
     if (!aiAccepts(league, t, prop) || !aiAccepts(league, org, prop) || validateTrade(league, prop)) continue;
     executeTrade(league, prop);
     return;
+  }
+}
+
+// Within three weeks of the trade deadline.
+function nearDeadline(league: League): boolean {
+  const d = league.settings.tradeDeadlineDay - league.day;
+  return league.phase === 'regular' && d >= 0 && d <= 21;
+}
+
+// Deadline season: sellers put their expiring veterans on the block, and the
+// user hears about it (countdown messages, and rumors that fit their needs).
+function deadlineDrama(league: League): void {
+  if (league.phase !== 'regular') return;
+  const d = league.settings.tradeDeadlineDay - league.day;
+  if (d === 7 || d === 0) {
+    const user = league.orgs[league.userOrgId];
+    addInbox(league, {
+      from: 'Assistant GM', subject: d === 0 ? 'Trade deadline: today' : 'Trade deadline in 7 days', kind: 'info', pids: [],
+      text: `${d === 0 ? 'Today is the last day to make trades.' : 'One week until the trade deadline.'} We're ${user.stance.toLowerCase()} (set on the Trading Block page). ${league.tradeOffers.length} offer(s) waiting. Selling clubs are shopping their expiring veterans: see the Trade Market.`,
+      link: { page: 'trade-market' },
+    });
+  }
+  if (!nearDeadline(league)) return;
+  if (league.day % 3 === 0) {
+    for (const org of league.orgs) {
+      if (org.id === league.userOrgId || (org.stance !== 'Selling' && org.stance !== 'Listening')) continue;
+      const rentals = orgPlayers(league, org.id).filter((p) => p.level === 'MLB' && p.contract.type === 'ML' && p.contract.exp === league.season && ovr(p) >= 50 && league.season - p.born >= 26 && !org.block.includes(p.id));
+      for (const p of rentals.slice(0, 5 - Math.min(5, org.block.length))) org.block.push(p.id);
+    }
   }
 }
 
@@ -386,6 +416,17 @@ function shoppingRumor(league: League): void {
   const verb = o.stance === 'Selling' ? 'are shopping' : 'are listening on';
   const who = callers.length ? ` The ${callers.map((x) => x.affiliates.MLB.name).join(', the ')} ${callers.length === 1 ? 'has' : 'have'} checked in.` : '';
   addScoop(league, `Sources: the ${o.affiliates.MLB.name} ${verb} ${posLabel(p)} ${pname(p)}.${who}`, [p.id]);
+  // If he fills a hole for a contender (you), your pro scouts flag it.
+  const user = league.orgs[league.userOrgId];
+  const recent = (league.inbox ?? []).some((m) => m.subject.startsWith('Available:') && m.season === league.season && league.day - m.day < 3);
+  if (!recent && user.stance !== 'Selling' && teamNeeds(league, user.id).includes(p.pos)) {
+    const rental = p.contract.exp === league.season ? ' He is a rental (contract ends this season).' : '';
+    addInbox(league, {
+      from: 'Pro scouting director', subject: `Available: ${posLabel(p)} ${pname(p)} (${o.abbrev})`, kind: 'info', pids: [p.id],
+      text: `The ${o.affiliates.MLB.name} ${verb} ${posLabel(p)} ${pname(p)}, and he'd fill a need for us at ${p.pos}.${rental} Want to put an offer together?`,
+      link: { page: 'trade', query: { org: o.id, pid: p.id } },
+    });
+  }
 }
 
 // ---------- AI offers to the user ----------
@@ -422,6 +463,8 @@ function offerForUserPlayer(league: League): void {
       if (block.has(p.id)) v *= 1.6;
       if (needs.includes(p.pos)) v *= 1.3;
       if (user.stance === 'Selling' && p.level === 'MLB' && league.season - p.born >= 28) v *= 1.3;
+      // Deadline rentals: contenders call about players on expiring deals.
+      if (nearDeadline(league) && ai.stance === 'Buying' && p.level === 'MLB' && p.contract.exp === league.season) v *= 1.5;
       return { p, v };
     })
     .filter((x) => x.v > 3e6)
@@ -480,7 +523,8 @@ export function tradeDay(league: League): void {
   const rate = intensity * f * 2;
   const tries = Math.ceil(rate);
   for (let k = 0; k < tries; k++) if (rand() < rate / tries) tryAiTrade(league);
-  if (rand() < 0.12 + 0.08 * Math.min(3, intensity)) trySalaryDump(league);
+  for (let k = 0; k < 2; k++) if (rand() < 0.15 + 0.08 * Math.min(3, intensity)) trySalaryDump(league);
+  deadlineDrama(league);
   if (rand() < 0.05 + 0.1 * Math.min(3, intensity)) shoppingRumor(league);
   // AI clubs reach out to the user, more often during flurries.
   const user = league.orgs[league.userOrgId];

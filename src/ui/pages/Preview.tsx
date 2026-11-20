@@ -2,6 +2,7 @@
 // falling teams and players, top players and prospects, the last draft's first
 // round, and the winter's biggest moves.
 import type React from 'react';
+import { projSeason, projectedStandings } from '../../core/projections.ts';
 import { useStore } from '../../store.ts';
 import { href } from '../../router.ts';
 import type { League, Player } from '../../core/types.ts';
@@ -58,6 +59,27 @@ export default function Preview() {
       {!pv || pv.season !== season ? (
         <p className="muted small">The full preview (rising and declining players, draft recap) comes out when spring training opens. Projections below use current rosters.</p>
       ) : null}
+      {(() => {
+        const proj = projectedStandings(league);
+        return (
+          <div className="box" style={{ marginBottom: 12 }}>
+            <h3>Projected standings ({projSeason(league)})</h3>
+            <p className="muted small">Projected wins from each club's projected WAR (last three seasons weighted 5/4/3, regressed, age-adjusted; ratings for players without much MLB time).</p>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              {(['AL', 'NL'] as const).map((lg) => (
+                <table key={lg} className="data compact" style={{ width: 'auto' }}>
+                  <thead><tr><th className="l">{lg}</th><th>W</th><th>L</th><th>WAR</th></tr></thead>
+                  <tbody>
+                    {proj.filter((r) => r.org.league === lg).map((r) => (
+                      <tr key={r.org.id} className={r.org.id === league.userOrgId ? 'user' : ''}><td className="l">{r.org.region} {r.org.name}</td><td>{r.w}</td><td>{r.l}</td><td>{r.war.toFixed(1)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       <div className="cards">
         <div className="box">
           <h3 style={{ marginTop: 0 }}>Projected wins</h3>

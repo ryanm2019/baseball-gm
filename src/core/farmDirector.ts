@@ -88,7 +88,7 @@ export function manageOrg(league: League, org: Org): void {
 
   // 2. Activations.
   for (const p of players) {
-    if (!p.il || p.injury) continue;
+    if (!p.il || p.injury || p.rehab) continue;
     const lvl = p.il.returnLevel;
     if (!isManaged(league, org, lvl)) continue;
     if (lvl === 'MLB') {
@@ -211,14 +211,15 @@ function fillMlb(league: League, org: Org, aiClub: boolean): void {
     let need = mlbNeed(league, org);
     if (need === 'P' && countPitchers(active) >= pitcherLimit(league)) need = 'H';
     const forty = fortyMan(league, org.id).filter((p) => p.level !== 'MLB' && healthy(p) && fits(p, need));
-    forty.sort((a, b) => ovr(b) - ovr(a));
+    const fillKey = (p: typeof forty[0]) => ovr(p) - (league.season - p.born <= 22 ? 4 : 0);
+    forty.sort((a, b) => fillKey(b) - fillKey(a));
     if (forty.length) {
       recallPlayer(league, forty[0]);
       continue;
     }
     const pool = orgPlayers(league, org.id)
       .filter((p) => !p.on40 && (p.level === 'AAA' || p.level === 'AA') && healthy(p) && fits(p, need))
-      .sort((a, b) => ovr(b) - ovr(a));
+      .sort((a, b) => fillKey(b) - fillKey(a));
     if (!pool.length) {
       if (need === 'C' || need === 'P') {
         // fall back to any healthy player of the other kind rather than leave a hole
@@ -368,8 +369,8 @@ export function farmDirectorReview(league: League, org: Org): void {
       // the younger he is, the better he has to be and the longer he has to do it
       // first. A generational talent still gets there; a good teenager waits.
       const youngFor = Math.max(0, LEVEL_AGE[upper] - 3 - a);
-      const bar = 1.5 * youngFor;
-      const sampleMult = 1 + 0.5 * youngFor;
+      const bar = 2.2 * youngFor;
+      const sampleMult = 1 + 0.8 * youngFor;
       const longEnough = pitcher ? smp.outs >= phil.outs * sampleMult : smp.pa >= phil.pa * sampleMult;
       const standout = v >= LEVEL_TALENT[upper] + 5 + bar && (pitcher ? smp.outs >= 45 * sampleMult : smp.pa >= 60 * sampleMult);
       const ready = (v >= target + bar && longEnough && performing) || standout || (tooOld && v >= LEVEL_TALENT[lower]);
