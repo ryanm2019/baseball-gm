@@ -264,7 +264,7 @@ export default function Live() {
               <tbody>
                 {[...mine.bullpen].sort((a, b) => (a.role ? 0 : 1) - (b.role ? 0 : 1)).map((b) => (
                   <tr key={b.p.id}>
-                    <td className="l"><a href={href('player', [b.p.id])}>{b.p.first} {b.p.last}</a> <span className="muted small">{b.p.throws}HP</span></td>
+                    <td className="l"><a href={href('player', [b.p.id])}>{b.p.first} {b.p.last}</a> <span className="muted small">{posLabel(b.p)}</span></td>
                     <td className="l">{b.role ? ROLE_NAMES[b.role] : <span className="muted">Starter</span>}</td>
                     <td className="l small">
                       {b.warm >= 0 ? <span className={b.ready ? 'pos' : ''}>{b.ready ? 'Ready' : `Warming (${b.warm}/3)`}</span> : <span className={b.status === 'Rested' ? '' : 'neg'}>{b.status}</span>}
