@@ -9,6 +9,7 @@ import { batStatCols, bt, contractCols, nameCol, pitStatCols, ratingCols, season
 import { posLabel } from '../../core/rules.ts';
 import { LEVEL_NAMES } from '../../core/settings.ts';
 import { farmDirectorOf } from '../../core/farmDirector.ts';
+import { playerTradeBlock } from '../../core/trade.ts';
 
 const VIEWS = [
   { key: '40', label: '40-Man' },
@@ -44,7 +45,30 @@ export default function Roster() {
     ...ratingCols(league),
   ];
   const tail: Column<Player>[] = [...contractCols(league)];
-  if (isUser) tail.push({ key: 'act', label: '', noSort: true, render: (p) => <ActionSelect league={league} p={p} /> });
+  if (isUser) {
+    tail.push({
+      key: 'block',
+      label: 'Block',
+      title: 'On your trading block (shopped to other clubs)',
+      value: (p) => (org.block.includes(p.id) ? 1 : 0),
+      sortDesc: true,
+      render: (p) =>
+        playerTradeBlock(league, p) ? (
+          <span className="muted" title={playerTradeBlock(league, p) ?? ''}>-</span>
+        ) : (
+          <input
+            type="checkbox"
+            title="Put on trading block"
+            checked={org.block.includes(p.id)}
+            onChange={() => {
+              org.block = org.block.includes(p.id) ? org.block.filter((x) => x !== p.id) : [...org.block, p.id];
+              changed();
+            }}
+          />
+        ),
+    });
+    tail.push({ key: 'act', label: '', noSort: true, render: (p) => <ActionSelect league={league} p={p} /> });
+  }
 
   const pitchers = players.filter(isPitcher);
   const hitters = players.filter((p) => !isPitcher(p));
@@ -96,7 +120,7 @@ export default function Roster() {
       <DataTable cols={pitCols} rows={pitchers} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
       <h2>Position players</h2>
       <DataTable cols={batCols} rows={hitters} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
-      {isUser && <p className="muted small">Use the Move menu on each row. Greyed-out moves show why they aren't allowed right now.</p>}
+      {isUser && <p className="muted small">Use the Move menu on each row. Greyed-out moves show why they aren't allowed right now. Check "Block" to shop a player on your <a href="#/trading-block">trading block</a>.</p>}
     </>
   );
 }

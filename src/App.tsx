@@ -38,11 +38,12 @@ import TradeOffers from './ui/pages/TradeOffers.tsx';
 import TradeMarket from './ui/pages/TradeMarket.tsx';
 import Moves, { MoveDetail } from './ui/pages/Moves.tsx';
 import Live from './ui/pages/Live.tsx';
+import FarmReports from './ui/pages/FarmReports.tsx';
 import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
-  { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
@@ -184,6 +185,7 @@ export default function App() {
     case 'moves': page = <Moves />; break;
     case 'move': page = <MoveDetail />; break;
     case 'live': page = <Live />; break;
+    case 'farm-reports': page = <FarmReports />; break;
     default: page = <Dashboard />;
   }
 

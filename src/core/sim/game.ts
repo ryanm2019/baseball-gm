@@ -483,8 +483,29 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     if (live) say(`Pitching change: ${np.first} ${np.last} replaces ${nm(fs.apps[fs.apps.length - 2].p)}.`);
   };
 
+  // The manager gets someone loose when trouble is coming (live games only, so
+  // simmed games are unchanged).
+  const aiWarm = (fs: Side, fIdx: number) => {
+    if (warm[fIdx].size > 0) return;
+    const a = fs.pitcher;
+    const pc = a.line.pitches;
+    const lead = leadFor(fIdx);
+    const trouble = a.isStarter
+      ? pc >= a.limit * 0.78 || a.runsThisOuting >= 4 || (inning >= 6 && pc >= a.limit * 0.7)
+      : pc >= a.limit * 0.6 || a.runsThisOuting >= 2 || (a.line.outs >= 2 && inning >= 7);
+    const lateClose = inning >= 8 && lead >= 0 && lead <= 3 && fs.lu.closer !== a.p && !fs.used.has(fs.lu.closer?.id ?? -1);
+    if (!trouble && !lateClose) return;
+    const cand = lateClose && !trouble && fs.lu.closer && !injured.has(fs.lu.closer.id) ? fs.lu.closer : reliefPick(fs, lead);
+    if (!cand || fs.used.has(cand.id)) return;
+    warm[fIdx].set(cand.id, 0);
+    say(`${cand.first} ${cand.last} is warming up in the ${fIdx === 1 ? 'home' : 'visitors\''} bullpen.`);
+  };
+
   const changePitcher = (fs: Side, fIdx: number) => {
-    const np = reliefPick(fs, leadFor(fIdx));
+    // Go to whoever is already loose, if anyone.
+    const warmed = live ? [...warm[fIdx].entries()].filter(([id]) => !fs.used.has(id) && !injured.has(id)).sort((x, y) => y[1] - x[1])[0] : undefined;
+    const wp = warmed ? fs.lu.bullpen.find((p) => p.id === warmed[0]) : undefined;
+    const np = wp ?? reliefPick(fs, leadFor(fIdx));
     if (!np) return false;
     installPitcher(fs, fIdx, np);
     return true;
@@ -1000,6 +1021,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     const fs = sides[fIdx];
     if (autoPitch[fIdx]) {
       if (shouldPull(fs, fIdx)) changePitcher(fs, fIdx);
+      if (live) aiWarm(fs, fIdx);
     } else if (injured.has(fs.pitcher.p.id)) {
       // Your pitcher is hurt: you have to make a change.
       needPitcher[fIdx] = true;

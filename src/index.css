@@ -163,6 +163,10 @@ tr.selected td { background: #fff7d6; }
 .diamond .b1 { left: 50px; top: 27px; }
 .out-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid #999; margin-right: 3px; }
 .out-dot.on { background: #c0392b; border-color: #c0392b; }
-.pbp { max-height: 420px; overflow-y: auto; }
+.pbp { max-height: 300px; overflow-y: auto; }
 .pbp > div { padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
 .pbp-half { margin-top: 6px; }
+
+.live-row { display: grid; grid-template-columns: minmax(300px, 1.4fr) minmax(260px, 1fr) minmax(220px, 0.9fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+.live-row .box { min-width: 0; }
+@media (max-width: 1000px) { .live-row { grid-template-columns: 1fr; } }

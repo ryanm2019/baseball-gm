@@ -687,4 +687,14 @@ export interface League {
   ifaPenalty: Record<number, number>; // pool reductions for the next signing period
   fired?: boolean;
   moves: Move[];
+  farmReports?: FarmReport[];
+  farmSnap?: { season: number; totals: Record<number, number[]> };
+  devSnap?: { season: number; ratings: Record<number, number[]> };
+}
+
+export interface FarmReport {
+  season: number;
+  day: number;
+  by: string;
+  sections: { title: string; lines: { text: string; pids: number[] }[] }[];
 }

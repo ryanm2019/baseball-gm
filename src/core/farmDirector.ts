@@ -272,7 +272,7 @@ function balanceAffiliate(league: League, org: Org, level: Level): void {
     if (level === 'AAA' && signFiller(league, org, level, need, true)) continue;
     if (lower && isManaged(league, org, lower)) {
       const cands = activeAt(league, org.id, lower)
-        .filter((p) => healthy(p) && fits(p, need === 'C' ? 'C' : need))
+        .filter((p) => healthy(p) && fits(p, need === 'C' ? 'C' : need) && league.season - p.born >= MIN_PROMO_AGE[level] - 1)
         .sort((a, b) => value(league, org, b) - value(league, org, a));
       // keep the lower level playable too
       const lowerActive = activeAt(league, org.id, lower).length;
@@ -308,6 +308,8 @@ function signFiller(league: League, org: Org, level: Level, need: 'P' | 'H' | 'C
 
 // ---------- weekly farm director review ----------
 
+const MIN_PROMO_AGE: Record<Level, number> = { MLB: 20, AAA: 20, AA: 19, 'A+': 19, A: 18, CPX: 17, DSL: 16 };
+
 const PHIL = {
   Conservative: { offset: 1, pa: 220, outs: 150, maxMoves: 1 },
   Balanced: { offset: 0, pa: 150, outs: 105, maxMoves: 1 },
@@ -339,7 +341,11 @@ export function farmDirectorReview(league: League, org: Org): void {
       const enough = pitcher ? smp.outs >= phil.outs : smp.pa >= phil.pa;
       const performing = pitcher ? smp.outs < 30 || smp.era < 4.75 : smp.pa < 60 || smp.ops > 0.68;
       const tooOld = (lower === 'DSL' && a >= 20) || (lower === 'CPX' && a >= 22);
-      const ready = (v >= target && enough && performing) || v >= LEVEL_TALENT[upper] + 5 || (tooOld && v >= LEVEL_TALENT[lower]);
+      // Teenagers move one step at a time: a minimum age for each level (a year
+      // younger only for the truly elite), and even standouts need a few weeks of games first.
+      const youngOk = a >= MIN_PROMO_AGE[upper] || (a >= MIN_PROMO_AGE[upper] - 1 && v >= LEVEL_TALENT[upper] + 8);
+      const standout = v >= LEVEL_TALENT[upper] + 5 && (pitcher ? smp.outs >= 45 : smp.pa >= 60);
+      const ready = youngOk && ((v >= target && enough && performing) || standout || (tooOld && v >= LEVEL_TALENT[lower]));
       if (!ready) {
         if (v < target - 3) break;
         continue;

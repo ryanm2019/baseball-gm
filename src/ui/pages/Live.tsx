@@ -189,6 +189,22 @@ export default function Live() {
         )}
       </div>
 
+      <div className="live-row">
+        <div className="box">
+          <h3 style={{ marginTop: 0 }}>Play-by-play</h3>
+          <div className="pbp">
+            {recent.map((e, i) => (
+              <div key={s.log.length - i} className={`small${e.scoring ? ' pos' : ''}${e.text.startsWith('Top of') || e.text.startsWith('Bottom of') ? ' pbp-half' : ''}`}>
+                {e.text.startsWith('Top of') || e.text.startsWith('Bottom of') ? <b>{e.text}</b> : <>{e.text} <span className="muted">({e.outs} out{e.outs === 1 ? '' : 's'}, {e.away}-{e.home})</span></>}
+              </div>
+            ))}
+            {recent.length === 0 && <p className="muted small">Press Next batter to start.</p>}
+          </div>
+        </div>
+        <LineupCard side={mine} title="Your lineup" me={me} live={live} batting={batting} sel={sel} setSel={setSel} act={act} />
+        <LineupCard side={theirs} title={league.orgs[theirs.orgId].name} />
+
+      </div>
       {!s.over && (
         <div className="cards">
           <div className="box">
@@ -271,21 +287,6 @@ export default function Live() {
         </div>
       )}
 
-      <div className="cards">
-        <div className="box">
-          <h3 style={{ marginTop: 0 }}>Play-by-play</h3>
-          <div className="pbp">
-            {recent.map((e, i) => (
-              <div key={s.log.length - i} className={`small${e.scoring ? ' pos' : ''}${e.text.startsWith('Top of') || e.text.startsWith('Bottom of') ? ' pbp-half' : ''}`}>
-                {e.text.startsWith('Top of') || e.text.startsWith('Bottom of') ? <b>{e.text}</b> : <>{e.text} <span className="muted">({e.outs} out{e.outs === 1 ? '' : 's'}, {e.away}-{e.home})</span></>}
-              </div>
-            ))}
-            {recent.length === 0 && <p className="muted small">Press Next batter to start.</p>}
-          </div>
-        </div>
-        <LineupCard side={mine} title="Your lineup" me={me} live={live} batting={batting} sel={sel} setSel={setSel} act={act} />
-        <LineupCard side={theirs} title={league.orgs[theirs.orgId].name} />
-      </div>
     </>
   );
 }
@@ -317,6 +318,12 @@ function LineupCard({ side, title, me, live, batting, sel, setSel, act }: {
           <tr><td /><td className="l">{side.pitcher.p.last}</td><td>P</td><td className="small">{side.pitcher.line.pitches} pitches</td></tr>
         </tbody>
       </table>
+      <div className="small">
+        Bullpen:{' '}
+        {side.bullpen.filter((b) => b.warm >= 0).length
+          ? side.bullpen.filter((b) => b.warm >= 0).map((b) => `${b.p.last} ${b.ready ? '(ready)' : '(warming)'}`).join(', ')
+          : <span className="muted">quiet</span>}
+      </div>
       {editable && (
         <>
           <div className="form-row small">

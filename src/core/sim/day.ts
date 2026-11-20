@@ -7,6 +7,7 @@ import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from '.
 import { createGame, simGame, type GameEngine, type GameOutput } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
+import { weeklyFarmReport } from '../farmReport.ts';
 import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
@@ -178,6 +179,7 @@ function dailyUpkeep(league: League): void {
   for (const org of league.orgs) manageOrg(league, org);
   if (inSeason && league.day - league.lastFdRun >= 7) {
     for (const org of league.orgs) farmDirectorReview(league, org);
+    weeklyFarmReport(league);
     league.lastFdRun = league.day;
   }
   if (inSeason && league.day - league.lastDevDay >= 30) {
