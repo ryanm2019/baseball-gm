@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href } from '../../router.ts';
 import { answerInbox, moraleLabel } from '../../core/morale.ts';
+import { answerStory } from '../../core/storylines.ts';
 import { dayShort } from '../../core/settings.ts';
 import { LinkedText } from '../components.tsx';
 
@@ -51,7 +52,7 @@ export default function Inbox() {
                     className="btn btn-sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setMessage(answerInbox(league, m, a.key));
+                      setMessage(answerStory(league, m, a.key) ?? answerInbox(league, m, a.key));
                       changed();
                     }}
                   >

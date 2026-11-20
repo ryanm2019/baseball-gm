@@ -472,7 +472,7 @@ function runArbHearings(league: League): void {
 
 // ---------- new season ----------
 
-function retire(league: League, p: Player): void {
+export function retire(league: League, p: Player): void {
   p.retired = league.season;
   p.orgId = null;
   touchRosters();

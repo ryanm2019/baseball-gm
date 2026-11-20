@@ -257,6 +257,7 @@ export interface Player {
   ext?: { lastOffer?: number; stiff?: number; season?: number } | null; // extension talks this season
   agent?: number; // Agent id
   morale?: Morale;
+  storyFx?: { text: string; until: number; add: Record<string, number> }[]; // temporary rating changes from storylines
   arb?: ArbCase | null;
   rule5?: { fromOrg: number; season: number } | null;
   qoReceived?: boolean;
@@ -709,6 +710,8 @@ export interface Settings {
   aiTradeFactor: number;
   extraInningRunner: boolean;
   allowFiring: boolean;
+  storylines?: 'off' | 'rare' | 'normal' | 'frequent';
+  careerEndingStories?: boolean;
 }
 
 export interface DraftAdjust {
@@ -789,6 +792,7 @@ export interface League {
   scoops?: Scoop[];
   agents?: Agent[];
   inbox?: InboxMsg[];
+  stories?: { id: number; season: number; day: number; title: string; text: string; pids: number[]; orgId: number | null }[];
   promises?: Promise_[];
   futureForfeits?: { season: number; orgId: number; round: number }[]; // draft-pool penalties two years out
   draftTax?: { season: number; orgId: number; over: number; tax: number; penalty: string }[];

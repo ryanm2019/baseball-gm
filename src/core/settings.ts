@@ -51,6 +51,8 @@ export function defaultSettings(): Settings {
     aiTradeFactor: 1,
     extraInningRunner: true,
     allowFiring: true,
+    storylines: 'normal',
+    careerEndingStories: true,
   };
 }
 

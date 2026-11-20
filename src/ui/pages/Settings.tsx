@@ -5,7 +5,7 @@ import { LEVELS } from '../../core/types.ts';
 import { deleteLeague } from '../../db.ts';
 import { go } from '../../router.ts';
 
-type NumKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+type NumKey = { [K in keyof Settings]-?: Settings[K] extends number ? K : never }[keyof Settings];
 
 const GROUPS: { title: string; fields: [NumKey, string, string?][] }[] = [
   {
@@ -91,6 +91,18 @@ export default function SettingsPage() {
           <input type="checkbox" checked={s.allowFiring} onChange={(e) => { s.allowFiring = e.target.checked; changed(); }} /> You can be fired
         </label>{' '}
         <span className="muted small">Off: the owner still sets goals and checks in, but job security never drops low enough to fire you.</span>
+      </div>
+      <div className="form-row">
+        <label>
+          Storylines{' '}
+          <select value={s.storylines ?? 'normal'} onChange={(e) => { s.storylines = e.target.value as Settings['storylines']; changed(); }}>
+            <option value="off">Off</option><option value="rare">Rare</option><option value="normal">Normal</option><option value="frequent">Frequent</option>
+          </select>
+        </label>{' '}
+        <label>
+          <input type="checkbox" checked={s.careerEndingStories ?? true} onChange={(e) => { s.careerEndingStories = e.target.checked; changed(); }} /> Career-ending storylines
+        </label>{' '}
+        <span className="muted small">Breakouts, new pitches, slumps, freak injuries, suspensions, clubhouse fights and more. Career-ending stories can retire a player (even a top prospect).</span>
       </div>
       <div className="form-row">
         Trade AI difficulty{' '}

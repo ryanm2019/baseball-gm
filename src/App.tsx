@@ -17,6 +17,7 @@ import RosterBoard from './ui/pages/RosterBoard.tsx';
 import Extensions from './ui/pages/Extensions.tsx';
 import Negotiate from './ui/pages/Negotiate.tsx';
 import Inbox from './ui/pages/Inbox.tsx';
+import Storylines from './ui/pages/Storylines.tsx';
 import Farm from './ui/pages/Farm.tsx';
 import Staff from './ui/pages/Staff.tsx';
 import Schedule from './ui/pages/Schedule.tsx';
@@ -49,7 +50,7 @@ import Preview from './ui/pages/Preview.tsx';
 import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
-  { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
+  { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
@@ -170,6 +171,7 @@ export default function App() {
     case 'extensions': page = <Extensions />; break;
     case 'negotiate': page = <Negotiate />; break;
     case 'inbox': page = <Inbox />; break;
+    case 'storylines': page = <Storylines />; break;
     case 'farm': page = <Farm />; break;
     case 'staff': page = <Staff />; break;
     case 'schedule': page = <Schedule />; break;

@@ -18,6 +18,7 @@ import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { aiExtensions } from '../extensions.ts';
 import { addInbox, inboxStop, moraleWeek } from '../morale.ts';
+import { storylinesWeek } from '../storylines.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { rand } from '../random.ts';
@@ -353,7 +354,7 @@ function finishRegularDay(league: League): DayResult {
   tradeDay(league);
   aiExtensions(league);
   dailyUpkeep(league);
-  if (league.day % 7 === 0) moraleWeek(league);
+  if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
   league.day++;
   const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
   if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
@@ -437,7 +438,7 @@ export function simOneDay(league: League): DayResult {
       ifaDay(league);
       tradeDay(league);
       offseasonUpkeep(league);
-      if (league.day % 7 === 0) moraleWeek(league);
+      if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
       league.day++;
     }
     return { stop: null };
@@ -448,6 +449,7 @@ export function simOneDay(league: League): DayResult {
     tradeDay(league);
     aiExtensions(league);
     dailyUpkeep(league);
+    if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
     league.day++;
     if (league.day >= 0) {
       league.day = 0;

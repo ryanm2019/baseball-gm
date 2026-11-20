@@ -211,3 +211,13 @@ console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, playe
   const byOrg = L.orgs.map((o) => { const ps = mlb.filter((p) => p.orgId === o.id); return { o, m: ps.reduce((t, p) => t + p.morale!.value, 0) / Math.max(1, ps.length), w: L.standings.MLB[o.id].w }; }).sort((a, b) => b.m - a.m);
   console.log('Happiest clubs:', byOrg.slice(0, 3).map((x) => `${x.o.abbrev} ${x.m.toFixed(0)} (${x.w}W)`).join(', '), '| unhappiest:', byOrg.slice(-3).map((x) => `${x.o.abbrev} ${x.m.toFixed(0)} (${x.w}W)`).join(', '));
 }
+
+// Storylines.
+{
+  const st = L.stories ?? [];
+  const k: Record<string, number> = {};
+  for (const s of st) { const key = s.title.replace(/^.*(adds a pitch|rebuilds his swing|turns heads|is locked in|scuffling|has lost the zone|playing for a contract|chases|under his wing|honored|retires|suspended 80 games)$/, '$1'); k[key] = (k[key] ?? 0) + 1; }
+  console.log(`Storylines (last 300): ${st.length} |`, JSON.stringify(k));
+  const fx = Object.values(L.players).filter((p) => p.storyFx?.length).length;
+  console.log(`Players with active story effects: ${fx}`);
+}
