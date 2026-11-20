@@ -87,16 +87,22 @@ export default function SettingsPage() {
         </label>
       </div>
       <div className="form-row">
+        <label>
+          <input type="checkbox" checked={s.allowFiring} onChange={(e) => { s.allowFiring = e.target.checked; changed(); }} /> You can be fired
+        </label>{' '}
+        <span className="muted small">Off: the owner still sets goals and checks in, but job security never drops low enough to fire you.</span>
+      </div>
+      <div className="form-row">
         Trade AI difficulty{' '}
         <select value={s.tradeDifficulty} onChange={(e) => { s.tradeDifficulty = e.target.value as Settings['tradeDifficulty']; changed(); }}>
           {['Easy', 'Normal', 'Hard', 'Insane'].map((x) => <option key={x}>{x}</option>)}
         </select>
         AI-to-AI trade frequency{' '}
         <input type="number" step="0.25" min={0} max={3} value={s.aiTradeFactor} onChange={(e) => { s.aiTradeFactor = Math.max(0, Number(e.target.value)); changed(); }} />
-        <span className="muted small">0 = off, 1 = realistic</span>
+        <span className="muted small">0 = off, 1 = realistic (busiest before the deadline and over the winter)</span>
       </div>
       <div className="form-row">
-        Scouting accuracy{' '}
+        Scouting fog{' '}
         <select value={s.scoutingAccuracy} onChange={(e) => { s.scoutingAccuracy = e.target.value as Settings['scoutingAccuracy']; changed(); }}>
           {['Low', 'Normal', 'High', 'Perfect'].map((x) => <option key={x}>{x}</option>)}
         </select>

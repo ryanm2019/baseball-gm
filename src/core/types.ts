@@ -238,6 +238,7 @@ export interface Player {
   joined?: { season: number; day: number }; // when he joined (postseason eligibility, trade restrictions)
   signAge?: number;
   retired?: number;
+  earned?: Record<string, number>; // salary paid, keyed "season:orgId"
 
   // pitcher workload
   lastPitchedDay: number;
@@ -250,15 +251,20 @@ export interface Player {
 
 export type Philosophy = 'Conservative' | 'Balanced' | 'Aggressive';
 
-export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD';
-export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD'];
+export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD' | 'SD' | 'PRO' | 'AMA' | 'INT';
+export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD', 'SD', 'PRO', 'AMA', 'INT'];
 export const STAFF_NAMES: Record<StaffRole, string> = {
   AGM: 'Assistant GM',
   MGR: 'Manager',
   PC: 'Pitching Coach',
   HC: 'Hitting Coach',
   FD: 'Farm Director',
+  SD: 'Scouting Director',
+  PRO: 'Pro Scout',
+  AMA: 'Amateur Scout',
+  INT: 'International Scout',
 };
+export const SCOUT_ROLES: StaffRole[] = ['SD', 'PRO', 'AMA', 'INT'];
 
 export type ManagerStyle = 'Old school' | 'Balanced' | 'Analytical';
 
@@ -267,6 +273,7 @@ export type ManagerStyle = 'Old school' | 'Balanced' | 'Analytical';
 //  MGR: tactics, style (in-game decisions)
 //  PC/HC: development, health (PC only)
 //  FD: development, evaluation, philosophy
+//  SD/PRO/AMA/INT: evaluation (scouting accuracy)
 export interface Staff {
   id: number;
   role: StaffRole;
@@ -298,6 +305,48 @@ export interface Owner {
   patience: number; // 0-100; the user is fired at 0
 }
 
+export type GoalType = 'wins' | 'playoffs' | 'series' | 'budget' | 'cbt';
+export interface OwnerGoal {
+  type: GoalType;
+  target: number; // wins, budget dollars or CBT dollars; unused for playoffs/series
+  text: string;
+  met?: boolean | null; // set at season end
+}
+export interface OwnerGoals {
+  season: number;
+  items: OwnerGoal[];
+  checkins: number[]; // league days a check-in was sent
+}
+
+export type TradeStance = 'Buying' | 'Selling' | 'Standing pat' | 'Listening';
+export const TRADE_STANCES: TradeStance[] = ['Buying', 'Selling', 'Listening', 'Standing pat'];
+export type NeedPos = Pos;
+
+export interface TradeInterest {
+  pids: number[]; // other teams' players the user is watching
+  pos: NeedPos[]; // positions the user wants
+}
+
+export type MoveType = 'Trade' | 'Free agent' | 'Waiver claim' | 'Draft' | 'International' | 'Rule 5';
+export const MOVE_TYPES: MoveType[] = ['Trade', 'Free agent', 'Waiver claim', 'Draft', 'International', 'Rule 5'];
+export interface MoveSide {
+  orgId: number;
+  gets: number[]; // players this club acquired
+  cash: number; // cash received
+  pool: number; // international pool money received
+  picks: string[]; // descriptions of draft picks received
+}
+export interface Move {
+  id: number;
+  season: number;
+  day: number;
+  start: number; // first season the acquired players' stats count toward the move
+  type: MoveType;
+  sides: MoveSide[];
+  text: string;
+  cost: number; // guaranteed money (signings) or bonus (amateurs)
+}
+
 export interface TradeAssets {
   pids: number[];
   cash: number; // dollars of this season's salary paid to the other team
@@ -317,6 +366,7 @@ export interface TradeOffer {
   fromOrg: number;
   proposal: TradeProposal; // orgs[0] = AI team, orgs[1] = user
   expires: number;
+  note?: string;
 }
 
 export interface CbPick {
@@ -395,6 +445,10 @@ export interface Org {
   rotationIndex: Partial<Record<Level, number>>;
   cbtPayerYears: number; // consecutive prior seasons over the CBT threshold
   deadMoney: { pid: number; name: string; amount: number; season: number }[];
+  stance: TradeStance;
+  block: number[]; // players the club is shopping
+  interest: TradeInterest; // user only: watched players and wanted positions
+  goals?: OwnerGoals; // user only
 }
 
 export interface GameResult {
@@ -550,6 +604,7 @@ export interface Settings {
   tradeDifficulty: 'Easy' | 'Normal' | 'Hard' | 'Insane';
   aiTradeFactor: number;
   extraInningRunner: boolean;
+  allowFiring: boolean;
 }
 
 export interface DraftAdjust {
@@ -621,4 +676,5 @@ export interface League {
   tradeOffers: TradeOffer[];
   ifaPenalty: Record<number, number>; // pool reductions for the next signing period
   fired?: boolean;
+  moves: Move[];
 }

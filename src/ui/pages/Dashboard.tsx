@@ -13,6 +13,58 @@ import { nextEvent } from '../../core/offseason.ts';
 import { useState } from 'react';
 import { changed } from '../../store.ts';
 import { OrgSelect } from '../components.tsx';
+import { expectedWins, setOwnerGoals } from '../../core/owners.ts';
+
+function Goals({ league, org }: { league: League; org: Org }) {
+  const g = org.goals;
+  if (!g) return null;
+  const st = league.standings.MLB[org.id];
+  const games = st.w + st.l;
+  const thisSeason = g.season === league.season && league.phase !== 'offseason' && league.phase !== 'preseason';
+  const pay = orgPayroll(league, org).cbt;
+  const status = (type: string, target: number): { text: string; ok: boolean | null } => {
+    if (g.season !== league.season) return { text: 'Next season', ok: null };
+    const done = league.phase === 'offseason';
+    const met = g.items.find((x) => x.type === type)?.met;
+    if (done && met !== undefined && met !== null) return { text: met ? 'Met' : 'Missed', ok: met };
+    switch (type) {
+      case 'wins': {
+        if (!thisSeason || games < 10) return { text: `${st.w} wins`, ok: null };
+        const pace = Math.round((st.w / games) * 162);
+        return { text: `${pace}-win pace`, ok: pace >= target };
+      }
+      case 'playoffs': {
+        if (!thisSeason) return { text: '-', ok: null };
+        const same = league.orgs.filter((o) => o.league === org.league).map((o) => league.standings.MLB[o.id]).map((x) => x.w - x.l).sort((a, b) => b - a);
+        const gb = ((same[5] ?? 0) - (st.w - st.l)) / 2;
+        return { text: gb > 0 ? `${gb.toFixed(1)} GB of last spot` : 'In position', ok: gb <= 0 };
+      }
+      case 'series':
+        return { text: league.phase === 'playoffs' ? 'Playoffs underway' : '-', ok: null };
+      default:
+        return { text: `Now ${fmtMoney(pay)}`, ok: pay <= target };
+    }
+  };
+  return (
+    <>
+      <h3>Owner's goals for {g.season}</h3>
+      <table className="data compact">
+        <tbody>
+          {g.items.map((x) => {
+            const s = status(x.type, x.target);
+            return (
+              <tr key={x.type}>
+                <td className="l">{x.text}</td>
+                <td className={s.ok === null ? 'muted' : s.ok ? 'pos' : 'neg'}>{s.text}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="muted small">Roster projects to about {Math.round(expectedWins(league, org.id))} wins.{league.settings.allowFiring ? '' : ' Firing is off (League Settings).'}</p>
+    </>
+  );
+}
 
 function Fired({ league }: { league: League }) {
   const [pick, setPick] = useState(league.orgs.find((o) => o.id !== league.userOrgId)!.id);
@@ -26,6 +78,7 @@ function Fired({ league }: { league: League }) {
           league.userOrgId = pick;
           league.orgs[pick].owner.patience = 50;
           league.fired = false;
+          setOwnerGoals(league);
           changed();
         }}
       >
@@ -88,6 +141,12 @@ export default function Dashboard() {
           Spring training. Get the MLB roster to {league.settings.activeMax} by Opening Day ({activeAt(league, org.id, 'MLB').length} now). <a href={href('roster')}>Roster</a>
         </div>
       )}
+      {league.tradeOffers.length > 0 && (
+        <div className="alert alert-info">
+          {league.tradeOffers.length === 1 ? `The ${league.orgs[league.tradeOffers[0].fromOrg].affiliates.MLB.name} reached out with a trade offer.` : `${league.tradeOffers.length} clubs have reached out with trade offers.`}{' '}
+          <a href={href('trade-offers')}>Trade Offers</a>
+        </div>
+      )}
       {issues.map((i) => (
         <div key={i} className="alert alert-warn">
           {i} <a href={href('roster')}>Go to roster</a>
@@ -120,6 +179,7 @@ export default function Dashboard() {
             <div>Farm director</div>
             <div>{fd ? `${fd.first} ${fd.last} (${fd.philosophy})` : <a href={href('staff')}>None, hire one</a>}</div>
           </div>
+          <Goals league={league} org={org} />
           <h3>{org.league} {org.div}</h3>
           <table className="data compact">
             <thead>

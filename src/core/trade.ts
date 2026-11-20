@@ -1,5 +1,5 @@
 // Trades: rules, evaluation, AI negotiation, AI-to-AI deals and offers to the user.
-import type { League, Org, Player, TradeAssets, TradeOffer, TradeProposal } from './types.ts';
+import type { League, Org, Player, Pos, TradeAssets, TradeOffer, TradeProposal } from './types.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { orgPayroll, roundSalary, serviceYears } from './contracts.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
@@ -8,6 +8,8 @@ import { CB_VALUE, POOL_VALUE, projectValue, seasonFraction, tradeValue } from '
 import { delegated } from './staff.ts';
 import { rand, shuffle } from './random.ts';
 import { dayToDate } from './settings.ts';
+import { pruneBlocks, teamNeeds, tradeIntensity } from './market.ts';
+import { logMove, side } from './moves.ts';
 
 export const emptyAssets = (): TradeAssets => ({ pids: [], cash: 0, pool: 0, cbPicks: [] });
 
@@ -208,6 +210,15 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
   addTransaction(league, a, 'Trade', `Traded ${desc[0]} to the ${league.orgs[b].affiliates.MLB.name} for ${desc[1]}`, pids);
   addTransaction(league, b, 'Trade', `Traded ${desc[1]} to the ${league.orgs[a].affiliates.MLB.name} for ${desc[0]}`, pids);
   addNews(league, a, `Trade: the ${league.orgs[a].affiliates.MLB.name} sent ${desc[0]} to the ${league.orgs[b].affiliates.MLB.name} for ${desc[1]}.`, pids);
+  const pickNames = (g: TradeAssets) => g.cbPicks.map((cid) => {
+    const c = league.cbPicks.find((x) => x.id === cid);
+    return c ? `${c.season} CB-${c.round} pick` : 'CB pick';
+  });
+  logMove(league, 'Trade', [
+    side(a, [...prop.give[1].pids], { cash: prop.give[1].cash, pool: prop.give[1].pool, picks: pickNames(prop.give[1]) }),
+    side(b, [...prop.give[0].pids], { cash: prop.give[0].cash, pool: prop.give[0].pool, picks: pickNames(prop.give[0]) }),
+  ], `${league.orgs[a].abbrev} get ${desc[1]}; ${league.orgs[b].abbrev} get ${desc[0]}`);
+  pruneBlocks(league);
   league.tradeOffers = league.tradeOffers.filter((o) => !pids.some((id) => o.proposal.give[0].pids.includes(id) || o.proposal.give[1].pids.includes(id)));
   return null;
 }
@@ -273,23 +284,31 @@ function needFor(league: League, buyer: Org, p: Player): number {
   return ovr(p) - (same[slot] ?? 35);
 }
 
+function fillsNeed(league: League, buyer: Org, p: Player, needs: Pos[]): boolean {
+  return needs.includes(p.pos) || needFor(league, buyer, p) >= 2;
+}
+
 function tryAiTrade(league: League): void {
-  const ai = league.orgs.filter((o) => o.id !== league.userOrgId);
-  const buyers = shuffle(ai.filter((o) => o.strategy === 'Contend'));
-  const sellers = shuffle(ai.filter((o) => o.strategy !== 'Contend'));
+  const ai = league.orgs.filter((o) => o.id !== league.userOrgId && o.stance !== 'Standing pat');
+  const buyers = shuffle(ai.filter((o) => o.stance === 'Buying' || (o.strategy === 'Contend' && o.stance === 'Listening')));
+  const sellers = shuffle(ai.filter((o) => o.stance === 'Selling' || o.stance === 'Listening'));
   const buyer = buyers[0];
-  const seller = sellers[0];
+  const seller = sellers.find((o) => o.id !== buyer?.id);
   if (!buyer || !seller) return;
+  const needs = teamNeeds(league, buyer.id);
+  // Players on the seller's block come first; otherwise anyone who fits.
+  const onBlock = new Set(seller.block);
   const targets = tradable(league, seller.id)
-    .filter((p) => p.level === 'MLB' && league.season - p.born >= 26 && needFor(league, buyer, p) >= 2)
-    .map((p) => ({ p, v: tradeValue(league, buyer, p, true) }))
+    .filter((p) => p.level === 'MLB' && league.season - p.born >= 25 && fillsNeed(league, buyer, p, needs))
+    .map((p) => ({ p, v: tradeValue(league, buyer, p, true) * (onBlock.has(p.id) ? 1.25 : 1) }))
     .filter((x) => x.v > 1e6)
     .sort((a, b) => b.v - a.v);
   const target = targets[Math.floor(rand() * Math.min(3, targets.length))];
   if (!target) return;
   const prop: TradeProposal = { orgs: [buyer.id, seller.id], give: [emptyAssets(), { ...emptyAssets(), pids: [target.p.id] }] };
+  const buyerBlock = new Set(buyer.block);
   const chips = tradable(league, buyer.id)
-    .filter((p) => p.level !== 'MLB')
+    .filter((p) => p.level !== 'MLB' || buyerBlock.has(p.id))
     .map((p) => ({ p, v: tradeValue(league, seller, p, true) }))
     .filter((x) => x.v > 0.5e6)
     .sort((a, b) => b.v - a.v);
@@ -307,41 +326,101 @@ function tryAiTrade(league: League): void {
 
 // ---------- AI offers to the user ----------
 
-function makeOfferToUser(league: League): void {
+function pushOffer(league: League, ai: Org, prop: TradeProposal, note: string, pids: number[]): void {
   const user = league.orgs[league.userOrgId];
-  const ai = shuffle(league.orgs.filter((o) => o.id !== user.id))[0];
-  const wants = tradable(league, user.id)
-    .map((p) => ({ p, v: tradeValue(league, ai, p, true) }))
-    .filter((x) => x.v > 3e6)
-    .sort((a, b) => b.v - a.v)
-    .slice(0, 8);
-  if (!wants.length) return;
-  const want = wants[Math.floor(rand() * wants.length)];
-  const counter = aiCounterFor(league, ai, { ...emptyAssets(), pids: [want.p.id] });
-  if (!counter) return;
-  const uv = evaluate(league, user, counter);
-  if (uv.dv < -3e6) return; // don't spam lopsided offers
-  const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: counter, expires: league.day + 7 };
+  if (league.tradeOffers.some((o) => o.fromOrg === ai.id)) return;
+  if (validateTrade(league, prop)) return;
+  const uv = evaluate(league, user, prop);
+  if (uv.dv < -4e6) return; // don't spam lopsided offers
   if (delegated(league, user, 'trades')) {
     if (uv.dv >= Math.abs(uv.sent) * 0.08 + 1e6) {
-      const err = executeTrade(league, counter);
+      const err = executeTrade(league, prop);
       if (!err) addNews(league, user.id, `Your assistant GM accepted a trade offer from the ${ai.affiliates.MLB.name}.`);
     }
     return;
   }
+  const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: prop, expires: league.day + 7, note };
   league.tradeOffers.push(offer);
-  addNews(league, user.id, `The ${ai.affiliates.MLB.name} made you a trade offer for ${pname(want.p)}. See Trade Offers.`, [want.p.id]);
+  addNews(league, user.id, `The ${ai.affiliates.MLB.name} reached out with a trade offer: ${note} See Trade Offers.`, pids);
+}
+
+// An AI club wants one of the user's players (block players first).
+function offerForUserPlayer(league: League): void {
+  const user = league.orgs[league.userOrgId];
+  const ai = shuffle(league.orgs.filter((o) => o.id !== user.id && o.stance !== 'Standing pat'))[0];
+  if (!ai) return;
+  const block = new Set(user.block);
+  const needs = teamNeeds(league, ai.id);
+  const wants = tradable(league, user.id)
+    .map((p) => {
+      let v = tradeValue(league, ai, p, true);
+      if (block.has(p.id)) v *= 1.6;
+      if (needs.includes(p.pos)) v *= 1.3;
+      if (user.stance === 'Selling' && p.level === 'MLB' && league.season - p.born >= 28) v *= 1.3;
+      return { p, v };
+    })
+    .filter((x) => x.v > 3e6)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 8);
+  if (!wants.length) return;
+  const blockWants = wants.filter((x) => block.has(x.p.id));
+  const pool = blockWants.length && rand() < 0.7 ? blockWants : wants;
+  const want = pool[Math.floor(rand() * pool.length)];
+  const counter = aiCounterFor(league, ai, { ...emptyAssets(), pids: [want.p.id] });
+  if (!counter) return;
+  pushOffer(league, ai, counter, `they want ${posLabel(want.p)} ${pname(want.p)}${block.has(want.p.id) ? ' (on your trading block)' : ''}.`, [want.p.id]);
+}
+
+// An AI club offers a player the user is watching, or one at a position the user wants.
+function offerForUserInterest(league: League): void {
+  const user = league.orgs[league.userOrgId];
+  const wantPos = user.interest.pos.length ? user.interest.pos : user.stance === 'Buying' ? teamNeeds(league, user.id) : [];
+  const cands: Player[] = user.interest.pids.map((id) => league.players[id]).filter((p) => p && p.orgId !== null && p.orgId !== user.id);
+  for (const org of league.orgs) {
+    if (org.id === user.id) continue;
+    for (const id of org.block) {
+      const p = league.players[id];
+      if (p && wantPos.includes(p.pos)) cands.push(p);
+    }
+  }
+  const avail = cands
+    .filter((p) => {
+      const o = league.orgs[p.orgId!];
+      return o.stance !== 'Standing pat' || o.block.includes(p.id);
+    })
+    .filter((p) => !playerTradeBlock(league, p) && !p.il);
+  if (!avail.length) return;
+  const p = avail[Math.floor(rand() * avail.length)];
+  const ai = league.orgs[p.orgId!];
+  const start: TradeProposal = { orgs: [ai.id, user.id], give: [{ ...emptyAssets(), pids: [p.id] }, emptyAssets()] };
+  const prop = balanceForAi(league, start);
+  if (!prop || !prop.give[1].pids.length) return;
+  const why = user.interest.pids.includes(p.id) ? 'a player you have been watching' : `a ${p.pos} you have been looking for`;
+  pushOffer(league, ai, prop, `they would move ${posLabel(p)} ${pname(p)}, ${why}.`, [p.id]);
+}
+
+function makeOfferToUser(league: League): void {
+  const user = league.orgs[league.userOrgId];
+  const hasInterest = user.interest.pids.length > 0 || user.interest.pos.length > 0 || user.stance === 'Buying';
+  if (hasInterest && rand() < 0.5) offerForUserInterest(league);
+  else offerForUserPlayer(league);
 }
 
 export function tradeDay(league: League): void {
-  league.tradeOffers = league.tradeOffers.filter((o) => o.expires >= league.day && o.season === league.season && !validateTrade(league, o.proposal));
+  league.tradeOffers = league.tradeOffers.filter((o) => o.expires > league.day && o.season === league.season && !validateTrade(league, o.proposal));
   if (tradeWindowOpen(league)) return;
   const f = league.settings.aiTradeFactor;
   if (f <= 0) return;
-  const nearDeadline = league.phase === 'regular' && league.day >= league.settings.tradeDeadlineDay - 21;
-  const base = league.phase === 'regular' ? (nearDeadline ? 1.6 : 0.4) : 0.3;
-  for (let k = 0; k < Math.ceil(base * f); k++) if (rand() < (base * f) / Math.ceil(base * f)) tryAiTrade(league);
-  if (rand() < (nearDeadline ? 0.25 : 0.08) * Math.min(1.5, f)) makeOfferToUser(league);
+  const intensity = tradeIntensity(league, dayToDate(league.season, league.day));
+  const rate = intensity * f * 2;
+  const tries = Math.ceil(rate);
+  for (let k = 0; k < tries; k++) if (rand() < rate / tries) tryAiTrade(league);
+  // AI clubs reach out to the user, more often during flurries.
+  const user = league.orgs[league.userOrgId];
+  let offerRate = (0.04 + 0.1 * intensity) * Math.min(1.5, f);
+  if (user.block.length || user.interest.pids.length || user.interest.pos.length) offerRate *= 1.5;
+  if (user.stance === 'Standing pat') offerRate *= 0.3;
+  if (league.tradeOffers.length < 6 && rand() < Math.min(0.75, offerRate)) makeOfferToUser(league);
 }
 
 export function projectedWar(league: League, org: Org, p: Player): number {

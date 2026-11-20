@@ -73,6 +73,16 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
 - Includes "What would make this work?", a trading block, a difficulty setting (Easy to Insane), AI-to-AI trades with an adjustable frequency (busiest before the deadline), and AI offers to you that the assistant GM can answer.
 - **More "sim to" options**: All-Star break / draft, trade deadline, Aug 31, September, end of regular season, playoffs, and each offseason event.
 
+## Milestone 4: trade market, owner goals, scouts, transaction review
+
+- **Trade calendar**: AI-to-AI trades come in flurries in the three weeks before the Jul 31 deadline (peaking on deadline day) and through the winter, busiest at the Winter Meetings (Dec 7-10, now on the offseason calendar). Early season is quiet.
+- **Trade market**: every club signals a direction (contending, retooling, rebuilding) and a stance (buying, selling, listening, standing pat), lists what it's looking for, and keeps a trading block. AI trades come from these blocks and needs. The Trade Market page shows all of it.
+- **Your trading block and interests**: set your stance, shop players, flag positions you want and watch specific players. AI clubs reach out with offers built around them, more often during flurries. Offers can be opened in the trade screen as a counter.
+- **Owner goals**: each spring the owner sets goals by owner type and roster strength (win total, playoffs, a playoff series, payroll budget or tax line). He checks in two times a season (late May and two weeks before the deadline), and the season-end review is scored on the goals. Firing can be turned off in League Settings.
+- **Scouting staff**: scouting director plus pro, amateur and international scouts, hired at different skill levels and salaries. They set how accurate the ratings you see are in each area. AI clubs' scouts shape their own draft boards, international signings and trade evaluations.
+- **WAR**: FanGraphs-style WAR for MLB stats (wOBA batting runs, baserunning, fielding from ratings, positional adjustment; FIP-based pitching), shown on player pages.
+- **Transaction Review**: every trade, free agent signing, waiver claim, Rule 5 pick, draft signing and international signing, with WAR acquired vs. WAR given up, salary paid and $/WAR, by team, type and season. Each move has a season-by-season breakdown.
+
 ## Next milestones
 
-1. Contract extensions, rehab assignments, scouting director, full finances.
+1. Contract extensions, rehab assignments, full finances.

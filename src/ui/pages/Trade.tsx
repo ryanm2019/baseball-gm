@@ -12,6 +12,7 @@ import { seasonFraction } from '../../core/value.ts';
 
 // The trade being built survives page changes.
 let saved: { other: number; give: [TradeAssets, TradeAssets] } | null = null;
+let lastQuery = '';
 
 const LEVEL_ORDER = ['MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL'];
 
@@ -102,6 +103,14 @@ export default function Trade() {
   const user = league.orgs[league.userOrgId];
   const otherDefault = route.query.org !== undefined ? Number(route.query.org) : saved?.other ?? (user.id === 0 ? 1 : 0);
   if (!saved || saved.other !== otherDefault) saved = { other: otherDefault, give: [emptyAssets(), emptyAssets()] };
+  // Arriving from a player link (?pid=) or a trade offer (?offer=): start from that.
+  const qKey = `${route.query.pid ?? ''}|${route.query.offer ?? ''}`;
+  if (qKey !== '|' && qKey !== lastQuery) {
+    lastQuery = qKey;
+    const offer = league.tradeOffers.find((o) => String(o.id) === route.query.offer);
+    if (offer) saved = { other: offer.fromOrg, give: [JSON.parse(JSON.stringify(offer.proposal.give[1])), JSON.parse(JSON.stringify(offer.proposal.give[0]))] };
+    else if (route.query.pid && !saved.give[1].pids.includes(Number(route.query.pid))) saved.give[1].pids.push(Number(route.query.pid));
+  }
   const st = saved;
   const other = league.orgs[st.other];
   const prop: TradeProposal = { orgs: [user.id, other.id], give: st.give };

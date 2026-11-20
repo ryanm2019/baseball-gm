@@ -3,12 +3,13 @@
 import type { DraftPick, DraftState, League, Player } from './types.ts';
 import { generatePlayer } from './playerGen.ts';
 import { clamp, normal, rand, seededNormal, shuffle } from './random.ts';
-import { ovr, potOvr } from './ratings.ts';
+import { ovr, potOvr, scoutFactor } from './ratings.ts';
 import { milbContract, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, pname, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffOf } from './staff.ts';
 import { cbtOverLastSeason } from './owners.ts';
 import type { CbPick, DraftAdjust } from './types.ts';
+import { logMove, side } from './moves.ts';
 
 export function normalizeAdjust(a: unknown): DraftAdjust {
   const x = (a ?? { comp: [], forfeit: [] }) as { comp: unknown[]; forfeit: unknown[] };
@@ -64,7 +65,8 @@ export const isProspect = (p: Player, season?: number) => !!p.prospect && p.orgI
 function draftValue(league: League, orgId: number, p: Player): number {
   const org = league.orgs[orgId];
   const fd = staffOf(league, org, 'FD');
-  const sd = orgId === league.userOrgId ? agmEvalSd(league, org) : fd ? Math.max(0, ((80 - fd.evaluation) / 60) * 5) : 5;
+  const base = orgId === league.userOrgId ? agmEvalSd(league, org) : fd ? Math.max(1, ((80 - fd.evaluation) / 60) * 5) : 5;
+  const sd = base * scoutFactor(league, org, 'amateur');
   const noise = sd * seededNormal(p.scoutSeed, orgId, 4242);
   return 0.72 * potOvr(p) + 0.28 * ovr(p) + noise - (p.prospect?.college ? 0 : 0.5);
 }
@@ -286,6 +288,7 @@ export function signPick(league: League, pk: DraftPick, p: Player, ai = false): 
   p.contract.bonus = bonus;
   delete p.prospect;
   addTransaction(league, pk.orgId, 'Sign', `Signed draft pick ${pname(p)} (#${pk.pick}) for a $${(bonus / 1e6).toFixed(2)}M bonus, assigned to ${league.orgs[pk.orgId].affiliates[p.level].name}`, [p.id]);
+  logMove(league, 'Draft', [side(pk.orgId, [p.id])], `${league.orgs[pk.orgId].abbrev} signed #${pk.pick} pick (round ${pk.round}${pk.label ? `, ${pk.label}` : ''}) ${p.pos} ${pname(p)}`, bonus);
   return null;
 }
 

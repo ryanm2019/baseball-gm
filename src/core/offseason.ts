@@ -26,8 +26,9 @@ import { developPlayer, recenterRatings, yearlyPotentialDrift } from './developm
 import { buildSchedule } from './schedule.ts';
 import { emptyStanding } from './league.ts';
 import { generateCbPicks, generateDraftClass } from './draft.ts';
-import { ownerSales, reviewGm, setBudgets, updateStrategies } from './owners.ts';
+import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { generateIfaClass, isIfa, openIfaPeriod } from './intl.ts';
+import { logMove, side } from './moves.ts';
 
 export interface CalEvent {
   key: string;
@@ -50,6 +51,7 @@ export function offseasonCalendar(league: League): CalEvent[] {
     { key: 'qo-response', label: 'Players respond to qualifying offers', day: ws + 12 },
     { key: 'r5-protect', label: 'Rule 5 protection deadline', day: dayOfDate(league, 10, 18), decision: { duty: 'rule5protect', page: 'rule5', text: 'Add any prospects you want to protect to the 40-man roster on the Rule 5 page.' } },
     { key: 'tender', label: 'Non-tender deadline', day: dayOfDate(league, 10, 22), decision: { duty: 'tender', page: 'tenders', text: 'Choose who to tender on the Tenders & Arbitration page.' } },
+    { key: 'winter-meetings', label: 'Winter Meetings (trade market heats up)', day: dayOfDate(league, 11, 7) },
     { key: 'r5-draft', label: 'Rule 5 draft', day: dayOfDate(league, 11, 10), decision: { duty: 'rule5draft', page: 'rule5', text: 'Pick your Rule 5 targets on the Rule 5 page.' } },
     { key: 'ifa-class', label: 'International class revealed', day: dayOfDate(league, 11, 15) },
     { key: 'arb-exchange', label: 'Arbitration figures exchanged', day: dayOfDate(league, 0, 9), decision: { duty: 'arbitration', page: 'tenders', text: 'Set your arbitration figures or settle on the Tenders & Arbitration page.' } },
@@ -284,6 +286,7 @@ function runRule5Draft(league: League): void {
       pick.contract = { type: 'ML', salary: league.settings.minSalary, minorSalary: league.settings.minorSalaryFirstML, exp: league.season + 1, oneWay: false, signed: league.season + 1 };
       taken++;
       addTransaction(league, orgId, 'Rule 5', `Selected ${posLabel(pick)} ${pname(pick)} from the ${league.orgs[from].affiliates.MLB.name} in the Rule 5 draft`, [pick.id]);
+      logMove(league, 'Rule 5', [side(orgId, [pick.id]), side(from, [])], `${org.abbrev} took ${posLabel(pick)} ${pname(pick)} from ${league.orgs[from].abbrev}`, league.settings.minSalary);
       if (orgId === league.userOrgId || from === league.userOrgId) {
         addNews(league, orgId, `Rule 5 draft: the ${org.affiliates.MLB.name} took ${pname(pick)} from the ${league.orgs[from].affiliates.MLB.name}. He must stay on their MLB roster all season or be offered back.`, [pick.id]);
       }
@@ -497,6 +500,7 @@ function runRollover(league: League): void {
   ownerSales(league);
   updateStrategies(league);
   setBudgets(league);
+  setOwnerGoals(league);
   generateDraftClass(league, league.season);
   generateCbPicks(league, league.season);
   addNews(league, null, `Spring training has opened for the ${league.season} season. ${retired} players retired this winter.`);
@@ -527,6 +531,7 @@ export function runOffseasonEvents(league: League): string | null {
       case 'qo-response': runQoResponses(league); break;
       case 'r5-protect': runProtection(league); break;
       case 'tender': runTenders(league); break;
+      case 'winter-meetings': addNews(league, null, 'The Winter Meetings are underway. Expect the trade market to heat up.'); break;
       case 'r5-draft': runRule5Draft(league); break;
       case 'ifa-class':
         for (const p of Object.values(league.players)) if (isIfa(p)) delete league.players[p.id];

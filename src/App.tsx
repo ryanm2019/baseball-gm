@@ -35,11 +35,13 @@ import { nextEvent } from './core/offseason.ts';
 import Trade from './ui/pages/Trade.tsx';
 import TradingBlock from './ui/pages/TradingBlock.tsx';
 import TradeOffers from './ui/pages/TradeOffers.tsx';
+import TradeMarket from './ui/pages/TradeMarket.tsx';
+import Moves, { MoveDetail } from './ui/pages/Moves.tsx';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
-  { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
+  { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
-  { head: 'Trades', links: [['trade', 'Trade'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
+  { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
@@ -171,6 +173,9 @@ export default function App() {
     case 'trade': page = <Trade />; break;
     case 'trading-block': page = <TradingBlock />; break;
     case 'trade-offers': page = <TradeOffers />; break;
+    case 'trade-market': page = <TradeMarket />; break;
+    case 'moves': page = <Moves />; break;
+    case 'move': page = <MoveDetail />; break;
     default: page = <Dashboard />;
   }
 

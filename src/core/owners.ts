@@ -1,10 +1,11 @@
 // Owners, payroll budgets and team strategy (contend / retool / rebuild).
-import type { League, Org, Owner, OwnerType, Strategy } from './types.ts';
+import type { League, Org, Owner, OwnerGoal, OwnerType, Strategy } from './types.ts';
 import { randomStaffName } from './names.ts';
 import { clamp, rand, weightedChoice } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { addNews, orgPlayers } from './util.ts';
-import { cbtTax, orgPayroll } from './contracts.ts';
+import { cbtTax, fmtMoney, orgPayroll } from './contracts.ts';
+import { updateStances } from './market.ts';
 
 const OWNER_MULT: Record<OwnerType, number> = { Cheap: 0.75, Moderate: 1, 'Big spender': 1.3, 'Win-now': 1.12 };
 
@@ -69,6 +70,7 @@ export function updateStrategies(league: League, midseason = false): void {
     if (o.owner.type === 'Cheap' && strat === 'Retool' && i >= 17) strat = 'Rebuild';
     o.strategy = strat;
   });
+  updateStances(league);
 }
 
 export function setBudgets(league: League): void {
@@ -85,30 +87,138 @@ export function ownerSales(league: League): void {
   }
 }
 
+// ---------- owner goals ----------
+
+// Wins a roster this strong should produce over 162 games.
+export function expectedWins(league: League, orgId: number): number {
+  const all = league.orgs.map((o) => teamStrength(league, o.id));
+  const mean = all.reduce((t, x) => t + x, 0) / all.length;
+  const sd = Math.sqrt(all.reduce((t, x) => t + (x - mean) ** 2, 0) / all.length) || 1;
+  return clamp(81 + ((teamStrength(league, orgId) - mean) / sd) * 8, 62, 102);
+}
+
+// The owner sets the user's goals for the season at spring training.
+export function setOwnerGoals(league: League): void {
+  const org = league.orgs[league.userOrgId];
+  const season = league.phase === 'offseason' ? league.season + 1 : league.season;
+  const exp = expectedWins(league, org.id);
+  const t = org.owner.type;
+  const items: OwnerGoal[] = [];
+  const bump = t === 'Win-now' ? 3 : t === 'Big spender' ? 2 : t === 'Cheap' ? -2 : 0;
+  const wins = clamp(Math.round(exp + bump - (org.strategy === 'Rebuild' ? 3 : 0)), 60, 100);
+  items.push({ type: 'wins', target: wins, text: `Win ${wins} games` });
+  if (exp >= 86 || (t === 'Win-now' && exp >= 82)) items.push({ type: 'playoffs', target: 0, text: 'Make the playoffs' });
+  if (exp >= 92 && (t === 'Win-now' || t === 'Big spender')) items.push({ type: 'series', target: 0, text: 'Win a playoff series' });
+  const cbt = league.settings.cbtThreshold;
+  if (t === 'Big spender' && org.budget > cbt) {
+    const cap = cbt + league.settings.cbtTierStep;
+    items.push({ type: 'budget', target: cap, text: `Keep the CBT payroll under ${fmtMoney(cap)} (second tax tier)` });
+  } else {
+    // Already over? The owner gives a little room rather than an impossible target.
+    const now = orgPayroll(league, org).cbt;
+    const target = Math.max(org.budget, Math.ceil((now + 2e6) / 1e6) * 1e6);
+    items.push({ type: 'budget', target, text: `Keep the CBT payroll under ${fmtMoney(target)}${target === org.budget ? ' (budget)' : ''}` });
+    if (t !== 'Cheap' && org.budget >= cbt - 15e6) items.push({ type: 'cbt', target: cbt, text: `Stay under the ${fmtMoney(cbt)} luxury tax threshold` });
+  }
+  org.goals = { season, items, checkins: [] };
+  addNews(league, org.id, `${org.owner.first} ${org.owner.last} set your goals for ${season}: ${items.map((g) => g.text[0].toLowerCase() + g.text.slice(1)).join('; ')}.`);
+}
+
+function wonSeries(league: League, orgId: number): boolean {
+  return !!league.playoffs?.series.some((s) => s.winner === orgId);
+}
+
+function goalMet(league: League, org: Org, g: OwnerGoal): boolean {
+  const r = league.standings.MLB[org.id];
+  const po = league.playoffs;
+  switch (g.type) {
+    case 'wins': return r.w >= g.target;
+    case 'playoffs': return !!po && [...po.seeds.AL, ...po.seeds.NL].includes(org.id);
+    case 'series': return wonSeries(league, org.id);
+    case 'budget':
+    case 'cbt': return orgPayroll(league, org).cbt <= g.target;
+  }
+}
+
+// Mid-season check-ins: early season and two weeks before the deadline.
+export function ownerCheckin(league: League): string | null {
+  const org = league.orgs[league.userOrgId];
+  const g = org.goals;
+  if (!g || g.season !== league.season || league.phase !== 'regular') return null;
+  const days = [60, league.settings.tradeDeadlineDay - 14];
+  const day = days.find((d) => league.day >= d && !g.checkins.includes(d));
+  if (day === undefined) return null;
+  g.checkins.push(day);
+  const r = league.standings.MLB[org.id];
+  const games = r.w + r.l;
+  if (games < 20) return null;
+  const pace = Math.round((r.w / games) * 162);
+  const lines: string[] = [];
+  let delta = 0;
+  const moneyW = org.owner.type === 'Cheap' ? 1.6 : org.owner.type === 'Big spender' ? 0.5 : 1;
+  const resultsW = org.owner.type === 'Win-now' ? 1.5 : 1;
+  for (const goal of g.items) {
+    if (goal.type === 'wins') {
+      const gap = pace - goal.target;
+      if (gap >= 3) { lines.push(`You're on pace for ${pace} wins, ahead of the ${goal.target} I asked for.`); delta += 2; }
+      else if (gap >= -3) lines.push(`You're on pace for ${pace} wins. I asked for ${goal.target}; keep it there.`);
+      else if (gap >= -8) { lines.push(`You're on pace for ${pace} wins. I expected ${goal.target}. I need to see improvement.`); delta -= 3 * resultsW; }
+      else { lines.push(`A ${pace}-win pace is nowhere near the ${goal.target} we talked about. This is not acceptable.`); delta -= 6 * resultsW; }
+    } else if (goal.type === 'playoffs') {
+      const same = league.orgs.filter((o) => o.league === org.league).map((o) => league.standings.MLB[o.id]).map((x) => x.w - x.l).sort((a, b) => b - a);
+      const gb = ((same[5] ?? 0) - (r.w - r.l)) / 2;
+      if (gb > 0) { lines.push(`We're ${gb.toFixed(1)} games out of a playoff spot. I expect October baseball.`); if (gb >= 5) delta -= 3 * resultsW; }
+      else lines.push(`We're in playoff position. Keep it that way.`);
+    } else if (goal.type === 'budget' || goal.type === 'cbt') {
+      const pay = orgPayroll(league, org).cbt;
+      if (pay > goal.target) { lines.push(`Payroll is ${fmtMoney(pay - goal.target)} over the ${goal.type === 'cbt' ? 'tax threshold' : 'limit'} I set.`); delta -= 3 * moneyW; }
+    }
+  }
+  org.owner.patience = clamp(Math.round(org.owner.patience + delta), league.settings.allowFiring ? 1 : 5, 100);
+  const msg = `Owner check-in from ${org.owner.first} ${org.owner.last}: ${lines.join(' ')} (Job security ${org.owner.patience}/100.)`;
+  addNews(league, org.id, msg);
+  return msg;
+}
+
 // Owner patience with the user, updated at the end of each season.
 export function reviewGm(league: League): void {
   const org = league.orgs[league.userOrgId];
-  const ranks = league.orgs.map((o) => ({ id: o.id, s: teamStrength(league, o.id) })).sort((a, b) => b.s - a.s);
-  const rank = ranks.findIndex((r) => r.id === org.id);
-  const expected = 0.6 - (0.2 * rank) / 29;
+  const exp = expectedWins(league, org.id);
   const r = league.standings.MLB[org.id];
-  const pct = r.w / Math.max(1, r.w + r.l);
-  const po = league.playoffs;
-  const madePlayoffs = !!po && [...po.seeds.AL, ...po.seeds.NL].includes(org.id);
-  const champ = po?.champion === org.id;
+  const games = Math.max(1, r.w + r.l);
+  const winsPace = (r.w / games) * 162;
+  const champ = league.playoffs?.champion === org.id;
   const resultsW = org.owner.type === 'Win-now' ? 1.5 : 1;
   const moneyW = org.owner.type === 'Cheap' ? 1.6 : org.owner.type === 'Big spender' ? 0.5 : 1;
-  let delta = (pct - expected) * 200 * resultsW + (madePlayoffs ? 8 : 0) + (champ ? 20 : 0);
+  // Beating or missing what the roster should have done.
+  let delta = (winsPace - exp) * 0.8 * resultsW + (champ ? 20 : 0);
   const pay = orgPayroll(league, org);
-  const over = pay.cbt - org.budget;
-  if (over > 0) delta -= (over / org.budget) * 70 * moneyW;
+  const goals = org.goals && org.goals.season === league.season ? org.goals.items : [];
+  const results: string[] = [];
+  for (const g of goals) {
+    const met = goalMet(league, org, g);
+    g.met = met;
+    results.push(`${g.text}: ${met ? 'met' : 'missed'}`);
+    switch (g.type) {
+      case 'wins': delta += met ? 6 : -Math.min(20, (g.target - r.w) * 1.2) * resultsW; break;
+      case 'playoffs': delta += met ? 10 : -10 * resultsW; break;
+      case 'series': delta += met ? 8 : -5 * resultsW; break;
+      case 'budget': delta += met ? 4 : -((pay.cbt - g.target) / Math.max(1, g.target)) * 70 * moneyW; break;
+      case 'cbt': delta += met ? 3 : -8 * moneyW; break;
+    }
+  }
+  if (!goals.length) {
+    const over = pay.cbt - org.budget;
+    if (over > 0) delta -= (over / org.budget) * 70 * moneyW;
+  }
   const tax = cbtTax(pay.cbt, org.cbtPayerYears, league.settings).tax;
-  if (tax > 0 && org.owner.type !== 'Big spender') delta -= (tax / 1e6) * 0.6 * moneyW;
+  if (tax > 0 && org.owner.type !== 'Big spender') delta -= (tax / 1e6) * 0.4 * moneyW;
   const before = org.owner.patience;
-  org.owner.patience = clamp(Math.round(before + delta), 0, 100);
+  const floor = league.settings.allowFiring ? 0 : 5;
+  org.owner.patience = clamp(Math.round(before + delta), floor, 100);
   const mood = org.owner.patience >= 70 ? 'thrilled' : org.owner.patience >= 45 ? 'satisfied' : org.owner.patience >= 20 ? 'concerned' : 'out of patience';
-  addNews(league, org.id, `Owner review: ${org.owner.first} ${org.owner.last} is ${mood} (job security ${org.owner.patience}/100, ${delta >= 0 ? '+' : ''}${Math.round(delta)}).`);
-  if (org.owner.patience <= 0) {
+  addNews(league, org.id, `Owner review: ${org.owner.first} ${org.owner.last} is ${mood} (job security ${org.owner.patience}/100, ${delta >= 0 ? '+' : ''}${Math.round(delta)}).${results.length ? ` ${results.join('. ')}.` : ''}`);
+  if (org.owner.patience <= 0 && league.settings.allowFiring) {
     league.fired = true;
     addNews(league, org.id, `You have been fired as GM of the ${org.affiliates.MLB.name}.`);
   }

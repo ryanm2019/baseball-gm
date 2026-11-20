@@ -8,8 +8,12 @@ import { roundSalary } from './contracts.ts';
 import { addNews } from './util.ts';
 
 const r = () => clamp(Math.round(normal(50, 10)), 25, 80);
+const isScout = (role: StaffRole) => role === 'SD' || role === 'PRO' || role === 'AMA' || role === 'INT';
 
-const BASE_SALARY: Record<StaffRole, number> = { AGM: 450_000, MGR: 1_500_000, PC: 450_000, HC: 400_000, FD: 300_000 };
+const BASE_SALARY: Record<StaffRole, number> = {
+  AGM: 450_000, MGR: 1_500_000, PC: 450_000, HC: 400_000, FD: 300_000,
+  SD: 350_000, PRO: 150_000, AMA: 150_000, INT: 150_000,
+};
 
 export function makeStaff(id: number, role: StaffRole, orgId: number | null, season: number): Staff {
   const { first, last } = randomStaffName();
@@ -18,9 +22,10 @@ export function makeStaff(id: number, role: StaffRole, orgId: number | null, sea
     role,
     first,
     last,
-    age: randInt(role === 'MGR' ? 38 : 32, 70),
+    age: randInt(role === 'MGR' ? 38 : isScout(role) ? 26 : 32, 70),
     development: r(),
-    evaluation: r(),
+    // Scouts vary more: some clubs have elite departments, some are threadbare.
+    evaluation: isScout(role) ? clamp(Math.round(normal(50, 13)), 20, 80) : r(),
     negotiation: r(),
     tactics: r(),
     health: r(),
@@ -48,6 +53,8 @@ export function keyRating(s: Staff): number {
       return s.development;
     case 'FD':
       return (s.development + s.evaluation) / 2;
+    default:
+      return s.evaluation; // scouts
   }
 }
 

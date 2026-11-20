@@ -4,6 +4,7 @@ import type { Staff, StaffRole } from '../../core/types.ts';
 import { AGM_DUTIES, STAFF_NAMES, STAFF_ROLES } from '../../core/types.ts';
 import { extendStaff, fireStaff, hireStaff, keyRating, staffOf } from '../../core/staff.ts';
 import { fmtMoney } from '../../core/contracts.ts';
+import { scoutFactor } from '../../core/ratings.ts';
 import { DataTable, Rating, type Column } from '../components.tsx';
 
 const ROLE_HELP: Record<StaffRole, string> = {
@@ -12,6 +13,10 @@ const ROLE_HELP: Record<StaffRole, string> = {
   PC: 'Develops MLB pitchers. Health lowers MLB pitcher injury risk.',
   HC: 'Develops MLB hitters.',
   FD: 'Runs the affiliates you leave to him and develops minor leaguers. Evaluation = how well he judges readiness; philosophy = how fast he promotes.',
+  SD: 'Runs the scouting department. His evaluation sharpens every rating you see, including your own players.',
+  PRO: 'Covers other organizations and free agents. Better pro scouts make MLB, minor league and free agent ratings more accurate.',
+  AMA: 'Covers the amateur draft. Better amateur scouts make draft prospect ratings more accurate.',
+  INT: 'Covers international amateurs. Better international scouts make IFA ratings more accurate.',
 };
 
 const ratingCols = (role: StaffRole): { key: keyof Staff; label: string }[] => {
@@ -26,6 +31,8 @@ const ratingCols = (role: StaffRole): { key: keyof Staff; label: string }[] => {
       return [{ key: 'development', label: 'Development' }];
     case 'FD':
       return [{ key: 'development', label: 'Development' }, { key: 'evaluation', label: 'Evaluation' }];
+    default:
+      return [{ key: 'evaluation', label: 'Scouting' }];
   }
 };
 
@@ -106,6 +113,23 @@ export default function StaffPage() {
         </tbody>
       </table>
       <p className="muted small">Staff whose contracts run out leave when the new season starts unless you extend them.</p>
+      <h2>Scouting</h2>
+      <p className="muted small">How clearly you see each group of players. Better scouts cut the error in every rating you see; AI clubs' own scouts shape their draft boards, international signings and trade evaluations the same way.</p>
+      <table className="data compact" style={{ maxWidth: 520 }}>
+        <thead><tr><th className="l">Players</th><th className="l">Covered by</th><th className="l">Accuracy</th></tr></thead>
+        <tbody>
+          {([['own', 'Your organization', 'Scouting director + coaches'], ['pro', 'Other MLB/minor league players, free agents', 'Pro scout'], ['amateur', 'Draft prospects', 'Amateur scout'], ['intl', 'International amateurs', 'International scout']] as const).map(([area, label, who]) => {
+            const f = scoutFactor(league, org, area);
+            const word = f <= 0.6 ? 'Excellent' : f <= 0.85 ? 'Good' : f <= 1.15 ? 'Average' : f <= 1.45 ? 'Poor' : 'Very poor';
+            return (
+              <tr key={area}>
+                <td className="l">{label}</td><td className="l">{who}</td>
+                <td className={`l ${f <= 0.85 ? 'pos' : f > 1.15 ? 'neg' : ''}`}>{word} ({f.toFixed(2)}× typical error)</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
       <h2>Assistant GM duties</h2>
       {!staffOf(league, org, 'AGM') && <div className="alert alert-warn">You have no assistant GM, so you handle every job yourself.</div>}
@@ -125,7 +149,6 @@ export default function StaffPage() {
           </label>
         </div>
       ))}
-      <p className="muted small">Trade offers will be added here with trades.</p>
 
       <h2>Hire: {STAFF_NAMES[role]}</h2>
       <div className="btn-group tabs">

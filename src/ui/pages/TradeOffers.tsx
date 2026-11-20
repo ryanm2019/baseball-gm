@@ -34,14 +34,15 @@ export default function TradeOffers() {
   return (
     <>
       <h1>Trade Offers</h1>
-      <p className="muted small">Offers expire after a week. Your assistant GM can answer them for you (Staff page).</p>
+      <p className="muted small">Clubs reach out on their own, most often in the weeks before the deadline and during the winter (especially the Winter Meetings). Put players on your <a href={href('trading-block')}>trading block</a> or set what you're interested in to steer the calls. Offers expire after a week. Your assistant GM can answer them for you (Staff page).</p>
       {offers.length === 0 && <p className="muted">No offers right now.</p>}
       {offers.map((o) => {
         const ai = league.orgs[o.fromOrg];
         const err = validateTrade(league, o.proposal);
         return (
           <div key={o.id} className="series" style={{ maxWidth: 820 }}>
-            <b>{ai.affiliates.MLB.name}</b> <span className="muted small">({ai.strategy}) · expires {dayShort(league.season, o.expires)}</span>
+            <b>{ai.affiliates.MLB.name}</b> <span className="muted small">({ai.strategy}, {ai.stance.toLowerCase()}) · {dayShort(league.season, o.day)}, expires {dayShort(league.season, o.expires)}</span>
+            {o.note && <div className="small">"{o.note[0].toUpperCase() + o.note.slice(1)}"</div>}
             <div className="cards" style={{ marginTop: 6 }}>
               <div className="box"><div className="muted small">They give</div><Assets league={league} a={o.proposal.give[0]} /></div>
               <div className="box"><div className="muted small">You give</div><Assets league={league} a={o.proposal.give[1]} /></div>
@@ -62,7 +63,7 @@ export default function TradeOffers() {
                 Accept
               </button>
               <button className="btn btn-sm" onClick={() => { league.tradeOffers = league.tradeOffers.filter((x) => x.id !== o.id); changed(); }}>Decline</button>
-              <a className="btn btn-sm" href={href('trade', [], { org: ai.id })}>Counter in the trade screen</a>
+              <a className="btn btn-sm" href={href('trade', [], { org: ai.id, offer: o.id })}>Counter in the trade screen</a>
             </div>
           </div>
         );

@@ -9,6 +9,7 @@ import { isPitcher, ovr } from './ratings.ts';
 import { MILB_SALARY, roundSalary, serviceYears } from './contracts.ts';
 import { rand } from './random.ts';
 import { firstContractSeason, openFreeAgent } from './freeAgency.ts';
+import { logMove, side } from './moves.ts';
 
 const lvlName = (league: League, orgId: number, level: Level) => orgById(league, orgId)?.affiliates[level].name ?? level;
 
@@ -335,6 +336,7 @@ export function resolveWaivers(league: League, p: Player): void {
       p.level = 'MLB';
     }
     addTransaction(league, claimer, 'Claim', `Claimed ${posLabel(p)} ${pname(p)} off waivers from the ${fromName}`, [p.id]);
+    logMove(league, 'Waiver claim', [side(claimer, [p.id]), side(from, [])], `${orgById(league, claimer)!.abbrev} claimed ${posLabel(p)} ${pname(p)} from ${orgById(league, from)!.abbrev}`, p.contract.type === 'ML' ? p.contract.salary : 0);
     if (claimer === league.userOrgId || from === league.userOrgId) addNews(league, claimer, `${pname(p)} was claimed off waivers by the ${orgById(league, claimer)!.affiliates.MLB.name}.`, [p.id]);
     return;
   }

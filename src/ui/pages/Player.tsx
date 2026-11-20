@@ -1,4 +1,4 @@
-import { useStore } from '../../store.ts';
+import { useStore, changed } from '../../store.ts';
 import { href, useRoute } from '../../router.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
@@ -9,6 +9,9 @@ import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
 import { ActionSelect, OrgLink, Rating, StatusTags } from '../components.tsx';
 import { avg, era, fip, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
+import { entryWar } from '../../core/war.ts';
+import { scoutArea } from '../../core/ratings.ts';
+import { playerTradeBlock } from '../../core/trade.ts';
 
 function R({ league, p, k, v, pot }: { league: League; p: Player; k: string; v: number; pot?: boolean }) {
   return <Rating v={scout(league, p, k, v, pot)} />;
@@ -103,14 +106,14 @@ function personalityWord(v: number): string {
   return v >= 68 ? 'Very high' : v >= 57 ? 'High' : v >= 43 ? 'Normal' : v >= 32 ? 'Low' : 'Very low';
 }
 
-function BatStatsTable({ league, entries }: { league: League; entries: StatEntry[] }) {
+function BatStatsTable({ league, p, entries }: { league: League; p: Player; entries: StatEntry[] }) {
   const rows = entries.filter((e) => e.bat.pa > 0);
   if (!rows.length) return <p className="muted">No batting stats.</p>;
   return (
     <div className="table-wrap">
       <table className="data compact">
         <thead>
-          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>G</th><th>PA</th><th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>R</th><th>RBI</th><th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th></tr>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>G</th><th>PA</th><th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>R</th><th>RBI</th><th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
         </thead>
         <tbody>
           {rows.map((e, i) => {
@@ -121,6 +124,7 @@ function BatStatsTable({ league, entries }: { league: League; entries: StatEntry
                 <td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td>
                 <td>{e.level}</td><td>{b.g}</td><td>{b.pa}</td><td>{b.ab}</td><td>{b.h}</td><td>{b.d}</td><td>{b.t}</td><td>{b.hr}</td><td>{b.r}</td><td>{b.rbi}</td><td>{b.bb}</td><td>{b.k}</td><td>{b.sb}</td><td>{b.cs}</td>
                 <td>{fmt3(avg(b))}</td><td>{fmt3(obp(b))}</td><td>{fmt3(slg(b))}</td><td>{fmt3(obp(b) + slg(b))}</td>
+                <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
               </tr>
             );
           })}
@@ -130,14 +134,14 @@ function BatStatsTable({ league, entries }: { league: League; entries: StatEntry
   );
 }
 
-function PitStatsTable({ league, entries }: { league: League; entries: StatEntry[] }) {
+function PitStatsTable({ league, p, entries }: { league: League; p: Player; entries: StatEntry[] }) {
   const rows = entries.filter((e) => e.pit.bf > 0);
   if (!rows.length) return <p className="muted">No pitching stats.</p>;
   return (
     <div className="table-wrap">
       <table className="data compact">
         <thead>
-          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>W</th><th>L</th><th>ERA</th><th>G</th><th>GS</th><th>SV</th><th>HLD</th><th>IP</th><th>H</th><th>R</th><th>ER</th><th>HR</th><th>BB</th><th>K</th><th>WHIP</th><th>FIP</th><th>K/9</th><th>P/GS</th></tr>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>W</th><th>L</th><th>ERA</th><th>G</th><th>GS</th><th>SV</th><th>HLD</th><th>IP</th><th>H</th><th>R</th><th>ER</th><th>HR</th><th>BB</th><th>K</th><th>WHIP</th><th>FIP</th><th>K/9</th><th>P/GS</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
         </thead>
         <tbody>
           {rows.map((e, i) => {
@@ -148,6 +152,7 @@ function PitStatsTable({ league, entries }: { league: League; entries: StatEntry
                 <td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td>
                 <td>{e.level}</td><td>{s.w}</td><td>{s.l}</td><td>{era(s).toFixed(2)}</td><td>{s.g}</td><td>{s.gs}</td><td>{s.sv}</td><td>{s.hld}</td><td>{ipStr(s.outs)}</td><td>{s.h}</td><td>{s.r}</td><td>{s.er}</td><td>{s.hr}</td><td>{s.bb}</td><td>{s.k}</td>
                 <td>{whip(s).toFixed(2)}</td><td>{fip(s).toFixed(2)}</td><td>{s.outs ? ((s.k * 27) / s.outs).toFixed(1) : '-'}</td><td>{s.gs ? Math.round(s.pitches / Math.max(1, s.gs)) : '-'}</td>
+                <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
               </tr>
             );
           })}
@@ -189,7 +194,21 @@ export default function PlayerPage() {
           </div>
           {p.orgId === league.userOrgId && (
             <div className="form-row">
-              <ActionSelect league={league} p={p} />
+              <ActionSelect league={league} p={p} />{' '}
+              {!playerTradeBlock(league, p) && (
+                <button className="btn btn-sm" onClick={() => { const o = league.orgs[league.userOrgId]; o.block = o.block.includes(p.id) ? o.block.filter((x) => x !== p.id) : [...o.block, p.id]; changed(); }}>
+                  {league.orgs[league.userOrgId].block.includes(p.id) ? 'Remove from trading block' : 'Put on trading block'}
+                </button>
+              )}
+            </div>
+          )}
+          {p.orgId !== league.userOrgId && !p.retired && (
+            <div className="form-row">
+              <button className="btn btn-sm" onClick={() => { const o = league.orgs[league.userOrgId]; o.interest.pids = o.interest.pids.includes(p.id) ? o.interest.pids.filter((x) => x !== p.id) : [...o.interest.pids, p.id]; changed(); }}>
+                {league.orgs[league.userOrgId].interest.pids.includes(p.id) ? 'Stop watching' : 'Watch'}
+              </button>{' '}
+              {p.orgId !== null && !playerTradeBlock(league, p) && <a className="btn btn-sm" href={href('trade', [], { org: p.orgId, pid: p.id })}>Trade for him</a>}
+              {org && org.block.includes(p.id) && <span className="tag">On the block</span>}
             </div>
           )}
         </div>
@@ -257,7 +276,7 @@ export default function PlayerPage() {
       </div>
 
       <h2>Ratings</h2>
-      <p className="muted small">Scouted values on the 20-80 scale. Lower levels and other organizations' players are harder to scout.</p>
+      <p className="muted small">Scouted values on the 20-80 scale, from your {({ own: 'scouting director and coaches', pro: 'pro scout', amateur: 'amateur scout', intl: 'international scout' } as const)[scoutArea(league, p)]}. Lower levels and other organizations' players are harder to scout; better scouts see more clearly (Staff page).</p>
       <div className="ratings">
         {isPitcher(p) ? <PitchTable league={league} p={p} /> : <BatRatings league={league} p={p} />}
         {!isPitcher(p) && (
@@ -274,7 +293,7 @@ export default function PlayerPage() {
       </div>
 
       <h2>{isPitcher(p) ? 'Pitching' : 'Batting'} stats</h2>
-      {isPitcher(p) ? <PitStatsTable league={league} entries={p.stats} /> : <BatStatsTable league={league} entries={p.stats} />}
+      {isPitcher(p) ? <PitStatsTable league={league} p={p} entries={p.stats} /> : <BatStatsTable league={league} p={p} entries={p.stats} />}
 
       <h2>Transactions</h2>
       {txs.length === 0 && <p className="muted">None.</p>}

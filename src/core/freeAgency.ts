@@ -4,11 +4,12 @@
 import type { FaOffer, League, Org, Player } from './types.ts';
 import { clamp, rand, randInt } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
-import { marketValue, roundSalary } from './contracts.ts';
+import { fmtMoney, marketValue, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { posLabel } from './rules.ts';
 import { revenueStatus } from './owners.ts';
 import { normalizeAdjust } from './draft.ts';
+import { logMove, side } from './moves.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -171,6 +172,9 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   const org = league.orgs[o.orgId];
   const yrs = o.years === 1 ? '1 year' : `${o.years} years`;
   addTransaction(league, o.orgId, 'Sign', `Signed free agent ${posLabel(p)} ${pname(p)}: ${yrs}, $${(o.aav / 1e6).toFixed(2)}M per year`, [p.id]);
+  const sides = [side(o.orgId, [p.id])];
+  if (fa.formerOrg !== null && fa.formerOrg !== o.orgId) sides.push(side(fa.formerOrg, []));
+  logMove(league, 'Free agent', sides, `${org.abbrev} signed ${posLabel(p)} ${pname(p)}: ${yrs}, ${fmtMoney(o.aav)}/yr`, o.aav * o.years);
   if (o.aav >= 10e6 || o.orgId === league.userOrgId || fa.formerOrg === league.userOrgId) {
     addNews(league, o.orgId, `${pname(p)} signed with the ${org.affiliates.MLB.name}: ${yrs}, $${((o.aav * o.years) / 1e6).toFixed(1)}M total.`, [p.id]);
   }

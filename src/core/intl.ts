@@ -3,10 +3,11 @@
 import type { League, Player } from './types.ts';
 import { generatePlayer } from './playerGen.ts';
 import { normal, rand, seededNormal } from './random.ts';
-import { ovr, potOvr } from './ratings.ts';
+import { ovr, potOvr, scoutFactor } from './ratings.ts';
 import { milbContract, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, pname, touchRosters } from './util.ts';
 import { delegated, staffOf } from './staff.ts';
+import { logMove, side } from './moves.ts';
 
 export function poolFor(market: number): number {
   return market < 0.8 ? 7_555_500 : market <= 1.1 ? 6_908_600 : 6_261_600;
@@ -80,6 +81,7 @@ export function signIfa(league: League, orgId: number, p: Player): string | null
   p.contract.bonus = bonus;
   delete p.ifa;
   addTransaction(league, orgId, 'Sign', `Signed international amateur ${p.pos} ${pname(p)} (${p.country}) for a $${(bonus / 1e6).toFixed(2)}M bonus`, [p.id]);
+  logMove(league, 'International', [side(orgId, [p.id])], `${league.orgs[orgId].abbrev} signed ${p.pos} ${pname(p)} (${p.country})`, bonus);
   return null;
 }
 
@@ -93,7 +95,7 @@ export function ifaDay(league: League): void {
     if (!delegated(league, org, 'ifa')) continue;
     if (rand() > 0.35) continue;
     const fd = staffOf(league, org, 'FD');
-    const sd = fd ? ((80 - fd.evaluation) / 60) * 5 : 5;
+    const sd = (fd ? Math.max(1, ((80 - fd.evaluation) / 60) * 5) : 5) * scoutFactor(league, org, 'intl');
     const left = league.intl.pools[org.id] - league.intl.spent[org.id];
     const cands = avail
       .filter((p) => isIfa(p) && p.ifa!.asking <= left)

@@ -1,6 +1,6 @@
 // Derived ratings: contact, position ratings, overall/potential, and the
 // scouted (noisy) values the user actually sees.
-import type { BatSplit, DefRatings, FieldPos, League, Level, Player, Pos } from './types.ts';
+import type { BatSplit, DefRatings, FieldPos, League, Level, Org, Player, Pos, StaffRole } from './types.ts';
 import { clamp, seededNormal } from './random.ts';
 
 export const contact = (s: BatSplit): number => (s.babip + s.avoidK) / 2;
@@ -113,12 +113,40 @@ function keyHash(key: string): number {
   return h;
 }
 
+// Relative noise of a club's scouting in one area (1 = an average department).
+// The scouting director sharpens everything; each area scout covers his own
+// players: pro (MLB, minors, free agents), amateur (draft) and international.
+export type ScoutArea = 'own' | 'pro' | 'amateur' | 'intl';
+const AREA_ROLE: Record<Exclude<ScoutArea, 'own'>, StaffRole> = { pro: 'PRO', amateur: 'AMA', intl: 'INT' };
+const evalScale = (v: number, lo: number, hi: number) => lo + ((clamp(v, 20, 80) - 20) / 60) * (hi - lo);
+
+function staffEval(league: League, org: Org, role: StaffRole): number | null {
+  const id = org.staff[role];
+  if (id === undefined) return null;
+  const s = league.staff.find((x) => x.id === id);
+  return s ? s.evaluation : null;
+}
+
+export function scoutFactor(league: League, org: Org, area: ScoutArea): number {
+  const dir = staffEval(league, org, 'SD');
+  const d = dir === null ? 1.25 : evalScale(dir, 1.2, 0.8);
+  if (area === 'own') return 0.7 * d; // coaches and the farm staff see your own players every day
+  const sc = staffEval(league, org, AREA_ROLE[area]);
+  return (sc === null ? 1.7 : evalScale(sc, 1.45, 0.55)) * d;
+}
+
+export function scoutArea(league: League, p: Player): ScoutArea {
+  if (p.prospect && p.orgId === null) return 'amateur';
+  if (p.ifa && p.orgId === null) return 'intl';
+  return p.orgId === league.userOrgId ? 'own' : 'pro';
+}
+
 export function scoutSd(league: League, p: Player, isPot: boolean): number {
   const base = ACCURACY_SD[league.settings.scoutingAccuracy];
   if (base === 0) return 0;
-  const lvl = LEVEL_FOG[p.level ?? 'AAA'];
-  const own = p.orgId === league.userOrgId ? 0.7 : 1;
-  return base * lvl * own * (isPot ? 1.6 : 1);
+  const area = scoutArea(league, p);
+  const lvl = area === 'amateur' ? 1.35 : area === 'intl' ? 1.6 : LEVEL_FOG[p.level ?? 'AAA'];
+  return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area) * (isPot ? 1.6 : 1);
 }
 
 export function scoutRaw(league: League, p: Player, key: string, value: number, isPot = false): number {

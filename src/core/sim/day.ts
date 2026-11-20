@@ -13,7 +13,7 @@ import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay } from '../freeAgency.ts';
 import { ifaDay } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
-import { updateStrategies } from '../owners.ts';
+import { ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { isPitcher } from '../ratings.ts';
 
@@ -131,6 +131,12 @@ function dailyUpkeep(league: League): void {
       }
     }
     if (p.orgId === null || !inSeason) continue;
+    // Salary paid, for judging moves later.
+    if (p.contract.type === 'ML') {
+      const key = `${league.season}:${p.orgId}`;
+      const daily = (p.on40 && p.level !== 'MLB' && !p.il && !p.contract.oneWay ? p.contract.minorSalary : p.contract.salary) / s.seasonDays;
+      (p.earned ??= {})[key] = (p.earned[key] ?? 0) + daily;
+    }
     // Service time: MLB active roster or MLB injured list.
     const onMlb = p.on40 && ((p.level === 'MLB' && !p.dfa && !p.waivers) || (p.il !== null && p.il.type.startsWith('IL')));
     if (onMlb && p.serviceThisSeason < s.serviceDaysPerYear) {
@@ -323,7 +329,8 @@ export function simOneDay(league: League): DayResult {
     league.day++;
     const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
     if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
-    return { stop: null };
+    const checkin = ownerCheckin(league);
+    return { stop: checkin };
   }
   playoffDay(league);
   dailyUpkeep(league);

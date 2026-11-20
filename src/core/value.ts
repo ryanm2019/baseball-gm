@@ -3,7 +3,7 @@
 // seen through each club's situation (contending clubs weight this year,
 // rebuilding clubs weight the future).
 import type { League, Level, Org, Player } from './types.ts';
-import { isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
+import { isPitcher, ovr, perceivedOvr, potOvr, scoutFactor } from './ratings.ts';
 import { marketValue, serviceYears } from './contracts.ts';
 import { agmEvalSd, staffOf } from './staff.ts';
 import { orgPlayers } from './util.ts';
@@ -27,9 +27,10 @@ function playingTime(o: number): number {
 
 // How each club's front office sees a player: true rating plus that club's evaluation noise.
 function evalOvr(league: League, org: Org, p: Player): number {
-  const sd = org.id === league.userOrgId ? agmEvalSd(league, org) : (() => {
+  const area = p.orgId === org.id ? 'own' : 'pro';
+  const sd = org.id === league.userOrgId ? agmEvalSd(league, org) * scoutFactor(league, org, area) : (() => {
     const fd = staffOf(league, org, 'AGM') ?? staffOf(league, org, 'FD');
-    return fd ? Math.max(0, ((80 - fd.evaluation) / 60) * 4) : 4;
+    return (fd ? Math.max(0, ((80 - fd.evaluation) / 60) * 4) : 4) * scoutFactor(league, org, area);
   })();
   return perceivedOvr(league, p, sd);
 }

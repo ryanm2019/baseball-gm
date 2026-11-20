@@ -9,7 +9,7 @@ import { clamp, normal, rand, randInt, choice } from './random.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
 import { initialMLContract, milbContract, orgPayroll, roundSalary } from './contracts.ts';
 import { generateCbPicks, generateDraftClass } from './draft.ts';
-import { makeOwner, setBudgets, updateStrategies } from './owners.ts';
+import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { ovr, potOvr } from './ratings.ts';
 import { buildSchedule } from './schedule.ts';
 
@@ -62,6 +62,9 @@ export function createLeague(opts: NewLeagueOptions): League {
     rotationIndex: {},
     cbtPayerYears: 0,
     deadMoney: [],
+    stance: 'Listening',
+    block: [],
+    interest: { pids: [], pos: [] },
   }));
 
   const players: Record<number, Player> = {};
@@ -159,7 +162,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 3,
+    version: 4,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),
@@ -191,6 +194,7 @@ export function createLeague(opts: NewLeagueOptions): League {
     cbPicks: [],
     tradeOffers: [],
     ifaPenalty: {},
+    moves: [],
   };
   refreshStaffPool(league);
   // Some veteran deals carry a club or player option on the year after they end.
@@ -217,6 +221,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
   generateDraftClass(league, season);
   generateCbPicks(league, season);
+  setOwnerGoals(league);
   return league;
 }
 

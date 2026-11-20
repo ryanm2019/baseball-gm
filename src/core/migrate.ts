@@ -5,13 +5,22 @@ import { ORG_DEFS } from './teams.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
 import { onSeasonEnd } from './offseason.ts';
 import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts';
-import { makeOwner, setBudgets, updateStrategies } from './owners.ts';
+import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
+import { updateStances } from './market.ts';
 
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
   let needsSeasonEnd = false;
+  if ((l.version ?? 1) < 4) {
+    for (const org of l.orgs) {
+      org.stance ??= 'Listening';
+      org.block ??= [];
+      org.interest ??= { pids: [], pos: [] };
+    }
+    l.moves ??= [];
+  }
   if ((l.version ?? 1) < 2) {
     const auto = l.settings.autoMlbMoves ?? true;
     delete l.settings.autoMlbMoves;
@@ -73,6 +82,24 @@ export function migrate(league: League): League {
     const draftSeason = l.phase === 'offseason' ? l.season + 1 : l.season;
     if (!(l.phase === 'regular' && l.day > l.settings.draftDay)) generateCbPicks(l, draftSeason);
     l.version = 3;
+  }
+  if (l.version < 4) {
+    // Scouting departments, trade market, owner goals, the move log.
+    let sid = Math.max(l.nextId.staff, ...l.staff.map((s) => s.id + 1));
+    for (const org of l.orgs) {
+      for (const role of STAFF_ROLES) {
+        if (org.staff[role] !== undefined) continue;
+        const st = makeStaff(sid++, role, org.id, l.season);
+        l.staff.push(st);
+        org.staff[role] = st.id;
+      }
+    }
+    l.nextId.staff = sid;
+    refreshStaffPool(l);
+    l.settings.allowFiring ??= true;
+    updateStances(l);
+    if (l.phase !== 'offseason') setOwnerGoals(l);
+    l.version = 4;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;
