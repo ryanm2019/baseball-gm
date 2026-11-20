@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../../store.ts';
 import { href } from '../../router.ts';
 import type { League, Player } from '../../core/types.ts';
-import { isPitcher } from '../../core/ratings.ts';
+import { posLabel } from '../../core/rules.ts';
 import { careerWar, hofScore } from '../../core/awards.ts';
 import { entryWar } from '../../core/war.ts';
 
@@ -163,7 +163,7 @@ export default function History() {
           <table className="data compact">
             <tbody>
               {[...(league.hof ?? [])].sort((a, b) => b.season - a.season).map((h) => (
-                <tr key={h.pid}><td>{h.season}</td><td className="l"><PL league={league} pid={h.pid} /></td><td>{league.players[h.pid] ? (isPitcher(league.players[h.pid]) ? 'P' : league.players[h.pid].pos) : ''}</td><td>{h.pct.toFixed(1)}%</td><td>{h.ballot === 1 ? 'First ballot' : `Year ${h.ballot}`}</td><td className="l small">{h.line}</td></tr>
+                <tr key={h.pid}><td>{h.season}</td><td className="l"><PL league={league} pid={h.pid} /></td><td>{league.players[h.pid] ? posLabel(league.players[h.pid]) : ''}</td><td>{h.pct.toFixed(1)}%</td><td>{h.ballot === 1 ? 'First ballot' : `Year ${h.ballot}`}</td><td className="l small">{h.line}</td></tr>
               ))}
             </tbody>
           </table>

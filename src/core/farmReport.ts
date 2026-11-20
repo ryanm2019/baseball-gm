@@ -2,6 +2,7 @@
 // who's struggling, and who he thinks is ready to move up.
 import type { FarmReport, League, Level, Player } from './types.ts';
 import { addInbox } from './morale.ts';
+import { posLabel } from './rules.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { isPitcher, ovr, perceivedOvr, posRating, potOvr, scout } from './ratings.ts';
 import type { FieldPos } from './types.ts';
@@ -35,7 +36,7 @@ const era = (s: Snap) => (s[10] ? (s[11] * 27) / s[10] : 0);
 const ip = (outs: number) => `${Math.floor(outs / 3)}${outs % 3 ? `.${outs % 3}` : ''}`;
 const batLine = (s: Snap) => `${s[2]}-for-${s[1]}${s[5] ? `, ${s[5]} HR` : ''}${s[3] ? `, ${s[3]} 2B` : ''}${s[6] ? `, ${s[6]} BB` : ''}${s[9] ? `, ${s[9]} SB` : ''}`;
 const pitLine = (s: Snap) => `${ip(s[10])} IP, ${s[11]} ER, ${s[12]} K, ${s[13]} BB`;
-const where = (league: League, p: Player) => `${p.pos === 'SP' || p.pos === 'RP' ? (p.throws === 'L' ? 'LHP' : 'RHP') : p.pos} ${pname(p)} (${p.level}, ${league.season - p.born})`;
+const where = (league: League, p: Player) => `${posLabel(p)} ${pname(p)} (${p.level}, ${league.season - p.born})`;
 
 // Ratings the report tracks, with the same scouting keys as the player page.
 function trackedRatings(p: Player): { key: string; label: string; v: number }[] {

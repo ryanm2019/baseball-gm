@@ -1,7 +1,7 @@
 import { useStore } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { BatStats, Level, PitStats, Player } from '../../core/types.ts';
-import { isPitcher } from '../../core/ratings.ts';
+import { posLabel } from '../../core/rules.ts';
 import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
 import { DataTable, LevelTabs, OrgLink, type Column } from '../components.tsx';
 import { batAdvanced, entryWar, pitAdvanced, seasonCtx } from '../../core/war.ts';
@@ -54,7 +54,7 @@ export default function Stats() {
   ];
   const batCols: Column<Row>[] = [
     ...base,
-    { key: 'pos', label: 'Pos', value: (r) => (isPitcher(r.p) ? 'P' : r.p.pos) },
+    { key: 'pos', label: 'Pos', value: (r) => posLabel(r.p) },
     { key: 'g', label: 'G', value: (r) => r.b.g },
     { key: 'pa', label: 'PA', value: (r) => r.b.pa },
     { key: 'h', label: 'H', value: (r) => r.b.h },

@@ -122,7 +122,7 @@ export function optionPlayer(league: League, p: Player, level: Level = 'AAA'): v
   p.level = level;
   p.optionedOnDay = league.day;
   p.optionsThisSeason++;
-  addTransaction(league, p.orgId, 'Option', `Optioned ${isPitcher(p) ? 'RHP/LHP' : p.pos} ${pname(p)} to ${lvlName(league, p.orgId!, level)}`.replace('RHP/LHP', p.throws === 'L' ? 'LHP' : 'RHP'), [p.id]);
+  addTransaction(league, p.orgId, 'Option', `Optioned ${posLabel(p)} ${pname(p)} to ${lvlName(league, p.orgId!, level)}`, [p.id]);
 }
 
 export function recallPlayer(league: League, p: Player): void {
@@ -132,7 +132,8 @@ export function recallPlayer(league: League, p: Player): void {
 }
 
 export function posLabel(p: Player): string {
-  if (isPitcher(p)) return p.throws === 'L' ? 'LHP' : 'RHP';
+  // Pitchers show hand and role: RHS, LHS, RHR, LHR.
+  if (isPitcher(p)) return `${p.throws === 'L' ? 'LH' : 'RH'}${p.pos === 'SP' ? 'S' : 'R'}`;
   return p.pos;
 }
 
