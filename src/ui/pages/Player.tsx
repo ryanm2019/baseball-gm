@@ -5,6 +5,9 @@ import { FIELD_POS } from '../../core/types.ts';
 import { contact, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
+import { agentName, moraleLabel } from '../../core/morale.ts';
+
+const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
 import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
@@ -287,6 +290,22 @@ export default function PlayerPage() {
               <>
                 <div />
                 <div><a className="btn btn-sm" href={href('negotiate', ['ext', p.id])}>Negotiate extension</a></div>
+              </>
+            )}
+            {p.agent !== undefined && league.agents?.[p.agent] && (
+              <>
+                <div>Agent</div>
+                <div className="small">{agentName(league.agents[p.agent])} · {league.agents[p.agent].style}, reputation {league.agents[p.agent].reputation}</div>
+              </>
+            )}
+            {p.morale && (
+              <>
+                <div>Morale</div>
+                <div className="small">
+                  <b>{moraleLabel(p.morale.value)}</b> ({Math.round(p.morale.value)})
+                  {p.morale.parts && <> · role {fmtPart(p.morale.parts.role)}, team {fmtPart(p.morale.parts.team)}, pay {fmtPart(p.morale.parts.pay)}, treatment {fmtPart(p.morale.parts.treatment)}, performance {fmtPart(p.morale.parts.performance)}, clubhouse {fmtPart(p.morale.parts.clubhouse)}</>}
+                  {p.morale.events.length > 0 && <div className="muted">Recent: {p.morale.events.slice(-4).reverse().map((e) => `${e.text} (${e.delta > 0 ? '+' : ''}${e.delta})`).join('; ')}</div>}
+                </div>
               </>
             )}
             {p.arb && (

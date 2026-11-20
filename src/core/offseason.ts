@@ -32,6 +32,7 @@ import { logMove, side } from './moves.ts';
 import { marketOvr } from './war.ts';
 import { setDeptBudgets, updateFacilities } from './depts.ts';
 import { salaryIn, syncContract } from './terms.ts';
+import { addInbox } from './morale.ts';
 
 export interface CalEvent {
   key: string;
@@ -652,6 +653,7 @@ function agmReport(league: League, label: string, txBefore: number): void {
     ? `AGM ${agm.first} ${agm.last} (${label.toLowerCase()}): ${mine.map((t) => t.text).join('; ')}.`
     : `AGM ${agm.first} ${agm.last} (${label.toLowerCase()}): no moves needed.`;
   addNews(league, user.id, text, mine.flatMap((t) => t.pids));
+  addInbox(league, { from: `Assistant GM ${agm.first} ${agm.last}`, subject: label, kind: 'info', pids: mine.flatMap((t) => t.pids).slice(0, 20), text });
 }
 
 function userHasDecision(league: League, key: string): boolean {

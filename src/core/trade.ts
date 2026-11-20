@@ -11,6 +11,7 @@ import { dayToDate } from './settings.ts';
 import { pruneBlocks, teamNeeds, tradeIntensity } from './market.ts';
 import { logMove, side } from './moves.ts';
 import { ntcBlocks } from './terms.ts';
+import { leaderTraded, moraleEvent, addInbox } from './morale.ts';
 
 export const emptyAssets = (): TradeAssets => ({ pids: [], cash: 0, pool: 0, cbPicks: [] });
 
@@ -195,6 +196,9 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
     const parts: string[] = [];
     for (const id of g.pids) {
       const p = league.players[id];
+      leaderTraded(league, p, from);
+      const contender = league.orgs[to].strategy === 'Contend';
+      moraleEvent(league, p, contender && p.personality.winning >= 55 ? 4 : -4 * (p.personality.loyalty / 50), contender ? 'Traded to a contender' : 'Traded');
       p.orgId = to;
       p.teamSince = league.season;
       p.joined = { season: league.season, day: league.day };
@@ -402,6 +406,7 @@ function pushOffer(league: League, ai: Org, prop: TradeProposal, note: string, p
   const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: prop, expires: league.day + 7, note };
   league.tradeOffers.push(offer);
   addNews(league, user.id, `The ${ai.affiliates.MLB.name} reached out with a trade offer: ${note} See Trade Offers.`, pids);
+  addInbox(league, { from: `${ai.region} ${ai.name} front office`, subject: 'Trade offer', kind: 'info', pids, text: `The ${ai.affiliates.MLB.name} sent you a trade offer: ${note}`, link: { page: 'trade-offers' } });
 }
 
 // An AI club wants one of the user's players (block players first).

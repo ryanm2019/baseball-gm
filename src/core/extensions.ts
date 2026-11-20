@@ -83,7 +83,8 @@ export function securityDiscount(league: League, p: Player): { control: number; 
   const control = svc < 3 ? 0.2 : 0.1;
   const pers = (1 - (p.personality.greed - 50) / 100) * (1 + (p.personality.loyalty - 50) / 150);
   const agent = agentFactor(league, p);
-  return { control: control * pers * agent, fa: fa * pers * agent };
+  const mood = 1 + clamp(((p.morale?.value ?? 55) - 55) / 100, -0.3, 0.3);
+  return { control: control * pers * agent * mood, fa: fa * pers * agent * mood };
 }
 
 // Hook for agents (set by the agents module): <1 for hard-line agents.

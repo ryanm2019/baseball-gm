@@ -1,6 +1,7 @@
 // The farm director's weekly report: who's hot, how the top prospects did,
 // who's struggling, and who he thinks is ready to move up.
 import type { FarmReport, League, Level, Player } from './types.ts';
+import { addInbox } from './morale.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { isPitcher, ovr, perceivedOvr, posRating, potOvr, scout } from './ratings.ts';
 import type { FieldPos } from './types.ts';
@@ -186,5 +187,6 @@ export function weeklyFarmReport(league: League): void {
   if (!sections.length) return;
   const report: FarmReport = { season: league.season, day: league.day, by: `${fd.first} ${fd.last}`, sections };
   league.farmReports = [...(league.farmReports ?? []), report].slice(-30);
+  addInbox(league, { from: `Farm director ${fd.first} ${fd.last}`, subject: 'Weekly farm report', kind: 'info', pids: [], text: 'This week\'s farm report is in: standouts, top prospects, players struggling and who looks ready.', link: { page: 'farm-reports' }, read: false });
   addNews(league, org.id, `Farm director ${fd.first} ${fd.last} filed his weekly report${hot ? `: ${pname(hot)} was his hitter of the week` : ''}${ace ? `${hot ? ' and' : ':'} ${pname(ace)} his pitcher of the week` : ''}. See Farm Reports.`, [hot?.id, ace?.id].filter((x): x is number => x !== undefined));
 }

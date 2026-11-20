@@ -201,6 +201,7 @@ export default function RosterBoard() {
     return [...base, tag40,
       { key: 'ovr', label: 'Ovr', value: (p) => scoutedOvr(league, p) },
       { key: 'pot', label: 'Pot', value: (p) => scoutedPot(league, p) },
+      { key: 'mood', label: 'Mood', title: 'Morale (50 = content)', value: (p) => p.morale?.value ?? 55, render: (p) => (p.morale ? <span className={p.morale.value < 35 ? 'neg' : p.morale.value >= 65 ? 'pos' : ''}>{Math.round(p.morale.value)}</span> : '-') },
       { key: 'opt', label: 'Opt', title: 'Option years left', value: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : -1), render: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-') },
       { key: 'svc', label: 'Svc', title: 'MLB service years', value: (p) => serviceYears(p.mlServiceDays, s), render: (p) => serviceYears(p.mlServiceDays, s).toFixed(3) },
       {

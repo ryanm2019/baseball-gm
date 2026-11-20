@@ -564,6 +564,35 @@ export interface Morale {
   events: MoraleEvent[];
 }
 
+export interface InboxAction { key: string; label: string }
+
+export interface InboxMsg {
+  id: number;
+  season: number;
+  day: number;
+  from: string; // "Agent Jane Doe (Apex Sports)", "Owner", "Assistant GM", ...
+  subject: string;
+  text: string;
+  pids: number[];
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story';
+  actions?: InboxAction[];
+  resolved?: string; // what you chose
+  read?: boolean;
+  stop?: boolean; // pauses the sim until you've seen it
+  stopped?: boolean;
+  link?: { page: string; args?: (string | number)[] };
+  storyId?: string;
+}
+
+// A promise you made a player; checked on `due`.
+export interface Promise_ {
+  pid: number;
+  kind: 'playing-time' | 'callup' | 'trade';
+  made: number; // day
+  due: number;
+  season: number;
+}
+
 export interface NewsItem {
   id: number;
   season: number;
@@ -759,6 +788,8 @@ export interface League {
   lastWins?: Record<number, number>; // last season's MLB wins by org
   scoops?: Scoop[];
   agents?: Agent[];
+  inbox?: InboxMsg[];
+  promises?: Promise_[];
   futureForfeits?: { season: number; orgId: number; round: number }[]; // draft-pool penalties two years out
   draftTax?: { season: number; orgId: number; over: number; tax: number; penalty: string }[];
   preview?: SeasonPreview;

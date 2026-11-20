@@ -17,6 +17,7 @@ import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../dr
 import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { aiExtensions } from '../extensions.ts';
+import { addInbox, inboxStop, moraleWeek } from '../morale.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { rand } from '../random.ts';
@@ -352,10 +353,13 @@ function finishRegularDay(league: League): DayResult {
   tradeDay(league);
   aiExtensions(league);
   dailyUpkeep(league);
+  if (league.day % 7 === 0) moraleWeek(league);
   league.day++;
   const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
   if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
-  return { stop: ownerCheckin(league) };
+  const owner = ownerCheckin(league);
+  if (owner) addInbox(league, { from: 'Owner', subject: 'Owner check-in', kind: 'info', pids: [], text: owner });
+  return { stop: owner ?? inboxStop(league) };
 }
 
 // ---------- live games ----------
@@ -433,6 +437,7 @@ export function simOneDay(league: League): DayResult {
       ifaDay(league);
       tradeDay(league);
       offseasonUpkeep(league);
+      if (league.day % 7 === 0) moraleWeek(league);
       league.day++;
     }
     return { stop: null };

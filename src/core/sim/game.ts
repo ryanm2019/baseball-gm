@@ -6,6 +6,7 @@
 // league average. Pitch counts are simulated per PA to drive fatigue, pitcher
 // hooks and bullpen workload.
 import type { BatStats, BoxBatLine, BoxPitLine, BoxScore, FieldPos, Level, PenRole, PitStats, Player, Pos } from '../types.ts';
+import { moraleBoost } from '../morale.ts';
 import { clamp, normal, rand } from '../random.ts';
 import { posRating } from '../ratings.ts';
 import { emptyBat, emptyPit } from '../util.ts';
@@ -667,11 +668,13 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     if (app.coldPAs > 0) app.coldPAs--;
     if (app.boost > 0) app.boost--;
 
-    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold;
-    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle;
-    const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5;
+    const pm = moraleBoost(pit);
+    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold + pm;
+    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm;
+    const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5 + pm;
     const raw = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
-    const split = { ...raw, avoidK: soft(raw.avoidK), eye: soft(raw.eye), power: soft(raw.power), babip: soft(raw.babip), gap: soft(raw.gap) };
+    const bm = moraleBoost(batter);
+    const split = { ...raw, avoidK: soft(raw.avoidK) + bm, eye: soft(raw.eye) + bm, power: soft(raw.power) + bm, babip: soft(raw.babip) + bm, gap: soft(raw.gap) + bm };
     const speed = batter.ratings.run.speed;
 
     be.line.pa++;

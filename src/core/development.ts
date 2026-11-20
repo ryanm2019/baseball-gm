@@ -2,6 +2,7 @@
 // their potential; veterans decline. Work ethic, playing time and the
 // organization's farm director all change the pace.
 import type { BatSplit, DefRatings, League, Player } from './types.ts';
+import { moraleDev } from './morale.ts';
 import { clamp, normal } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { devMultiplier } from './staff.ts';
@@ -29,7 +30,7 @@ export function developPlayer(league: League, p: Player): void {
   const fdm = devMultiplier(league, p);
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
-  const rate = ageRate(a) * we * fdm * playing;
+  const rate = ageRate(a) * we * fdm * playing * moraleDev(p);
   const dec = decline(a, p);
   const tcr = 0.45;
 

@@ -73,6 +73,14 @@ function seasonReport(season: number) {
     const top = L.orgs.map((o) => ({ o, w: st[o.id].w, pay: orgPayroll(L, o).cbt })).sort((a, b) => b.w - a.w).slice(0, 3);
     console.log(`Top teams: ${top.map((x) => `${x.o.abbrev} ${x.w}W pay ${(x.pay / 1e6).toFixed(0)}M budget ${(x.o.budget / 1e6).toFixed(0)}M owner ${x.o.owner.type} 60+ players ${Object.values(L.players).filter((p) => p.orgId === x.o.id && p.level === 'MLB' && ovr(p) >= 60).length}`).join(' | ')}`);
     const over = L.orgs.map((o) => ({ o, pay: orgPayroll(L, o).cbt })).filter((x) => x.pay > x.o.budget * 1.05);
+    for (const x of over.slice(0, 4)) {
+      const mine = Object.values(L.players).filter((p) => p.orgId === x.o.id && p.contract.type === 'ML');
+      const ext = mine.filter((p) => (L.moves ?? []).some((m) => m.type === 'Extension' && m.season === season && m.sides[0].orgId === x.o.id && m.sides[0].gets.includes(p.id)));
+      const fa = mine.filter((p) => p.faSigned === season || p.faSigned === season + 1);
+      const tr = mine.filter((p) => p.joined && p.joined.season === season && !fa.includes(p) && p.teamSince === season);
+      const dead = (x.o.deadMoney ?? []).filter((d) => d.season === season).reduce((t, d) => t + d.amount, 0);
+      console.log(`   ${x.o.abbrev} start-budget? ${(x.o.budget / 1e6).toFixed(0)} | ext ${ext.length} aav ${(ext.reduce((t, p) => t + (p.contract.aav ?? p.contract.salary), 0) / 1e6).toFixed(0)}M | FA ${fa.length} ${(fa.reduce((t, p) => t + (p.contract.aav ?? p.contract.salary), 0) / 1e6).toFixed(0)}M | acquired ${tr.length} ${(tr.reduce((t, p) => t + (p.contract.aav ?? p.contract.salary), 0) / 1e6).toFixed(0)}M | dead ${(dead / 1e6).toFixed(0)}M`);
+    }
     console.log(`Over budget >5%: ${over.map((x) => `${x.o.abbrev} ${(x.pay / 1e6).toFixed(0)}/${(x.o.budget / 1e6).toFixed(0)}M`).join(', ')}`);
   }
   console.log(`Standings: best ${Math.max(...wins)} worst ${Math.min(...wins)} | 95+ wins: ${wins.filter((w) => w >= 95).length}, <=65: ${wins.filter((w) => w <= 65).length} | champion ${L.playoffs?.champion !== undefined && L.playoffs?.champion !== null ? L.orgs[L.playoffs.champion].abbrev : '?'}`);
@@ -189,4 +197,17 @@ console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, playe
   console.log(`Opt-outs exercised ${cnt(/opted out/)} | vesting vested ${cnt(/Vesting option vested/)} | mutual exercised ${cnt(/Both sides exercised/)} declined ${cnt(/Mutual option declined/)} | club options exercised ${cnt(/Exercised the club option/)} declined ${cnt(/Declined the club option/)}`);
   const ml = Object.values(L.players).filter((p) => p.orgId !== null && p.contract.type === 'ML');
   console.log(`Active deals with: sched ${ml.filter((p) => p.contract.sched).length}, opt-outs ${ml.filter((p) => p.contract.optOuts?.length).length}, NTC ${ml.filter((p) => p.contract.ntc).length}, deferred ${ml.filter((p) => p.contract.deferPct).length}, options ${ml.filter((p) => p.contract.option).length} | veto news ${L.news.filter((n) => /no-trade clause to veto/.test(n.text)).length}`);
+}
+
+// Morale, agents, Inbox.
+{
+  const mlb = Object.values(L.players).filter((p) => p.orgId !== null && p.level === 'MLB' && p.morale);
+  const v = mlb.map((p) => p.morale!.value).sort((a, b) => a - b);
+  const q = (f: number) => v[Math.floor(f * (v.length - 1))]?.toFixed(0);
+  console.log(`MLB morale n ${v.length} p10/p50/p90 ${q(0.1)}/${q(0.5)}/${q(0.9)} | miserable(<30) ${v.filter((x) => x < 30).length} thrilled(>=80) ${v.filter((x) => x >= 80).length}`);
+  const kinds: Record<string, number> = {};
+  for (const m of L.inbox ?? []) kinds[m.kind + (m.from.startsWith('Agent') ? '(agent)' : '')] = (kinds[m.kind + (m.from.startsWith('Agent') ? '(agent)' : '')] ?? 0) + 1;
+  console.log('Inbox kinds (last 200):', JSON.stringify(kinds), '| agents', L.agents?.length, '| super-agent clients', Object.values(L.players).filter((p) => p.agent === 0).length);
+  const byOrg = L.orgs.map((o) => { const ps = mlb.filter((p) => p.orgId === o.id); return { o, m: ps.reduce((t, p) => t + p.morale!.value, 0) / Math.max(1, ps.length), w: L.standings.MLB[o.id].w }; }).sort((a, b) => b.m - a.m);
+  console.log('Happiest clubs:', byOrg.slice(0, 3).map((x) => `${x.o.abbrev} ${x.m.toFixed(0)} (${x.w}W)`).join(', '), '| unhappiest:', byOrg.slice(-3).map((x) => `${x.o.abbrev} ${x.m.toFixed(0)} (${x.w}W)`).join(', '));
 }

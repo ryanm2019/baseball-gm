@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, sim, requestStop, setMessage, startLive } from './store.ts';
+import { unreadInbox } from './core/morale.ts';
 import type { ReactNode } from 'react';
 import { useRoute, href, go } from './router.ts';
 import { dayLabel } from './core/settings.ts';
@@ -15,6 +16,7 @@ import Depth from './ui/pages/Depth.tsx';
 import RosterBoard from './ui/pages/RosterBoard.tsx';
 import Extensions from './ui/pages/Extensions.tsx';
 import Negotiate from './ui/pages/Negotiate.tsx';
+import Inbox from './ui/pages/Inbox.tsx';
 import Farm from './ui/pages/Farm.tsx';
 import Staff from './ui/pages/Staff.tsx';
 import Schedule from './ui/pages/Schedule.tsx';
@@ -47,7 +49,7 @@ import Preview from './ui/pages/Preview.tsx';
 import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
-  { head: 'League', links: [['dashboard', 'Dashboard'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
+  { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
@@ -167,6 +169,7 @@ export default function App() {
     case 'roster-moves': page = <RosterBoard />; break;
     case 'extensions': page = <Extensions />; break;
     case 'negotiate': page = <Negotiate />; break;
+    case 'inbox': page = <Inbox />; break;
     case 'farm': page = <Farm />; break;
     case 'staff': page = <Staff />; break;
     case 'schedule': page = <Schedule />; break;
@@ -228,6 +231,7 @@ export default function App() {
                 <a key={label} href={href(page)} className={route.page === page ? 'active' : ''}>
                   {label}
                   {page === 'trade-offers' && league.tradeOffers.length > 0 && <span className="tag">{league.tradeOffers.length}</span>}
+                  {page === 'inbox' && unreadInbox(league) > 0 && <span className="tag">{unreadInbox(league)}</span>}
                 </a>
               ))}
             </div>

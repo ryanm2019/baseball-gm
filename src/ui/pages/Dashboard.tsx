@@ -276,6 +276,11 @@ export default function Dashboard() {
             </div>
           )}
           {hitters.length === 0 && <p className="muted">Season hasn't started.</p>}
+          {(() => {
+            const need = (league.inbox ?? []).filter((m) => m.actions && !m.resolved).length;
+            const unread = (league.inbox ?? []).filter((m) => !m.read).length;
+            return unread > 0 ? <div className="alert alert-info small"><a href={href('inbox')}>Inbox: {unread} unread{need ? `, ${need} waiting for your decision` : ''}</a></div> : null;
+          })()}
           <h3>Insider</h3>
           {!(league.scoops ?? []).length && <p className="muted small">Free agent meetings, finalists, agreements, trades and players being shopped show up here.</p>}
           <div style={{ maxWidth: 420 }}>
