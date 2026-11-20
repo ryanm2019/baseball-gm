@@ -134,6 +134,29 @@ export default function StaffPage() {
         </tbody>
       </table>
 
+      <h3>Assignments</h3>
+      <p className="muted small">Point each scout at something. Players in his focus are read much more sharply (about 28% less error); the rest of his beat a little less sharply. The director's focus sharpens any group on top of that.</p>
+      <table className="data compact" style={{ maxWidth: 620 }}>
+        <tbody>
+          {(['SD', 'PRO', 'AMA', 'INT'] as const).map((role) => {
+            const opts: [string, string][] = [['general', 'General coverage']];
+            if (role === 'SD' || role === 'AMA') opts.push(['HS', 'Draft: high school players'], ['College', 'Draft: college players']);
+            if (role === 'SD' || role === 'INT') for (const c of [...new Set(Object.values(league.players).filter((p) => p.ifa && p.orgId === null).map((p) => p.country))].sort()) opts.push([`country:${c}`, `International: ${c}`]);
+            if (role === 'SD' || role === 'PRO') for (const o of league.orgs.filter((x) => x.id !== org.id)) opts.push([`org:${o.id}`, `Organization: ${o.region} ${o.name}`]);
+            const cur = org.scoutFocus?.[role] ?? 'general';
+            return (
+              <tr key={role}>
+                <td className="l">{STAFF_NAMES[role]}{org.staff[role] === undefined ? <span className="muted"> (vacant)</span> : ''}</td>
+                <td className="l">
+                  <select value={cur} onChange={(e) => { org.scoutFocus = { ...(org.scoutFocus ?? {}), [role]: e.target.value }; changed(); }}>
+                    {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
       <h2>Assistant GM duties</h2>
       {!staffOf(league, org, 'AGM') && <div className="alert alert-warn">You have no assistant GM, so you handle every job yourself.</div>}
       <p className="muted small">Checked jobs are handled by your assistant GM using his judgment. Unchecked jobs are yours: the sim stops when one needs a decision.</p>

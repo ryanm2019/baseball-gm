@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href, useRoute } from '../../router.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
@@ -270,6 +271,53 @@ function PositionsPanel({ p }: { p: Player }) {
   );
 }
 
+// MLB splits: vs LHP/RHP (or vs LHB/RHB), home/away, RISP, by month.
+function SplitsPanel({ p }: { p: Player }) {
+  const { league } = useStore();
+  const seasons = [...new Set(p.stats.filter((e) => e.level === 'MLB' && e.splits).map((e) => e.season))].sort((a, b) => b - a);
+  const [season, setSeason] = useState<number | null>(null);
+  if (!league || !seasons.length) return null;
+  const s = season ?? seasons[0];
+  const pit = isPitcher(p);
+  const merged: Record<string, Record<string, number>> = {};
+  for (const e of p.stats) {
+    if (e.season !== s || e.level !== 'MLB' || !e.splits) continue;
+    const src = (pit ? e.splits.pit : e.splits.bat) as Record<string, Record<string, number>> | undefined;
+    for (const [k, v] of Object.entries(src ?? {})) {
+      const acc = (merged[k] ??= {});
+      for (const [f, x] of Object.entries(v)) acc[f] = (acc[f] ?? 0) + x;
+    }
+  }
+  const MON = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const order = ['vsL', 'vsR', 'home', 'away', 'risp', ...Object.keys(merged).filter((k) => k.startsWith('m')).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))];
+  const label = (k: string) => (k === 'vsL' ? (pit ? 'vs LHB' : 'vs LHP') : k === 'vsR' ? (pit ? 'vs RHB' : 'vs RHP') : k === 'home' ? 'Home' : k === 'away' ? 'Away' : k === 'risp' ? 'Runners in scoring position' : MON[Number(k.slice(1))]);
+  const f3 = (x: number) => x.toFixed(3).replace(/^0/, '');
+  return (
+    <>
+      <h2>Splits</h2>
+      <select value={s} onChange={(e) => setSeason(Number(e.target.value))}>{seasons.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+      <table className="data compact" style={{ width: 'auto' }}>
+        <thead>{pit
+          ? <tr><th className="l">Split</th><th>BF</th><th>IP</th><th>ERA</th><th>Opp AVG</th><th>K%</th><th>BB%</th><th>HR</th></tr>
+          : <tr><th className="l">Split</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th>HR</th><th>K%</th><th>BB%</th></tr>}</thead>
+        <tbody>
+          {order.filter((k) => merged[k]).map((k) => {
+            const x = merged[k];
+            if (pit) {
+              const ab = Math.max(1, x.bf - x.bb - (x.hbp ?? 0));
+              return <tr key={k}><td className="l">{label(k)}</td><td>{x.bf}</td><td>{Math.floor(x.outs / 3)}.{x.outs % 3}</td><td>{x.outs ? ((x.er * 27) / x.outs).toFixed(2) : '-'}</td><td>{f3(x.h / ab)}</td><td>{x.bf ? ((100 * x.k) / x.bf).toFixed(1) : '-'}</td><td>{x.bf ? ((100 * x.bb) / x.bf).toFixed(1) : '-'}</td><td>{x.hr}</td></tr>;
+            }
+            const ab = Math.max(1, x.ab);
+            const ob = (x.h + x.bb + x.hbp) / Math.max(1, x.ab + x.bb + x.hbp + x.sf);
+            const sl = (x.h + x.d + 2 * x.t + 3 * x.hr) / ab;
+            return <tr key={k}><td className="l">{label(k)}</td><td>{x.pa}</td><td>{f3(x.h / ab)}</td><td>{f3(ob)}</td><td>{f3(sl)}</td><td>{f3(ob + sl)}</td><td>{x.hr}</td><td>{x.pa ? ((100 * x.k) / x.pa).toFixed(1) : '-'}</td><td>{x.pa ? ((100 * x.bb) / x.pa).toFixed(1) : '-'}</td></tr>;
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 export default function PlayerPage() {
   const { league } = useStore();
   const route = useRoute();
@@ -288,7 +336,8 @@ export default function PlayerPage() {
   return (
     <>
       <h1>
-        {pname(p)} <StatusTags league={league} p={p} />
+        {pname(p)} <StatusTags league={league} p={p} />{' '}
+        <a className="btn btn-sm" href={href('compare', [], { pids: String(p.id) })}>Compare</a>
       </h1>
       <div className="cards">
         <div className="box">
@@ -452,6 +501,7 @@ export default function PlayerPage() {
       <p className="muted small">Plus/minus stats are relative to that level's league that season (100 = average). wRC+, OPS+ and ERA+: higher is better; FIP-: lower is better.</p>
       {isPitcher(p) ? <PitAdvancedTable league={league} p={p} entries={p.stats} /> : <BatAdvancedTable league={league} p={p} entries={p.stats} />}
 
+      <SplitsPanel p={p} />
       <h2>Transactions</h2>
       {txs.length === 0 && <p className="muted">None.</p>}
       {txs.map((t) => (

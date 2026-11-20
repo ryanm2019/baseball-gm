@@ -5,7 +5,9 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { href } from '../../router.ts';
 import { answerInbox, moraleLabel } from '../../core/morale.ts';
 import { answerStory } from '../../core/storylines.ts';
-import { answerPosition } from '../../core/positions.ts';
+import { answerPosition, answerSeptember } from '../../core/positions.ts';
+import { canRecall, canSelect, recallPlayer, selectContract } from '../../core/rules.ts';
+import { answerInjury } from '../../core/injuries.ts';
 import { dayShort } from '../../core/settings.ts';
 import { LinkedText } from '../components.tsx';
 
@@ -53,7 +55,15 @@ export default function Inbox() {
                     className="btn btn-sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (m.kind === 'position') {
+                      if (m.kind === 'september') {
+                        m.resolved = a.label;
+                        m.read = true;
+                        setMessage(answerSeptember(league, m.pids, a.key, (p) => { const why = p.on40 ? canRecall(league, p) : canSelect(league, p); if (!why) { if (p.on40) recallPlayer(league, p); else selectContract(league, p); } return why; }));
+                      } else if (m.kind === 'injury') {
+                        m.resolved = a.label;
+                        m.read = true;
+                        setMessage(answerInjury(league, m.pids[0], a.key));
+                      } else if (m.kind === 'position') {
                         m.resolved = a.label;
                         m.read = true;
                         setMessage(answerPosition(league, m.pids[0], a.key));

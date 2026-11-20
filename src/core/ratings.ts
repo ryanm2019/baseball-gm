@@ -176,13 +176,26 @@ function staffEval(league: League, org: Org, role: StaffRole): number | null {
   return s ? s.evaluation : null;
 }
 
-export function scoutFactor(league: League, org: Org, area: ScoutArea): number {
+// Scouting assignments: what each scout is focused on (see ScoutFocus).
+export function focusMatches(f: string | undefined, p: Player): boolean {
+  if (!f || f === 'general') return false;
+  if (f === 'HS' || f === 'College') return !!p.prospect && (f === 'HS' ? !p.prospect.college : p.prospect.college);
+  if (f.startsWith('country:')) return p.country === f.slice(8);
+  if (f.startsWith('org:')) return p.orgId === Number(f.slice(4));
+  return false;
+}
+
+export function scoutFactor(league: League, org: Org, area: ScoutArea, p?: Player): number {
   const dir = staffEval(league, org, 'SD');
   const d = dir === null ? 1.25 : evalScale(dir, 1.2, 0.8);
   const budget = 1 - 0.2 * deptEffect(org, 'scouting'); // scouting department spending
   if (area === 'own') return 0.7 * d * budget; // coaches and the farm staff see your own players every day
   const sc = staffEval(league, org, AREA_ROLE[area]);
-  return (sc === null ? 1.7 : evalScale(sc, 1.45, 0.55)) * d * budget;
+  // A scout assigned to a focus sees it sharply and the rest of his beat a bit less;
+  // the director's own focus helps on top.
+  const f = org.scoutFocus?.[AREA_ROLE[area]];
+  const focus = p ? (focusMatches(f, p) ? 0.72 : f && f !== 'general' ? 1.08 : 1) * (focusMatches(org.scoutFocus?.SD, p) ? 0.85 : 1) : 1;
+  return (sc === null ? 1.7 : evalScale(sc, 1.45, 0.55)) * d * budget * focus;
 }
 
 export function scoutArea(league: League, p: Player): ScoutArea {
@@ -196,7 +209,7 @@ export function scoutSd(league: League, p: Player, isPot: boolean): number {
   if (base === 0) return 0;
   const area = scoutArea(league, p);
   const lvl = area === 'amateur' ? 1.35 : area === 'intl' ? 1.6 : LEVEL_FOG[p.level ?? 'AAA'];
-  return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area) * (isPot ? 1.6 : 1);
+  return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area, p) * (isPot ? 1.6 : 1);
 }
 
 export function scoutRaw(league: League, p: Player, key: string, value: number, isPot = false): number {

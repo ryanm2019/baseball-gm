@@ -704,6 +704,7 @@ export function pruneLeague(league: League): void {
     if (p.retired && !mlb) delete league.players[p.id];
     else if (!p.retired && p.orgId === null && !p.prospect && !p.ifa && !mlb && league.season - p.born >= 26 && ovr(p) < 42) delete league.players[p.id];
     else {
+      for (const e of p.stats) if (e.splits && e.season < league.season - 3) delete e.splits;
       // Minor league lines older than three seasons collapse to one line per season.
       const old = p.stats.filter((s) => s.level !== 'MLB' && s.season < league.season - 2);
       const seasons = new Set(old.map((s) => s.season));

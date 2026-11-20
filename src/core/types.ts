@@ -166,6 +166,7 @@ export interface Injury {
   name: string;
   daysLeft: number;
   totalDays: number;
+  decision?: { estRisk: number; recommend: 'surgery' | 'rehab'; surgeryDays: number; label: string; decided: boolean }; // serious injuries
 }
 
 export interface BatStats {
@@ -215,6 +216,8 @@ export interface StatEntry {
   orgId: number;
   bat: BatStats;
   pit: PitStats;
+  // MLB splits: vsL, vsR, risp, home, away, m3..m10 (month)
+  splits?: { bat?: Record<string, BatStats>; pit?: Record<string, PitStats> };
 }
 
 export interface Player {
@@ -261,7 +264,8 @@ export interface Player {
   stretch?: { limit: number } | null;
   straight?: number; // consecutive games started in the field
   straightDay?: number; // pitch limit while a converted reliever is stretched out as a starter
-  rehab?: { level: Level; daysLeft: number; total: number } | null; // rehab assignment before coming off the IL
+  rehab?: { level: Level; daysLeft: number; total: number } | null;
+  reinjury?: { risk: number; name: string; surgeryDays: number; until: number }; // chose rehab over surgery // rehab assignment before coming off the IL
   storyFx?: { text: string; until: number; add: Record<string, number> }[]; // temporary rating changes from storylines
   arb?: ArbCase | null;
   rule5?: { fromOrg: number; season: number } | null;
@@ -496,7 +500,8 @@ export interface Org {
   deadMoney: { pid: number; name: string; amount: number; season: number }[];
   deferred?: { pid: number; name: string; amount: number; season: number }[];
   fin?: import('./finances.ts').Fin; // attendance, revenue, hype
-  lastGameDay?: Partial<Record<Level, number>>; // last day each affiliate played (for fatigue streaks) // deferred salary owed in later seasons
+  lastGameDay?: Partial<Record<Level, number>>;
+  scoutFocus?: Partial<Record<StaffRole, string>>; // 'general' | 'HS' | 'College' | 'country:<name>' | 'org:<id>' // last day each affiliate played (for fatigue streaks) // deferred salary owed in later seasons
   stance: TradeStance;
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
@@ -584,7 +589,7 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury';
   actions?: InboxAction[];
   resolved?: string; // what you chose
   read?: boolean;
@@ -684,6 +689,7 @@ export interface Playoffs {
   seeds: { AL: number[]; NL: number[] };
   series: PlayoffSeries[];
   champion: number | null;
+  rosters?: Record<string, number[]>; // `${round}:${orgId}` -> the 26 for that round
 }
 
 export interface Settings {

@@ -22,6 +22,8 @@ import Awards from './ui/pages/Awards.tsx';
 import History from './ui/pages/History.tsx';
 import Finances from './ui/pages/Finances.tsx';
 import TradeFinder from './ui/pages/TradeFinder.tsx';
+import PlayoffRoster from './ui/pages/PlayoffRoster.tsx';
+import Compare from './ui/pages/Compare.tsx';
 import Farm from './ui/pages/Farm.tsx';
 import Staff from './ui/pages/Staff.tsx';
 import Schedule from './ui/pages/Schedule.tsx';
@@ -55,8 +57,8 @@ import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['awards', 'Awards'], ['history', 'History & Records'], ['league-payrolls', 'League Payrolls']] },
-  { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
-  { head: 'Trades', links: [['trade', 'Trade'], ['trade-finder', 'Trade Finder'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
+  { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['playoff-roster', 'Playoff Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Trades', links: [['trade', 'Trade'], ['trade-finder', 'Trade Finder'], ['compare', 'Compare Players'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb'], ['extensions', 'Extensions']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
@@ -180,6 +182,8 @@ export default function App() {
     case 'history': page = <History />; break;
     case 'finances': page = <Finances />; break;
     case 'trade-finder': page = <TradeFinder />; break;
+    case 'playoff-roster': page = <PlayoffRoster />; break;
+    case 'compare': page = <Compare />; break;
     case 'farm': page = <Farm />; break;
     case 'staff': page = <Staff />; break;
     case 'schedule': page = <Schedule />; break;

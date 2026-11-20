@@ -2,7 +2,9 @@
 import type { DepthChart, FieldPos, League, Level, PenRole, Player, Pos } from '../types.ts';
 import { streak } from '../positions.ts';
 import { blendSplits, defAt, isPitcher, offense, ovr } from '../ratings.ts';
-import { activeAt } from '../util.ts';
+import { activeAt, orgPlayers } from '../util.ts';
+import { potOvr } from '../ratings.ts';
+import { playoffRosterFor } from '../playoffRoster.ts';
 import { rand } from '../random.ts';
 import { delegated, managerMods, pitcherInjuryMult, type ManagerMods } from '../staff.ts';
 import { deptEffect } from '../depts.ts';
@@ -27,6 +29,27 @@ const FILL_ORDER: FieldPos[] = ['C', 'SS', 'CF', '2B', '3B', 'RF', 'LF', '1B'];
 
 export const offVs = (p: Player, hand: 'L' | 'R'): number => offense(hand === 'L' ? p.ratings.vL : p.ratings.vR);
 
+// The organization's top 30 prospects (cached for the day): the farm director
+// makes sure they play every day and keep their rotation turns.
+const prospectCache = new Map<string, Map<number, number>>();
+export function topProspects(league: League, orgId: number): Map<number, number> {
+  const key = `${league.id}:${league.season}:${league.day}:${orgId}`;
+  const hit = prospectCache.get(key);
+  if (hit) return hit;
+  if (prospectCache.size > 200) prospectCache.clear();
+  const ranked = orgPlayers(league, orgId)
+    .filter((p) => p.mlServiceDays < 45 && p.level && p.level !== 'MLB')
+    .map((p) => ({ p, v: potOvr(p) * 0.75 + ovr(p) * 0.25 - (league.season - p.born) * 0.15 }))
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 30);
+  const m = new Map(ranked.map((x, i) => [x.p.id, i + 1]));
+  prospectCache.set(key, m);
+  return m;
+}
+
+// Where an overlapping prospect slides over to learn a second spot.
+const NEARBY: Record<string, FieldPos[]> = { SS: ['2B', '3B'], '2B': ['SS', '3B'], '3B': ['1B', 'SS', '2B'], '1B': ['3B', 'LF', 'RF'], CF: ['LF', 'RF'], LF: ['RF', '1B'], RF: ['LF', '1B'], C: ['1B'] };
+
 export function restDays(league: League, p: Player): number {
   return league.day - p.lastStartDay;
 }
@@ -41,9 +64,10 @@ export function rotationOf(league: League, orgId: number, level: Level, pitchers
     rotation = depth.rotation.map((id) => league.players[id]).filter((p) => p && pitchers.includes(p));
   }
   if (rotation.length < 5) {
+    const top = level !== 'MLB' ? topProspects(league, orgId) : new Map<number, number>();
     const sps = pitchers
       .filter((p) => !rotation.includes(p))
-      .sort((a, b) => (b.pos === 'SP' ? 1 : 0) - (a.pos === 'SP' ? 1 : 0) || b.ratings.pit.stamina - a.ratings.pit.stamina + (ovr(b) - ovr(a)) * 0.5);
+      .sort((a, b) => (b.pos === 'SP' ? 1 : 0) - (a.pos === 'SP' ? 1 : 0) || (top.has(b.id) && b.pos === 'SP' ? 1 : 0) - (top.has(a.id) && a.pos === 'SP' ? 1 : 0) || b.ratings.pit.stamina - a.ratings.pit.stamina + (ovr(b) - ovr(a)) * 0.5);
     const auto = sps.filter((p) => p.pos === 'SP' || p.ratings.pit.stamina >= 45);
     rotation = rotation.concat(auto.slice(0, 5 - rotation.length));
   }
@@ -107,7 +131,32 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
   }
   const chosen: { p: Player; pos: Pos }[] = [];
   const used = new Set<number>();
+  // In the minors, top prospects play every day. Two at one spot take turns
+  // there; the other slides to a nearby position (building experience) or DH.
+  if (level !== 'MLB' && hitters.length) {
+    const top = topProspects(league, hitters[0].orgId!);
+    const ps = hitters.filter((p) => top.has(p.id) && (pool.includes(p) || (top.get(p.id)! <= 10 && streak(league, p) < 9))).sort((a, b) => top.get(a.id)! - top.get(b.id)!);
+    const byHome = new Map<string, Player[]>();
+    for (const p of ps) byHome.set(p.pos, [...(byHome.get(p.pos) ?? []), p]);
+    const taken = new Set<Pos>();
+    let dhUsed = false;
+    for (const [home, group] of byHome) {
+      // Rotate who gets the home spot day to day.
+      const order = group.map((_, i) => group[(i + league.day) % group.length]);
+      for (const p of order) {
+        if (!pool.includes(p)) pool.push(p);
+        let spot: Pos | null = !taken.has(home as Pos) && home !== 'DH' ? (home as Pos) : null;
+        if (!spot) spot = (NEARBY[home] ?? []).find((x) => !taken.has(x) && !(x === 'C' && home !== 'C')) ?? null;
+        if (!spot && !dhUsed) { spot = 'DH'; dhUsed = true; }
+        if (!spot) continue;
+        taken.add(spot);
+        used.add(p.id);
+        chosen.push({ p, pos: spot });
+      }
+    }
+  }
   for (const pos of FILL_ORDER) {
+    if (chosen.some((c) => c.pos === pos)) continue;
     let best: Player | null = null;
     let bestV = -Infinity;
     for (const p of pool) {
@@ -126,7 +175,7 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
       chosen.push({ p: best, pos });
     }
   }
-  const dh = pool.filter((p) => !used.has(p.id)).sort((a, b) => offVs(b, oppHand) - offVs(a, oppHand))[0];
+  const dh = chosen.some((c) => c.pos === 'DH') ? undefined : pool.filter((p) => !used.has(p.id)).sort((a, b) => offVs(b, oppHand) - offVs(a, oppHand))[0];
   if (dh) {
     used.add(dh.id);
     chosen.push({ p: dh, pos: 'DH' });
@@ -163,9 +212,14 @@ export function postseasonEligible(league: League, p: Player): boolean {
 export function buildLineup(league: League, orgId: number, level: Level, oppHand: 'L' | 'R' = 'R', sp?: Player): GameLineup | null {
   // Players acquired after August 31 aren't eligible for the postseason.
   const cutoff = league.settings.postseasonEligibilityDay;
-  const roster = activeAt(league, orgId, level).filter(
+  let roster = activeAt(league, orgId, level).filter(
     (p) => !p.injury && !(league.phase === 'playoffs' && p.joined && p.joined.season === league.season && p.joined.day > cutoff),
   );
+  // Postseason: the 26 set for this round.
+  const po = league.phase === 'playoffs' && level === 'MLB' ? playoffRosterFor(league, orgId) : null;
+  if (po) roster = [...po].map((id) => league.players[id]).filter((p) => p && !p.injury && p.orgId === orgId);
+  // Big leaguers on rehab assignments play here.
+  if (level !== 'MLB') for (const p of orgPlayers(league, orgId)) if (p.rehab?.level === level && !p.injury && !roster.includes(p)) roster.push(p);
   const pitchers = roster.filter(isPitcher);
   const hitters = roster.filter((p) => !isPitcher(p));
   const org = league.orgs[orgId];

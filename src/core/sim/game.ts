@@ -125,6 +125,7 @@ export interface GameOutput {
   lp: number | null;
   sv: number | null;
   warmed: { p: Player; pitches: number }[]; // warmed up but didn't pitch
+  splits: { bat: Map<number, Record<string, BatStats>>; pit: Map<number, Record<string, PitStats>> }; // per-PA splits (vs hand, RISP)
 }
 
 const INJURIES_SHORT = ['hamstring strain', 'sprained ankle', 'back spasms', 'oblique strain', 'bruised hand', 'groin strain', 'neck stiffness', 'hip flexor strain', 'wrist inflammation', 'concussion'];
@@ -411,6 +412,8 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
   const leadFor = (s: number) => sides[s].runs - sides[1 - s].runs;
 
   const batEntry = (side: Side, p: Player) => side.bat.get(p.id)!;
+  const splitBat = new Map<number, Record<string, BatStats>>();
+  const splitPit = new Map<number, Record<string, PitStats>>();
 
   const chargeRun = (bs: Side, fs: Side, r: Runner, rbi: Player | null) => {
     bs.runs++;
@@ -1090,7 +1093,26 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       w.set(id, n + 1);
       warmPitches.set(id, (warmPitches.get(id) ?? 0) + 4);
     }
+    // Splits: what this plate appearance added, by pitcher hand / batter side and RISP.
+    const b0 = bs.order[bs.next].p;
+    const ap0 = fs.pitcher;
+    const risp = !!(bases[1] || bases[2]);
+    const bl0 = { ...batEntry(bs, b0).line };
+    const pl0 = { ...ap0.line };
     playPA(bs, fs, bIdx);
+    {
+      const bl = batEntry(bs, b0).line;
+      const add = <T extends object>(m: Map<number, Record<string, T>>, pid: number, key: string, now: T, was: T) => {
+        const rec = m.get(pid) ?? {};
+        const acc = (rec[key] ??= Object.fromEntries(Object.keys(now).map((k) => [k, 0])) as T) as Record<string, number>;
+        for (const k of Object.keys(now)) acc[k] += (now as Record<string, number>)[k] - (was as Record<string, number>)[k];
+        m.set(pid, rec);
+      };
+      add(splitBat, b0.id, ap0.p.throws === 'L' ? 'vsL' : 'vsR', bl, bl0);
+      if (risp) add(splitBat, b0.id, 'risp', bl, bl0);
+      const side = b0.bats === 'S' ? (ap0.p.throws === 'L' ? 'R' : 'L') : b0.bats;
+      add(splitPit, ap0.p.id, side === 'L' ? 'vsL' : 'vsR', ap0.line, pl0);
+    }
     if (half === 1 && inning >= 9 && H.runs > A.runs) {
       gameOver = true;
       if (live) say(`Walk-off! Final: ${A.runs}-${H.runs}.`);
@@ -1188,6 +1210,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       lp: lApp.p.id,
       sv: svPid,
       warmed,
+      splits: { bat: splitBat, pit: splitPit },
     };
   };
 

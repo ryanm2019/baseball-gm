@@ -245,3 +245,10 @@ console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, playe
   const pa = Object.values(L.players).filter((p) => p.pos === 'C').map((p) => p.stats.filter((e) => e.season === last && e.level === 'MLB').reduce((t, e) => t + e.bat.pa, 0)).sort((a, b) => b - a);
   console.log(`Catchers: top PA ${pa.slice(0, 5).join(', ')} | teams with <2 C ${L.orgs.filter((o) => cs.filter((p) => p.orgId === o.id).length < 2).length}`);
 }
+
+// Injury decisions, playoff rosters, splits, September.
+{
+  const po = Object.keys(L.playoffs?.rosters ?? {}).length;
+  const withSplits = Object.values(L.players).filter((p) => p.stats.some((e) => e.splits)).length;
+  console.log(`Serious-injury decisions pending/active: ${Object.values(L.players).filter((p) => p.injury?.decision).length} | rehab re-injury watch ${Object.values(L.players).filter((p) => p.reinjury).length} | re-injuries in news ${L.news.filter((n) => /re-injured/.test(n.text)).length} | playoff rosters (last postseason) ${po} | players with splits ${withSplits} | September notes ${(L.inbox ?? []).filter((m) => m.kind === 'september').length}`);
+}

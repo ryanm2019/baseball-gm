@@ -229,3 +229,33 @@ export function answerPosition(league: League, pid: number, key: string): string
   if (!p || !key.startsWith('move-')) return 'He stays put.';
   return changePosition(league, p, key.slice(5) as Pos, 'farm director suggestion');
 }
+
+// ---------- September call-ups ----------
+
+// On September 1, your farm director suggests two call-ups for the expanded roster.
+export function septemberCallups(league: League): void {
+  if (league.phase !== 'regular' || league.day !== league.settings.septemberDay) return;
+  const org = league.orgs[league.userOrgId];
+  const cands = orgPlayers(league, org.id)
+    .filter((p) => p.on40 && p.level !== 'MLB' && !p.injury && !p.il)
+    .sort((a, b) => ovr(b) + (b.mlServiceDays < 45 ? 2 : 0) - (ovr(a) + (a.mlServiceDays < 45 ? 2 : 0)))
+    .slice(0, 2);
+  if (!cands.length) return;
+  addInbox(league, {
+    from: 'Farm director', subject: 'September call-ups', kind: 'september', pids: cands.map((p) => p.id),
+    text: `Rosters expand to ${league.settings.activeMaxSept} today. I'd bring up ${cands.map((p) => `${p.pos} ${pname(p)} (${p.level})`).join(' and ')}: they've earned a look and it's a chance to see them against big leaguers.`,
+    actions: [{ key: 'callup', label: 'Call them up' }, { key: 'pass', label: 'Not this year' }],
+  });
+}
+
+export function answerSeptember(league: League, pids: number[], key: string, recall: (p: Player) => string | null): string {
+  if (key !== 'callup') return 'No September call-ups.';
+  const done: string[] = [];
+  for (const id of pids) {
+    const p = league.players[id];
+    if (!p) continue;
+    const why = recall(p);
+    if (!why) done.push(pname(p));
+  }
+  return done.length ? `Called up ${done.join(' and ')}.` : 'No room on the active roster.';
+}

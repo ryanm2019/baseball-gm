@@ -1,6 +1,7 @@
 // Advances the league one day: plays every game at every level, records
 // stats and standings, then runs injuries, service time, options, waivers and
 // organizational AI.
+import { dayToDate } from '../settings.ts';
 import type { Game, League, Level, PlayoffSeries } from '../types.ts';
 import { LEVELS } from '../types.ts';
 import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from './lineup.ts';
@@ -20,8 +21,10 @@ import { aiExtensions } from '../extensions.ts';
 import { inboxStop, moraleWeek } from '../morale.ts';
 import { storylinesWeek } from '../storylines.ts';
 import { selectAllStars } from '../awards.ts';
+import { ensurePlayoffRosters, playoffRosterFor } from '../playoffRoster.ts';
+import { onInjury, reinjuryCheck } from '../injuries.ts';
 import { homeGate, hypeWeek } from '../finances.ts';
-import { afterStart, aiPositionMoves, gainFromGame, springWork, suggestPositionMoves } from '../positions.ts';
+import { afterStart, aiPositionMoves, gainFromGame, septemberCallups, springWork, suggestPositionMoves } from '../positions.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { clamp, rand } from '../random.ts';
@@ -93,8 +96,13 @@ function updateStanding(league: League, level: Level, orgId: number, won: boolea
 export function gameLineups(league: League, g: Game): { home: GameLineup; away: GameLineup } | null {
   const oh: { bullpenDay?: boolean } = {};
   const oa: { bullpenDay?: boolean } = {};
-  const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.home].depth[g.level], oh);
-  const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.away].depth[g.level], oa);
+  const arms = (orgId: number) => {
+    const po = g.playoff ? playoffRosterFor(league, orgId) : null;
+    const base = po ? [...po].map((id) => league.players[id]).filter(Boolean) : activeAt(league, orgId, g.level);
+    return base.filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p));
+  };
+  const spHome = pickStarter(league, g.home, g.level, arms(g.home), league.orgs[g.home].depth[g.level], oh);
+  const spAway = pickStarter(league, g.away, g.level, arms(g.away), league.orgs[g.away].depth[g.level], oa);
   const home = buildLineup(league, g.home, g.level, spAway?.throws ?? 'R', spHome ?? undefined);
   const away = buildLineup(league, g.away, g.level, spHome?.throws ?? 'R', spAway ?? undefined);
   if (home) home.opener = !!oh.bullpenDay;
@@ -138,6 +146,30 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
       const e = statEntry(p, league.season, g.level, orgId).bat;
       for (const k in line) e[k as keyof typeof line] += line[k as keyof typeof line];
     }
+    // MLB splits: vs hand and RISP from the engine; home/away and month from the game.
+    if (g.level === 'MLB' && !g.playoff) {
+      const month = `m${dayToDate(league.season, g.day).getUTCMonth() + 1}`;
+      const merge = (rec: Record<string, Record<string, number>>, key: string, line: Record<string, number>) => {
+        const acc = (rec[key] ??= Object.fromEntries(Object.keys(line).map((k) => [k, 0])));
+        for (const k in line) acc[k] += line[k];
+      };
+      for (const { p, orgId, line } of out.batLines) {
+        const s = (statEntry(p, league.season, 'MLB', orgId).splits ??= {});
+        const rec = (s.bat ??= {}) as unknown as Record<string, Record<string, number>>;
+        const l = line as unknown as Record<string, number>;
+        merge(rec, orgId === g.home ? 'home' : 'away', l);
+        merge(rec, month, l);
+        for (const [k, v] of Object.entries(out.splits.bat.get(p.id) ?? {})) merge(rec, k, v as unknown as Record<string, number>);
+      }
+      for (const { p, orgId, line } of out.pitLines) {
+        const s = (statEntry(p, league.season, 'MLB', orgId).splits ??= {});
+        const rec = (s.pit ??= {}) as unknown as Record<string, Record<string, number>>;
+        const l = line as unknown as Record<string, number>;
+        merge(rec, orgId === g.home ? 'home' : 'away', l);
+        merge(rec, month, l);
+        for (const [k, v] of Object.entries(out.splits.pit.get(p.id) ?? {})) merge(rec, k, v as unknown as Record<string, number>);
+      }
+    }
     for (const { p, orgId, line } of out.pitLines) {
       const e = statEntry(p, league.season, g.level, orgId).pit;
       for (const k in line) e[k as keyof typeof line] += line[k as keyof typeof line];
@@ -158,7 +190,7 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
   }
   for (const inj of out.injuries) {
     const p = inj.p;
-    if (!p.injury || p.injury.daysLeft < inj.days) p.injury = { name: inj.name, daysLeft: inj.days, totalDays: inj.days };
+    if (!p.injury || p.injury.daysLeft < inj.days) { p.injury = { name: inj.name, daysLeft: inj.days, totalDays: inj.days }; onInjury(league, p); }
     // Minor league injuries are only news when they matter: 40-man players,
     // top prospects, or anything long.
     if (p.orgId === league.userOrgId && (p.level === 'MLB' || p.on40 || inj.days >= 30 || potOvr(p) >= 55)) {
@@ -390,6 +422,8 @@ function finishRegularDay(league: League): DayResult {
   aiExtensions(league);
   aiPositionMoves(league);
   suggestPositionMoves(league);
+  septemberCallups(league);
+  reinjuryCheck(league);
   dailyUpkeep(league);
   if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); hypeWeek(league); }
   league.day++;
@@ -432,6 +466,9 @@ export function startLiveDay(league: League): LiveDay | { stop: string } {
       else playGame(league, g, true);
     }
   } else if (league.phase === 'playoffs') {
+    advancePlayoffRounds(league);
+    const poStop = ensurePlayoffRosters(league);
+    if (poStop) return { stop: poStop };
     for (const { sr, g } of playoffGamesToday(league)) {
       if (g.home === u || g.away === u) {
         game = g;
@@ -505,6 +542,9 @@ export function simOneDay(league: League): DayResult {
     for (const g of games) if (!g.result) playGame(league, g, true);
     return finishRegularDay(league);
   }
+  advancePlayoffRounds(league);
+  const poStop = ensurePlayoffRosters(league);
+  if (poStop) return { stop: poStop };
   playoffDay(league);
   dailyUpkeep(league);
   league.day++;
