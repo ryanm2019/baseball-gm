@@ -3,8 +3,8 @@
 // organizational AI.
 import type { Game, League, Level, PlayoffSeries } from '../types.ts';
 import { LEVELS } from '../types.ts';
-import { buildLineup, pickStarter, postseasonEligible } from './lineup.ts';
-import { simGame } from './game.ts';
+import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from './lineup.ts';
+import { createGame, simGame, type GameEngine, type GameOutput } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
 import { resolveWaivers } from '../rules.ts';
@@ -73,7 +73,8 @@ function updateStanding(league: League, level: Level, orgId: number, won: boolea
   r.last10 = (r.last10 + (won ? 'W' : 'L')).slice(-10);
 }
 
-function playGame(league: League, g: Game, recordStats: boolean): void {
+// Today's lineups for a game, or null if a club can't field a team.
+export function gameLineups(league: League, g: Game): { home: GameLineup; away: GameLineup } | null {
   const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.home].depth[g.level]);
   const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.away].depth[g.level]);
   const home = buildLineup(league, g.home, g.level, spAway?.throws ?? 'R', spHome ?? undefined);
@@ -82,13 +83,26 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
     // Forfeit-style result if a club cannot field a team (should be rare).
     const homeWins = !!home && home.batters.length >= 9;
     g.result = { hs: homeWins ? 9 : 0, as: homeWins ? 0 : 9, innings: 9, wp: null, lp: null, sv: null };
-    if (recordStats) {
+    if (!g.playoff) {
       updateStanding(league, g.level, g.home, homeWins, g.result.hs, g.result.as);
       updateStanding(league, g.level, g.away, !homeWins, g.result.as, g.result.hs);
     }
-    return;
+    return null;
   }
-  const out = simGame(home, away, { gid: g.id, day: league.day, injuryRate: league.settings.injuryRate, ghostRunner: league.settings.extraInningRunner });
+  return { home, away };
+}
+
+export const gameOpts = (league: League, g: Game, live = false) => ({ gid: g.id, day: league.day, injuryRate: league.settings.injuryRate, ghostRunner: league.settings.extraInningRunner && !g.playoff, live });
+
+function playGame(league: League, g: Game, recordStats: boolean): void {
+  const lus = gameLineups(league, g);
+  if (!lus) return;
+  const out = simGame(lus.home, lus.away, gameOpts(league, g));
+  applyGameOutput(league, g, out, recordStats);
+}
+
+// Records a finished game: result, standings, stats, workloads, injuries, box score.
+export function applyGameOutput(league: League, g: Game, out: GameOutput, recordStats: boolean): void {
   g.result = { hs: out.homeRuns, as: out.awayRuns, innings: out.innings, wp: out.wp, lp: out.lp, sv: out.sv };
   if (recordStats) {
     updateStanding(league, g.level, g.home, out.homeRuns > out.awayRuns, out.homeRuns, out.awayRuns);
@@ -107,6 +121,12 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
     p.lastPitchedDay = league.day;
     p.lastPitchCount = line.pitches;
     if (isStarter) p.lastStartDay = league.day;
+  }
+  // Getting up in the bullpen counts as work too.
+  for (const { p, pitches } of out.warmed ?? []) {
+    p.consecutiveDays = p.lastPitchedDay === league.day - 1 ? p.consecutiveDays + 1 : 1;
+    p.lastPitchedDay = league.day;
+    p.lastPitchCount = pitches;
   }
   for (const inj of out.injuries) {
     const p = inj.p;
@@ -240,45 +260,149 @@ function advancePlayoffRounds(league: League): void {
   }
 }
 
-function playoffDay(league: League): void {
+// Today's playoff games, one per active series (reusing any already scheduled today).
+function playoffGamesToday(league: League): { sr: PlayoffSeries; g: Game }[] {
   const po = league.playoffs!;
   advancePlayoffRounds(league);
+  const out: { sr: PlayoffSeries; g: Game }[] = [];
   for (const sr of po.series) {
     if (sr.winner !== null) continue;
     const gameNo = sr.wins[0] + sr.wins[1];
     const highHome = HOME_PATTERN[sr.bestOf][gameNo];
-    const g: Game = {
-      id: league.nextId.game++,
-      level: 'MLB',
-      day: league.day,
-      home: highHome ? sr.high : sr.low,
-      away: highHome ? sr.low : sr.high,
-      result: null,
-      playoff: { round: sr.round, game: gameNo + 1 },
-    };
-    league.schedule.push(g);
-    invalidateScheduleIndex();
-    playGame(league, g, false);
-    const highWon = (g.home === sr.high) === g.result!.hs > g.result!.as;
-    sr.wins[highWon ? 0 : 1]++;
-    const need = Math.ceil(sr.bestOf / 2);
-    if (sr.wins[0] >= need || sr.wins[1] >= need) {
-      sr.winner = sr.wins[0] >= need ? sr.high : sr.low;
-      const w = orgById(league, sr.winner)!;
-      const l = orgById(league, sr.winner === sr.high ? sr.low : sr.high)!;
-      addNews(league, null, `${w.affiliates.MLB.name} beat the ${l.affiliates.MLB.name} ${Math.max(...sr.wins)}-${Math.min(...sr.wins)} (${sr.round === 'WS' ? 'World Series' : `${sr.league} ${sr.round}`}).`);
-      if (sr.round === 'WS') {
-        po.champion = sr.winner;
-        league.champions.push({ season: league.season, level: 'MLB', orgId: sr.winner });
-        addNews(league, null, `The ${w.affiliates.MLB.name} won the ${league.season} World Series!`);
-        onSeasonEnd(league);
-      }
+    const home = highHome ? sr.high : sr.low;
+    const away = highHome ? sr.low : sr.high;
+    let g = league.schedule.find((x) => x.playoff && x.day === league.day && x.home === home && x.away === away && !x.result);
+    if (!g) {
+      g = { id: league.nextId.game++, level: 'MLB', day: league.day, home, away, result: null, playoff: { round: sr.round, game: gameNo + 1 } };
+      league.schedule.push(g);
+      invalidateScheduleIndex();
     }
+    out.push({ sr, g });
+  }
+  return out;
+}
+
+function resolvePlayoffGame(league: League, sr: PlayoffSeries, g: Game): void {
+  const po = league.playoffs!;
+  const highWon = (g.home === sr.high) === g.result!.hs > g.result!.as;
+  sr.wins[highWon ? 0 : 1]++;
+  const need = Math.ceil(sr.bestOf / 2);
+  if (sr.wins[0] >= need || sr.wins[1] >= need) {
+    sr.winner = sr.wins[0] >= need ? sr.high : sr.low;
+    const w = orgById(league, sr.winner)!;
+    const l = orgById(league, sr.winner === sr.high ? sr.low : sr.high)!;
+    addNews(league, null, `${w.affiliates.MLB.name} beat the ${l.affiliates.MLB.name} ${Math.max(...sr.wins)}-${Math.min(...sr.wins)} (${sr.round === 'WS' ? 'World Series' : `${sr.league} ${sr.round}`}).`);
+    if (sr.round === 'WS') {
+      po.champion = sr.winner;
+      league.champions.push({ season: league.season, level: 'MLB', orgId: sr.winner });
+      addNews(league, null, `The ${w.affiliates.MLB.name} won the ${league.season} World Series!`);
+      onSeasonEnd(league);
+    }
+  }
+}
+
+function playoffDay(league: League): void {
+  for (const { sr, g } of playoffGamesToday(league)) {
+    playGame(league, g, false);
+    resolvePlayoffGame(league, sr, g);
   }
 }
 
 export interface DayResult {
   stop: string | null;
+}
+
+// Before first pitch: the draft, deadline strategy, and every club fixing its roster.
+function beginRegularDay(league: League): string | null {
+  // Amateur draft at the All-Star break.
+  if (league.day === league.settings.draftDay) {
+    if (!league.draft || league.draft.season !== league.season) league.draft = createDraft(league);
+    if (!league.draft.done && advanceDraft(league)) return "You're on the clock in the amateur draft. Make your pick on the Draft page.";
+  }
+  if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
+  // Clubs decide whether to buy or sell as the deadline approaches.
+  if ([95, 110, 120].includes(league.day)) updateStrategies(league, true);
+  // Clubs fix their rosters (including moves the user just made) before first pitch.
+  for (const org of league.orgs) manageOrg(league, org);
+  const issues = userRosterIssues(league);
+  return issues.length ? issues.join(' ') : null;
+}
+
+// After the games: markets, upkeep, the calendar.
+function finishRegularDay(league: League): DayResult {
+  faDay(league);
+  ifaDay(league);
+  tradeDay(league);
+  dailyUpkeep(league);
+  league.day++;
+  const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
+  if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
+  return { stop: ownerCheckin(league) };
+}
+
+// ---------- live games ----------
+
+export interface LiveDay {
+  game: Game;
+  engine: GameEngine;
+  userSide: 0 | 1; // 0 = away, 1 = home
+  series?: PlayoffSeries;
+}
+
+// Whether the user's MLB club plays today (and the game hasn't been played).
+export function hasUserGameToday(league: League): boolean {
+  const u = league.userOrgId;
+  if (league.phase === 'regular') return gamesOn(league, league.day).some((g) => g.level === 'MLB' && !g.result && (g.home === u || g.away === u));
+  if (league.phase === 'playoffs' && league.playoffs) {
+    advancePlayoffRounds(league);
+    return league.playoffs.series.some((sr) => sr.winner === null && (sr.high === u || sr.low === u));
+  }
+  return false;
+}
+
+// Plays everything else today and sets up the user's game to be managed live.
+export function startLiveDay(league: League): LiveDay | { stop: string } {
+  const u = league.userOrgId;
+  let game: Game | undefined;
+  let series: PlayoffSeries | undefined;
+  if (league.phase === 'regular') {
+    const stop = beginRegularDay(league);
+    if (stop) return { stop };
+    for (const g of gamesOn(league, league.day)) {
+      if (g.result) continue;
+      if (g.level === 'MLB' && (g.home === u || g.away === u)) game = g;
+      else playGame(league, g, true);
+    }
+  } else if (league.phase === 'playoffs') {
+    for (const { sr, g } of playoffGamesToday(league)) {
+      if (g.home === u || g.away === u) {
+        game = g;
+        series = sr;
+      } else {
+        playGame(league, g, false);
+        resolvePlayoffGame(league, sr, g);
+      }
+    }
+  }
+  if (!game) return { stop: 'You have no game today.' };
+  const lus = gameLineups(league, game);
+  if (!lus) return { stop: 'Your team could not field a lineup.' };
+  const engine = createGame(lus.home, lus.away, gameOpts(league, game, true));
+  return { game, engine, userSide: game.home === u ? 1 : 0, series };
+}
+
+// Records the live game and finishes the day.
+export function endLiveDay(league: League, ld: LiveDay): DayResult {
+  const out = ld.engine.finish();
+  if (league.phase === 'regular') {
+    applyGameOutput(league, ld.game, out, true);
+    return finishRegularDay(league);
+  }
+  applyGameOutput(league, ld.game, out, false);
+  if (ld.series) resolvePlayoffGame(league, ld.series, ld.game);
+  dailyUpkeep(league);
+  league.day++;
+  return { stop: null };
 }
 
 export function simOneDay(league: League): DayResult {
@@ -308,31 +432,11 @@ export function simOneDay(league: League): DayResult {
     return { stop: null };
   }
   if (league.phase === 'regular') {
-    // Amateur draft at the All-Star break.
-    if (league.day === league.settings.draftDay) {
-      if (!league.draft || league.draft.season !== league.season) league.draft = createDraft(league);
-      if (!league.draft.done && advanceDraft(league)) {
-        return { stop: "You're on the clock in the amateur draft. Make your pick on the Draft page." };
-      }
-    }
-    if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
-    // Clubs decide whether to buy or sell as the deadline approaches.
-    if ([95, 110, 120].includes(league.day)) updateStrategies(league, true);
-    // Clubs fix their rosters (including moves the user just made) before first pitch.
-    for (const org of league.orgs) manageOrg(league, org);
-    const issues = userRosterIssues(league);
-    if (issues.length) return { stop: issues.join(' ') };
+    const stop = beginRegularDay(league);
+    if (stop) return { stop };
     const games = gamesOn(league, league.day);
     for (const g of games) if (!g.result) playGame(league, g, true);
-    faDay(league);
-    ifaDay(league);
-    tradeDay(league);
-    dailyUpkeep(league);
-    league.day++;
-    const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
-    if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
-    const checkin = ownerCheckin(league);
-    return { stop: checkin };
+    return finishRegularDay(league);
   }
   playoffDay(league);
   dailyUpkeep(league);

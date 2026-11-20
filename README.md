@@ -83,6 +83,13 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
 - **WAR**: FanGraphs-style WAR for MLB stats (wOBA batting runs, baserunning, fielding from ratings, positional adjustment; FIP-based pitching), shown on player pages.
 - **Transaction Review**: every trade, free agent signing, waiver claim, Rule 5 pick, draft signing and international signing, with WAR acquired vs. WAR given up, salary paid and $/WAR, by team, type and season. Each move has a season-by-season breakdown.
 
+## Live games and bullpen roles
+
+- **Play today's game live** (Play menu) on any day your big league club plays, regular season or playoffs. The rest of the league sims; your game goes one batter at a time with a line score, bases and outs, the batter/pitcher matchup and play-by-play. Auto-play, end of half-inning, or sim to the end with your manager taking over.
+- **Managing**: warm up relievers (about three hitters to get loose; cold relievers struggle at first, and warming up counts as work), bring them in (three-batter minimum), mound visits (five per game; a second in one inning removes the pitcher), intentional walks, pinch hitters and runners, defensive subs and position switches, steal, sacrifice bunt, hit-and-run, infield in. Turn off "Manager makes pitching changes" to make every pitching move yourself. No double switch: with the universal DH, pitchers never bat.
+- **Bullpen roles** on the Depth Chart: closer, two setup men, middle relief, long relief and mop-up. The manager uses them by inning and score.
+- Simulated games run through the same engine, so live and simmed games play the same.
+
 ## Next milestones
 
 1. Contract extensions, rehab assignments, full finances.

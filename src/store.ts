@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from 'react';
 import type { League } from './core/types.ts';
 import { saveLeague } from './db.ts';
-import { simOneDay } from './core/sim/day.ts';
+import { endLiveDay, simOneDay, startLiveDay, type LiveDay } from './core/sim/day.ts';
 import { invalidateScheduleIndex } from './core/sim/day.ts';
 
 interface State {
@@ -12,9 +12,10 @@ interface State {
   progress: string;
   message: string | null;
   confirm: { text: string; resolve: (ok: boolean) => void } | null;
+  live: LiveDay | null; // the user's game being managed live
 }
 
-let state: State = { league: null, version: 0, simming: false, progress: '', message: null, confirm: null };
+let state: State = { league: null, version: 0, simming: false, progress: '', message: null, confirm: null, live: null };
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -41,6 +42,7 @@ export function setLeague(league: League | null): void {
   invalidateScheduleIndex();
   state.league = league;
   state.message = null;
+  state.live = null;
   emit();
 }
 
@@ -68,7 +70,7 @@ export function requestStop(): void {
 // Sims until `until(league)` is true, a stop condition hits, or the user stops.
 export async function sim(days: number | ((l: League) => boolean), label: string): Promise<void> {
   const league = state.league;
-  if (!league || state.simming) return;
+  if (!league || state.simming || state.live) return;
   stopRequested = false;
   state.simming = true;
   state.message = null;
@@ -123,4 +125,39 @@ export function askConfirm(text: string): Promise<boolean> {
     };
     emit();
   });
+}
+
+// ---------- live games ----------
+
+// Plays the rest of today's schedule and opens the user's game for live managing.
+export function startLive(): boolean {
+  const league = state.league;
+  if (!league || state.simming || state.live) return false;
+  const r = startLiveDay(league);
+  if ('stop' in r) {
+    state.message = r.stop;
+    emit();
+    return false;
+  }
+  state.live = r;
+  state.message = null;
+  emit();
+  return true;
+}
+
+// Re-render after a live action (no save until the game is over).
+export function liveChanged(): void {
+  emit();
+}
+
+// Records the finished live game and ends the day.
+export async function finishLive(): Promise<void> {
+  const league = state.league;
+  const live = state.live;
+  if (!league || !live || !live.engine.done()) return;
+  const r = endLiveDay(league, live);
+  state.live = null;
+  state.message = r.stop;
+  emit();
+  await saveLeague(league);
 }

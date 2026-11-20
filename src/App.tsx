@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore, sim, requestStop, setMessage } from './store.ts';
+import { useStore, sim, requestStop, setMessage, startLive } from './store.ts';
 import type { ReactNode } from 'react';
 import { useRoute, href, go } from './router.ts';
 import { dayLabel } from './core/settings.ts';
@@ -37,6 +37,8 @@ import TradingBlock from './ui/pages/TradingBlock.tsx';
 import TradeOffers from './ui/pages/TradeOffers.tsx';
 import TradeMarket from './ui/pages/TradeMarket.tsx';
 import Moves, { MoveDetail } from './ui/pages/Moves.tsx';
+import Live from './ui/pages/Live.tsx';
+import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
@@ -47,7 +49,7 @@ const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
 ];
 
-function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
+function PlayMenu({ league, simming, inLive }: { league: League; simming: boolean; inLive: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -65,7 +67,11 @@ function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
     );
   }
   const items: { label: string; run?: () => void; disabled?: boolean }[] = [];
-  if (league.phase === 'regular') {
+  const playLive = { label: "Play today's game live", run: () => { if (startLive()) go('live'); } };
+  if (inLive) {
+    items.push({ label: 'Return to the live game', run: () => go('live') });
+  } else if (league.phase === 'regular') {
+    if (hasUserGameToday(league)) items.push(playLive);
     const draftLive = league.day === league.settings.draftDay && (!league.draft || league.draft.season !== league.season || !league.draft.done);
     if (draftLive) items.push({ label: 'Go to the draft', run: () => go('draft') });
     items.push({ label: 'One day', run: () => sim(1, 'Playing') });
@@ -78,6 +84,7 @@ function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
     if (league.day < s.septemberDay) items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
     items.push({ label: 'Until end of regular season', run: () => sim((l) => l.phase !== 'regular', 'Playing') });
   } else if (league.phase === 'playoffs') {
+    if (hasUserGameToday(league)) items.push(playLive);
     items.push({ label: 'One day', run: () => sim(1, 'Playoffs') });
     items.push({ label: 'Until end of playoffs', run: () => sim((l) => l.phase !== 'playoffs', 'Playoffs') });
   } else {
@@ -176,6 +183,7 @@ export default function App() {
     case 'trade-market': page = <TradeMarket />; break;
     case 'moves': page = <Moves />; break;
     case 'move': page = <MoveDetail />; break;
+    case 'live': page = <Live />; break;
     default: page = <Dashboard />;
   }
 
@@ -185,7 +193,7 @@ export default function App() {
         <a className="brand" href={href('dashboard')}>
           Baseball GM
         </a>
-        <PlayMenu league={league} simming={st.simming} />
+        <PlayMenu league={league} simming={st.simming} inLive={!!st.live} />
         <div className="status">
           <b>{dayLabel(league.season, league.day)}</b>
           <br />

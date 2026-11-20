@@ -151,3 +151,18 @@ tr.draggable.dragging { opacity: 0.4; }
 tr.drop-target td { border-top: 2px solid #2f6fd6; background: #eef4ff; }
 td.grip { color: #aaa; cursor: grab; user-select: none; width: 14px; }
 tr.selected td { background: #fff7d6; }
+
+/* live game */
+.linescore td, .linescore th { min-width: 22px; text-align: center; }
+.diamond-wrap { display: flex; gap: 16px; align-items: center; margin: 8px 0; }
+.diamond { position: relative; width: 70px; height: 70px; }
+.diamond .base { position: absolute; width: 16px; height: 16px; border: 2px solid #999; background: #fff; transform: rotate(45deg); }
+.diamond .base.on { background: #e8a33d; border-color: #b7791f; }
+.diamond .b2 { left: 27px; top: 4px; }
+.diamond .b3 { left: 4px; top: 27px; }
+.diamond .b1 { left: 50px; top: 27px; }
+.out-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid #999; margin-right: 3px; }
+.out-dot.on { background: #c0392b; border-color: #c0392b; }
+.pbp { max-height: 420px; overflow-y: auto; }
+.pbp > div { padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
+.pbp-half { margin-top: 6px; }
