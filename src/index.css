@@ -189,3 +189,50 @@ th.sortable { cursor: pointer; user-select: none; }
 .inbox-msg { margin: 6px 0; max-width: 820px; }
 .inbox-msg.unread { border-left: 3px solid var(--link); }
 .inbox-msg .btn { margin-right: 4px; }
+
+/* ---------- phones and small tablets ---------- */
+.nav-toggle { display: none; border: 1px solid var(--border); background: #fff; border-radius: 4px; font-size: 18px; line-height: 1; padding: 4px 8px; cursor: pointer; }
+.nav-back { display: none; }
+@media (max-width: 760px) {
+  .topbar { gap: 8px; padding: 0 8px; }
+  .nav-toggle { display: inline-block; }
+  .brand { font-size: 14px; white-space: nowrap; }
+  .status { display: block; font-size: 11px; }
+  .status .full { display: none; }
+  .toplinks { display: none; }
+  .sidebar {
+    display: block; position: fixed; top: 46px; left: 0; bottom: 0; height: auto; width: 250px; z-index: 50;
+    transform: translateX(-105%); transition: transform 0.2s ease; box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+  }
+  .sidebar.open { transform: none; }
+  .sidebar a { padding: 8px 16px; font-size: 15px; }
+  .nav-back { display: block; position: fixed; inset: 46px 0 0 0; background: rgba(0,0,0,0.25); z-index: 45; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 17px; }
+  /* tables scroll sideways instead of stretching the page */
+  table.data { display: block; overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+  table.data th { position: static; }
+  .cards { gap: 12px; }
+  .box { min-width: 0 !important; width: 100%; box-sizing: border-box; }
+  .board-box { min-width: 0; }
+  [style*='min-width'] { min-width: 0 !important; }
+  .kv { font-size: 13px; }
+  .form-row { flex-wrap: wrap; row-gap: 6px; }
+  .form-row input[type='text'], .form-row input:not([type]), .form-row select { max-width: 100%; }
+  .board { grid-template-columns: 1fr; }
+  .board-head { flex-wrap: wrap; }
+  .board-head > select { max-width: none; flex: 1 1 100%; }
+  .board-head > span.nowrap { white-space: normal; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .board-list { max-height: 300px; }
+  .menu { max-width: 92vw; }
+  .modal-back { padding-top: 60px; }
+  .inbox-msg { max-width: 100%; }
+}
+/* touch screens: bigger tap targets */
+@media (pointer: coarse) {
+  .btn { padding: 6px 12px; }
+  .btn-sm { padding: 4px 10px; font-size: 13px; }
+  select, input:not([type='checkbox']):not([type='radio']):not([type='range']) { min-height: 32px; font-size: 14px; }
+  .menu button { padding: 10px 16px; font-size: 15px; }
+}
+td.grip.picked { background: var(--link); color: #fff; }

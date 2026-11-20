@@ -140,10 +140,10 @@ export default function RosterBoard() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   };
 
-  const drop = async (to: Box | 'release') => {
+  const drop = async (to: Box | 'release', pid: number | null = drag) => {
     setOver(null);
-    if (drag === null) return;
-    const p = league.players[drag];
+    if (pid === null) return;
+    const p = league.players[pid];
     setDrag(null);
     if (!p || p.orgId !== league.userOrgId) return;
     const m = to === 'release' ? playerActions(league, p).find((a) => a.key === 'release') ?? null : moveFor(league, p, to);
@@ -227,7 +227,7 @@ export default function RosterBoard() {
     <>
       <h1>Roster Moves</h1>
       <p className="muted small">
-        Drag a player from one box to another to make the move: onto the active roster to recall, select or activate him; onto a minor league box to option or assign; onto the 40-man box to add him; onto an injured list; onto Designated to DFA him (or send a DFA'd player to outright waivers); or onto the release bar. Pick what each box shows from its drop-down. Click a name for his ratings.
+        Drag a player from one box to another to make the move: onto the active roster to recall, select or activate him; onto a minor league box to option or assign; onto the 40-man box to add him; onto an injured list; onto Designated to DFA him (or send a DFA'd player to outright waivers); or onto the release bar. Pick what each box shows from its drop-down. Tap a player to see his ratings; on a phone, tap him and then "Move here" on the box you want.
       </p>
       <p className="muted small">Switch a box to Hitting or Pitching to compare this season's stats at each player's level (wRC+ and FIP are relative to that level); click a column to sort. ^ can refuse an option (5+ years of service) · ° out of options · R5 Rule 5 pick (must stay active) · Opt = option years left · Svc = MLB service years</p>
       <div className="board">
@@ -254,6 +254,7 @@ export default function RosterBoard() {
                     <option value="ratings">Ratings</option><option value="hit">Hitting {season}</option><option value="pit">Pitching {season}</option>
                   </select>{' '}
                   <span className="small muted">{boxCount(league, b, all.length)}</span>
+                  {sel !== null && !all.some((p) => p.id === sel) && <button className="btn btn-sm btn-primary" style={{ marginLeft: 6 }} onClick={() => { void drop(b, sel); setSel(null); }}>Move here</button>}
                 </span>
               </div>
               <div className="board-list">
@@ -300,6 +301,7 @@ export default function RosterBoard() {
         onDrop={(e) => { e.preventDefault(); void drop('release'); }}
       >
         Drop here to release
+        {sel !== null && <> · <button className="btn btn-sm btn-danger" onClick={() => { void drop('release', sel); setSel(null); }}>Release {league.players[sel]?.last}</button></>}
       </div>
       {shown && <div style={{ marginTop: 16 }}><PlayerCard league={league} p={shown} level={shown.level ?? 'AAA'} /></div>}
     </>

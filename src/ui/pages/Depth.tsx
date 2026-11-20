@@ -184,7 +184,7 @@ export default function Depth() {
           >
             Auto-sort order
           </button>
-          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
+          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. On a phone, tap the ⋮⋮ handle on a player, then tap the ⋮⋮ on the spot you want. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
           <table className="data compact">
             <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th></tr></thead>
             <tbody>
@@ -205,7 +205,13 @@ export default function Depth() {
                     className={`draggable${over === i ? ' drop-target' : ''}${drag?.from === 'lineup' && drag.i === i ? ' dragging' : ''}${shown?.id === s.pid ? ' selected' : ''}`}
                   >
                     <td>{i + 1}</td>
-                    <td className="grip" title="Drag">⋮⋮</td>
+                    <td
+                      className={`grip${drag?.from === 'lineup' && drag.i === i ? ' picked' : ''}`}
+                      title="Drag, or tap here and then tap another spot"
+                      onClick={(e) => { e.stopPropagation(); if (drag) drop(i); else setDrag({ from: 'lineup', i, pid: s.pid }); }}
+                    >
+                      ⋮⋮
+                    </td>
                     <td className="l">
                       <select value={s.pid} onChange={(e) => update((x) => { cardOf(x)[i].pid = Number(e.target.value); })}>
                         {hitters.map((h) => <option key={h.id} value={h.id}>{name(h)}{outReason(h) ? ` [${outReason(h)}]` : ''}</option>)}
@@ -236,7 +242,13 @@ export default function Depth() {
                     onClick={pick(h.id)}
                     className={`draggable${drag?.pid === h.id ? ' dragging' : ''}${shown?.id === h.id ? ' selected' : ''}`}
                   >
-                    <td className="grip" title="Drag onto a lineup spot">⋮⋮</td>
+                    <td
+                      className={`grip${drag?.pid === h.id ? ' picked' : ''}`}
+                      title="Drag onto a lineup spot, or tap here and then tap a lineup spot"
+                      onClick={(e) => { e.stopPropagation(); setDrag(drag?.pid === h.id ? null : { from: 'bench', i: -1, pid: h.id }); }}
+                    >
+                      ⋮⋮
+                    </td>
                     <td className="l">{name(h)} {outReason(h) && <span className="tag tag-il">{outReason(h)}</span>}</td>
                   </tr>
                 ))}

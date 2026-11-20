@@ -141,6 +141,10 @@ export default function App() {
   const st = useStore();
   const route = useRoute();
   const league = st.league;
+  // Phones: the sidebar slides in from a menu button and closes on navigation.
+  const [navOpen, setNavOpen] = useState(false);
+  const routeKey = `${route.page}/${route.args.join('/')}`;
+  useEffect(() => setNavOpen(false), [routeKey]);
 
   const dialog = st.confirm && (
     <div className="modal-back">
@@ -219,14 +223,17 @@ export default function App() {
   return wrap(
     <>
       <div className="topbar">
+        <button className="nav-toggle" aria-label="Menu" onClick={() => setNavOpen((x) => !x)}>☰</button>
         <a className="brand" href={href('dashboard')}>
           Baseball GM
         </a>
         <PlayMenu league={league} simming={st.simming} inLive={!!st.live} />
         <div className="status">
           <b>{dayLabel(league.season, league.day)}</b>
-          <br />
-          {league.season} {phaseLabel} · {org.region} {org.name}
+          <span className="full">
+            <br />
+            {league.season} {phaseLabel} · {org.region} {org.name}
+          </span>
         </div>
         {st.simming && <span className="progress">{st.progress}</span>}
         <span className="spacer" />
@@ -237,7 +244,8 @@ export default function App() {
         </span>
       </div>
       <div className="layout">
-        <nav className="sidebar">
+        {navOpen && <div className="nav-back" onClick={() => setNavOpen(false)} />}
+        <nav className={`sidebar${navOpen ? ' open' : ''}`}>
           {SIDEBAR.map((g) => (
             <div key={g.head}>
               <div className="head">{g.head}</div>
