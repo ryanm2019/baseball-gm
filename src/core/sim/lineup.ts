@@ -3,6 +3,7 @@ import type { DepthChart, FieldPos, League, Level, Player, Pos } from '../types.
 import { blendSplits, isPitcher, offense, ovr, posRating } from '../ratings.ts';
 import { activeAt } from '../util.ts';
 import { rand } from '../random.ts';
+import { delegated, managerMods, pitcherInjuryMult, type ManagerMods } from '../staff.ts';
 
 export interface GameLineup {
   orgId: number;
@@ -13,6 +14,8 @@ export interface GameLineup {
   closer: Player | null;
   setup: Player[];
   bench: Player[];
+  mgr: ManagerMods;
+  pInjury: number;
 }
 
 const FILL_ORDER: FieldPos[] = ['C', 'SS', 'CF', '2B', '3B', 'RF', 'LF', '1B'];
@@ -26,7 +29,7 @@ export function restDays(league: League, p: Player): number {
 export function pickStarter(league: League, orgId: number, level: Level, pitchers: Player[], depth: DepthChart | undefined): Player | null {
   const org = league.orgs[orgId];
   let rotation: Player[] = [];
-  if (depth && !depth.auto && depth.rotation.length) {
+  if (depth && !depth.auto && depth.rotation.length && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, org, 'depth'))) {
     rotation = depth.rotation.map((id) => league.players[id]).filter((p) => p && pitchers.includes(p));
   }
   if (rotation.length < 5) {
@@ -100,7 +103,8 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   if (!starter) return null;
 
   let batters: { p: Player; pos: Pos }[] = [];
-  if (depth && !depth.auto && depth.lineup.length === 9) {
+  const manual = !!depth && !depth.auto && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, org, 'depth'));
+  if (manual && depth.lineup.length === 9) {
     const ok = depth.lineup.every((s) => {
       const p = league.players[s.pid];
       return p && hitters.includes(p);
@@ -125,7 +129,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   let closer: Player | null = null;
   let setup: Player[] = [];
   const rps = bullpen.filter((p) => p.pos === 'RP').sort((a, b) => ovr(b) - ovr(a));
-  if (depth && !depth.auto && depth.closer !== null) {
+  if (manual && depth.closer !== null) {
     const c = league.players[depth.closer];
     if (c && bullpen.includes(c)) closer = c;
     setup = depth.setup.map((id) => league.players[id]).filter((p) => p && bullpen.includes(p) && p !== closer);
@@ -133,7 +137,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   if (!closer) closer = rps[0] ?? null;
   if (setup.length < 2) setup = setup.concat(rps.filter((p) => p !== closer && !setup.includes(p)).slice(0, 2 - setup.length));
 
-  return { orgId, level, batters, sp: starter, bullpen, closer, setup, bench };
+  return { orgId, level, batters, sp: starter, bullpen, closer, setup, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) };
 }
 
 export function blendedOffense(p: Player): number {

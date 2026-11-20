@@ -7,6 +7,7 @@ import { askConfirm } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import { dayShort } from '../../core/settings.ts';
 import type { League } from '../../core/types.ts';
+import { migrate } from '../../core/migrate.ts';
 
 function remember(id: string) {
   try {
@@ -34,7 +35,8 @@ export default function Home() {
 
   const open = async (id: string, page = 'dashboard') => {
     setBusy('Loading league…');
-    const l = await loadLeague(id);
+    const raw = await loadLeague(id);
+    const l = raw ? migrate(raw) : undefined;
     setBusy('');
     if (!l) {
       setErr('Could not load that league.');
@@ -78,7 +80,7 @@ export default function Home() {
   const importFile = async (file: File) => {
     try {
       setBusy('Importing…');
-      const l = JSON.parse(await file.text()) as League;
+      const l = migrate(JSON.parse(await file.text()) as League);
       if (!l.orgs || !l.players || !l.settings) throw new Error('Not a Baseball GM league file');
       await saveLeague(l);
       remember(l.id);

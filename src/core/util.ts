@@ -8,16 +8,39 @@ export const pname = (p: Player): string => `${p.first} ${p.last}`;
 
 export const age = (league: League, p: Player): number => league.season - p.born;
 
+// Index of players by organization. Rebuilt whenever a player changes
+// organization (call touchRosters()) or a different league is loaded.
+let idxLeague: League | null = null;
+let idx = new Map<number, Player[]>();
+let dirty = true;
+
+export function touchRosters(): void {
+  dirty = true;
+}
+
+function orgIndex(league: League): Map<number, Player[]> {
+  if (dirty || idxLeague !== league) {
+    idx = new Map();
+    for (const p of Object.values(league.players)) {
+      if (p.orgId === null) continue;
+      const arr = idx.get(p.orgId);
+      if (arr) arr.push(p);
+      else idx.set(p.orgId, [p]);
+    }
+    idxLeague = league;
+    dirty = false;
+  }
+  return idx;
+}
+
 export function playersAt(league: League, orgId: number, level: Level): Player[] {
   const out: Player[] = [];
-  for (const p of Object.values(league.players)) if (p.orgId === orgId && p.level === level) out.push(p);
+  for (const p of orgIndex(league).get(orgId) ?? []) if (p.orgId === orgId && p.level === level) out.push(p);
   return out;
 }
 
 export function orgPlayers(league: League, orgId: number): Player[] {
-  const out: Player[] = [];
-  for (const p of Object.values(league.players)) if (p.orgId === orgId) out.push(p);
-  return out;
+  return (orgIndex(league).get(orgId) ?? []).filter((p) => p.orgId === orgId);
 }
 
 // Players counting against an affiliate's active roster: assigned there and not on an IL.

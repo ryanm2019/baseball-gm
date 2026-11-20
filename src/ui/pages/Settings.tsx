@@ -77,12 +77,7 @@ export default function SettingsPage() {
       <h1>League Settings</h1>
       <p className="muted small">Defaults follow MLB rules for the 2026 season. Changes apply from the next day you play.</p>
       <h2>General</h2>
-      <div className="form-row">
-        <label>
-          <input type="checkbox" checked={s.autoMlbMoves} onChange={(e) => { s.autoMlbMoves = e.target.checked; changed(); }} /> Auto MLB roster moves
-        </label>
-        <span className="muted small">When on, injured MLB players go to the IL and are replaced from your 40-man automatically. When off, the sim stops until your roster is legal.</span>
-      </div>
+      <p className="muted small">Which roster jobs the assistant GM handles for you is set on the <a href="#/staff">Staff</a> page.</p>
       <div className="form-row">
         <label>
           <input type="checkbox" checked={s.extraInningRunner} onChange={(e) => { s.extraInningRunner = e.target.checked; changed(); }} /> Automatic runner on second in extra innings

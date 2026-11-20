@@ -1,14 +1,16 @@
 // New league creation.
-import type { FarmDirector, Level, League, Org, Philosophy, Player, Pos, StandingRow } from './types.ts';
+import type { Level, League, Org, Player, Pos, Staff, StandingRow } from './types.ts';
+import { STAFF_ROLES } from './types.ts';
 import { LEVELS, MINOR_LEVELS } from './types.ts';
 import { ORG_DEFS, buildAffiliates } from './teams.ts';
 import { defaultSettings } from './settings.ts';
 import { generatePlayer } from './playerGen.ts';
 import { clamp, normal, rand, randInt, choice } from './random.ts';
+import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
 import { initialMLContract, milbContract, roundSalary } from './contracts.ts';
+import { generateDraftClass } from './draft.ts';
 import { ovr, potOvr } from './ratings.ts';
 import { buildSchedule } from './schedule.ts';
-import { randomStaffName } from './names.ts';
 
 const MLB_HITTERS: Pos[] = ['C', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SS', 'CF', '3B'];
 const MINOR_HITTERS: Pos[] = ['C', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', '1B', 'SS', '2B', 'CF', 'RF'];
@@ -24,25 +26,6 @@ const COMPOSITION: Record<Level, { sp: number; rp: number; hitters: Pos[] }> = {
 };
 
 export const emptyStanding = (): StandingRow => ({ w: 0, l: 0, rs: 0, ra: 0, streak: 0, last10: '' });
-
-export function makeFarmDirector(id: number, orgId: number | null): FarmDirector {
-  const { first, last } = randomStaffName();
-  const development = clamp(Math.round(normal(50, 10)), 25, 80);
-  const evaluation = clamp(Math.round(normal(50, 10)), 25, 80);
-  const philosophy: Philosophy = choice(['Conservative', 'Balanced', 'Balanced', 'Aggressive']);
-  return {
-    id,
-    first,
-    last,
-    age: randInt(34, 68),
-    development,
-    evaluation,
-    philosophy,
-    salary: roundSalary(200_000 + (development + evaluation - 80) * 9_000 + rand() * 60_000),
-    exp: 0,
-    orgId,
-  };
-}
 
 export interface NewLeagueOptions {
   name: string;
@@ -62,7 +45,13 @@ export function createLeague(opts: NewLeagueOptions): League {
     league: d.league,
     div: d.div,
     affiliates: affiliates[i],
-    farmDirectorId: null,
+    market: d.market,
+    staff: {},
+    agm: defaultAgm(),
+    tenderPlan: {},
+    optionPlan: {},
+    qoPlan: {},
+    rule5Targets: [],
     control: { MLB: 'Manual', AAA: 'FD', AA: 'FD', 'A+': 'FD', A: 'FD', CPX: 'FD', DSL: 'FD' },
     depth: {},
     rotationIndex: {},
@@ -135,16 +124,16 @@ export function createLeague(opts: NewLeagueOptions): League {
     }
   }
 
-  // Farm directors: one per org plus an unemployed pool you can hire from.
-  const farmDirectors: FarmDirector[] = [];
+  // Staff: every org gets a full staff; unemployed candidates fill the hiring pool.
+  const staff: Staff[] = [];
   let sid = 1;
   for (const org of orgs) {
-    const fd = makeFarmDirector(sid++, org.id);
-    fd.exp = season + randInt(0, 3);
-    farmDirectors.push(fd);
-    org.farmDirectorId = fd.id;
+    for (const role of STAFF_ROLES) {
+      const st = makeStaff(sid++, role, org.id, season);
+      staff.push(st);
+      org.staff[role] = st.id;
+    }
   }
-  for (let i = 0; i < 16; i++) farmDirectors.push(makeFarmDirector(sid++, null));
 
   // A small pool of free agents (released vets, unsigned minor leaguers).
   for (let i = 0; i < 90; i++) {
@@ -165,7 +154,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 1,
+    version: 2,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),
@@ -177,7 +166,7 @@ export function createLeague(opts: NewLeagueOptions): League {
     settings,
     orgs,
     players,
-    farmDirectors,
+    staff,
     schedule,
     standings,
     transactions: [],
@@ -189,7 +178,23 @@ export function createLeague(opts: NewLeagueOptions): League {
     lastFdRun: -99,
     waiverClaims: {},
     lastDevDay: 0,
+    events: [],
+    draft: null,
+    intl: { pools: {}, spent: {}, open: false },
+    cbtHistory: [],
+    wsEndDay: null,
   };
+  refreshStaffPool(league);
+  // Some veteran deals carry a club or player option on the year after they end.
+  for (const p of Object.values(players)) {
+    p.signAge = Math.max(16, season - p.proSeasons - p.born);
+    const c = p.contract;
+    if (c.type === 'ML' && c.oneWay && c.salary > 4e6 && rand() < 0.22) {
+      const club = rand() < 0.75;
+      c.option = { type: club ? 'club' : 'player', season: c.exp + 1, salary: roundSalary(c.salary * (0.9 + rand() * 0.3)), buyout: club ? roundSalary(c.salary * 0.08) : 0 };
+    }
+  }
+  generateDraftClass(league, season);
   return league;
 }
 

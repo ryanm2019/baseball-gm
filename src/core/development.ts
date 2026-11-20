@@ -3,13 +3,14 @@
 // organization's farm director all change the pace.
 import type { BatSplit, DefRatings, League, Player } from './types.ts';
 import { clamp, normal } from './random.ts';
-import { isPitcher } from './ratings.ts';
+import { isPitcher, ovr } from './ratings.ts';
+import { devMultiplier } from './staff.ts';
 
 function ageRate(a: number): number {
-  if (a <= 20) return 0.09;
-  if (a <= 23) return 0.07;
-  if (a <= 26) return 0.045;
-  if (a <= 29) return 0.02;
+  if (a <= 20) return 0.042;
+  if (a <= 23) return 0.034;
+  if (a <= 26) return 0.024;
+  if (a <= 29) return 0.01;
   return 0;
 }
 
@@ -19,9 +20,8 @@ function decline(a: number): number {
 
 export function developPlayer(league: League, p: Player): void {
   const a = league.season - p.born;
-  const fd = p.orgId === null ? undefined : league.farmDirectors.find((f) => f.orgId === p.orgId);
   const we = 0.7 + (0.6 * (p.personality.workEthic - 20)) / 60;
-  const fdm = 0.85 + (0.3 * ((fd?.development ?? 40) - 20)) / 60;
+  const fdm = devMultiplier(league, p);
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
   const rate = ageRate(a) * we * fdm * playing;
@@ -68,5 +68,45 @@ export function monthlyDevelopment(league: League): void {
   for (const p of Object.values(league.players)) {
     if (p.orgId === null) continue;
     developPlayer(league, p);
+  }
+}
+
+// Once a year, potential itself moves: some prospects break out, more of them
+// stall. Keeps "potential" an estimate rather than a promise.
+export function yearlyPotentialDrift(league: League, p: Player): void {
+  const a = league.season - p.born;
+  if (a > 27) return;
+  const d = normal(-0.9, 2.6) + (p.personality.workEthic - 50) / 30;
+  const bump = (cur: number, pot: number) => clamp(Math.max(cur, pot + d), 15, 85);
+  if (isPitcher(p)) {
+    p.pot.stuff = bump(p.ratings.pit.stuff, p.pot.stuff);
+    p.pot.movement = bump(p.ratings.pit.movement, p.pot.movement);
+    p.pot.control = bump(p.ratings.pit.control, p.pot.control);
+  } else {
+    const keys: (keyof BatSplit)[] = ['babip', 'avoidK', 'gap', 'power', 'eye'];
+    for (const k of keys) p.pot.bat[k] = bump(0.7 * p.ratings.vR[k] + 0.3 * p.ratings.vL[k], p.pot.bat[k]);
+  }
+}
+
+// Keeps the 20-80 scale anchored: average MLB player stays a 50. Shifts every
+// rating (current and potential) halfway toward that target each winter.
+export function recenterRatings(league: League): void {
+  const mlb = Object.values(league.players).filter((p) => p.level === 'MLB' && p.orgId !== null);
+  if (mlb.length < 100) return;
+  const hit = mlb.filter((p) => !isPitcher(p));
+  const pit = mlb.filter(isPitcher);
+  const mean = (ps: Player[]) => ps.reduce((t, p) => t + ovr(p), 0) / Math.max(1, ps.length);
+  const dh = (50 - mean(hit)) * 0.5;
+  const dp = (50 - mean(pit)) * 0.5;
+  for (const p of Object.values(league.players)) {
+    if (p.retired) continue;
+    if (isPitcher(p)) {
+      for (const k of ['stuff', 'movement', 'control'] as const) {
+        p.ratings.pit[k] += dp;
+        p.pot[k] += dp;
+      }
+    } else {
+      for (const s of [p.ratings.vL, p.ratings.vR, p.pot.bat]) for (const k of Object.keys(s) as (keyof BatSplit)[]) s[k] += dh / 0.85;
+    }
   }
 }

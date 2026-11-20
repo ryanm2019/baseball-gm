@@ -9,6 +9,10 @@ import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitch
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
 import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
+import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
+import { faDay } from '../freeAgency.ts';
+import { ifaDay } from '../intl.ts';
+import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
 import { isPitcher } from '../ratings.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
@@ -45,7 +49,8 @@ export function userRosterIssues(league: League): string[] {
   if (active.filter((p) => !isPitcher(p) && !p.injury).length < 9) issues.push('Not enough healthy position players on the MLB roster.');
   const f = fortyMan(league, org).length;
   if (f > league.settings.fortyMax) issues.push(`40-man roster has ${f} players (max ${league.settings.fortyMax}).`);
-  for (const p of active) if (p.injury) issues.push(`${pname(p)} is injured (${p.injury.daysLeft} days) and still on the active roster.`);
+  // Day-to-day injuries (3 days or fewer) can stay on the active roster.
+  for (const p of active) if (p.injury && p.injury.daysLeft >= 4) issues.push(`${pname(p)} is injured (${p.injury.daysLeft} days) and still on the active roster.`);
   for (const level of LEVELS) {
     if (level === 'MLB' || isManaged(league, league.orgs[org], level)) continue;
     const n = activeAt(league, org, level).length;
@@ -114,6 +119,7 @@ function dailyUpkeep(league: League): void {
   const s = league.settings;
   const inSeason = league.phase === 'regular';
   for (const p of Object.values(league.players)) {
+    if (p.retired) continue;
     if (p.injury) {
       p.injury.daysLeft--;
       if (p.injury.daysLeft <= 0) {
@@ -139,7 +145,7 @@ function dailyUpkeep(league: League): void {
     if (p.waivers && league.day - p.waivers.day >= s.waiverDays) resolveWaivers(league, p);
   }
   for (const org of league.orgs) manageOrg(league, org);
-  if (league.day - league.lastFdRun >= 7) {
+  if (inSeason && league.day - league.lastFdRun >= 7) {
     for (const org of league.orgs) farmDirectorReview(league, org);
     league.lastFdRun = league.day;
   }
@@ -253,8 +259,8 @@ function playoffDay(league: League): void {
       if (sr.round === 'WS') {
         po.champion = sr.winner;
         league.champions.push({ season: league.season, level: 'MLB', orgId: sr.winner });
-        league.phase = 'offseason';
         addNews(league, null, `The ${w.affiliates.MLB.name} won the ${league.season} World Series!`);
+        onSeasonEnd(league);
       }
     }
   }
@@ -265,19 +271,46 @@ export interface DayResult {
 }
 
 export function simOneDay(league: League): DayResult {
-  if (league.phase === 'offseason') return { stop: 'The season is over. The offseason (arbitration, free agency, the draft, Rule 5) is coming in the next milestone.' };
-  if (league.phase === 'regular') {
-    {
-      // With auto moves on, the assistant fixes the MLB roster; anything left is the user's to fix.
-      if (league.settings.autoMlbMoves) manageOrg(league, league.orgs[league.userOrgId]);
-      const issues = userRosterIssues(league).filter((i) => !league.settings.autoMlbMoves || !i.startsWith('MLB active roster has') || i.includes('max'));
-      if (issues.length && !league.settings.autoMlbMoves) return { stop: issues.join(' ') };
-      if (issues.some((i) => i.includes('(max'))) return { stop: issues.join(' ') };
+  if (league.phase === 'offseason') {
+    const stop = runOffseasonEvents(league);
+    if (stop) return { stop };
+    if (league.phase === 'offseason') {
+      faDay(league);
+      ifaDay(league);
+      offseasonUpkeep(league);
+      league.day++;
     }
+    return { stop: null };
+  }
+  if (league.phase === 'preseason') {
+    faDay(league);
+    ifaDay(league);
+    dailyUpkeep(league);
+    league.day++;
+    if (league.day >= 0) {
+      league.day = 0;
+      league.phase = 'regular';
+      addNews(league, null, `Opening Day of the ${league.season} season!`);
+    }
+    return { stop: null };
+  }
+  if (league.phase === 'regular') {
+    // Amateur draft at the All-Star break.
+    if (league.day === league.settings.draftDay) {
+      if (!league.draft || league.draft.season !== league.season) league.draft = createDraft(league);
+      if (!league.draft.done && advanceDraft(league)) {
+        return { stop: "You're on the clock in the amateur draft. Make your pick on the Draft page." };
+      }
+    }
+    if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
     // Clubs fix their rosters (including moves the user just made) before first pitch.
     for (const org of league.orgs) manageOrg(league, org);
+    const issues = userRosterIssues(league);
+    if (issues.length) return { stop: issues.join(' ') };
     const games = gamesOn(league, league.day);
     for (const g of games) if (!g.result) playGame(league, g, true);
+    faDay(league);
+    ifaDay(league);
     dailyUpkeep(league);
     league.day++;
     const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
@@ -288,6 +321,24 @@ export function simOneDay(league: League): DayResult {
   dailyUpkeep(league);
   league.day++;
   return { stop: null };
+}
+
+function offseasonUpkeep(league: League): void {
+  for (const p of Object.values(league.players)) {
+    if (p.injury) {
+      p.injury.daysLeft--;
+      if (p.injury.daysLeft <= 0) p.injury = null;
+    }
+  }
+  for (const p of Object.values(league.players)) {
+    if (p.waivers && league.day - p.waivers.day >= league.settings.waiverDays) resolveWaivers(league, p);
+  }
+  for (const p of Object.values(league.players)) {
+    if (p.orgId !== null && p.dfa && (p.orgId !== league.userOrgId || league.day - p.dfa.day >= league.settings.dfaDays)) {
+      p.waivers = { day: league.day, fromOrg: p.orgId, type: 'outright' };
+      p.dfa = null;
+    }
+  }
 }
 
 export function nextUserGameDay(league: League): number | null {

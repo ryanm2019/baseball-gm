@@ -4,10 +4,11 @@
 // the move is not allowed, so the UI can show why.
 import type { IlStatus, League, Level, Player } from './types.ts';
 import { MINOR_LEVELS } from './types.ts';
-import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname } from './util.ts';
+import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname, touchRosters } from './util.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { MILB_SALARY, roundSalary, serviceYears } from './contracts.ts';
 import { rand } from './random.ts';
+import { firstContractSeason, openFreeAgent } from './freeAgency.ts';
 
 const lvlName = (league: League, orgId: number, level: Level) => orgById(league, orgId)?.affiliates[level].name ?? level;
 
@@ -17,7 +18,9 @@ export function optionYearAvailable(league: League, p: Player): boolean {
   const s = league.settings;
   // Once an option year has been charged this season, further options are free.
   if (p.optionDaysThisSeason >= s.optionDaysToUseYear) return true;
-  return p.optionsUsed < s.optionYears;
+  // A fourth option year goes to players who used all three before completing five pro seasons.
+  const fourth = p.optionsUsed >= s.optionYears && p.proSeasons < 5 ? 1 : 0;
+  return p.optionsUsed < s.optionYears + fourth;
 }
 
 export function canOption(league: League, p: Player): string | null {
@@ -25,6 +28,7 @@ export function canOption(league: League, p: Player): string | null {
   if (!p.on40) return 'Not on the 40-man roster';
   if (p.level !== 'MLB') return 'Not on the MLB roster';
   if (p.il) return 'On the injured list';
+  if (p.rule5 && p.rule5.season === league.season) return 'Rule 5 pick: must stay on the MLB roster (DFA to offer him back)';
   if (!optionYearAvailable(league, p)) return 'Out of options';
   if (p.optionsThisSeason >= s.maxOptionsPerSeason) return `Already optioned ${s.maxOptionsPerSeason} times this season`;
   if (serviceYears(p.mlServiceDays, s) >= s.optionConsentServiceYears) return `${s.optionConsentServiceYears}+ years of service: cannot be optioned without consent`;
@@ -136,9 +140,9 @@ function toMLContract(league: League, p: Player): void {
     type: 'ML',
     salary: s.minSalary,
     minorSalary: p.mlServiceDays > 0 ? s.minorSalarySecondML : s.minorSalaryFirstML,
-    exp: league.season,
+    exp: firstContractSeason(league),
     oneWay: false,
-    signed: league.season,
+    signed: firstContractSeason(league),
   };
 }
 
@@ -208,6 +212,7 @@ function remainingOwed(league: League, p: Player): number {
 
 export function makeFreeAgent(league: League, p: Player, reason: string): void {
   const org = orgById(league, p.orgId);
+  const former = p.orgId;
   if (org && p.contract.type === 'ML') {
     const owed = remainingOwed(league, p);
     if (owed > 0) org.deadMoney.push({ pid: p.id, name: pname(p), amount: owed, season: league.season });
@@ -217,12 +222,15 @@ export function makeFreeAgent(league: League, p: Player, reason: string): void {
   }
   if (org) addTransaction(league, org.id, 'Release', `${reason} ${posLabel(p)} ${pname(p)}`, [p.id]);
   p.orgId = null;
+  touchRosters();
   p.level = null;
   p.on40 = false;
   p.dfa = null;
   p.waivers = null;
   p.il = null;
   p.optionedOnDay = null;
+  p.rule5 = null;
+  openFreeAgent(league, p, former);
 }
 
 export function releasePlayer(league: League, p: Player): void {
@@ -242,18 +250,22 @@ export function signFreeAgent(league: League, p: Player, orgId: number, level: L
     if (active.length >= activeLimit(league)) return 'MLB roster is full';
     if (isPitcher(p) && countPitchers(active) >= pitcherLimit(league)) return 'Pitcher limit reached';
     p.orgId = orgId;
+    touchRosters();
     p.on40 = true;
     p.level = 'MLB';
     p.contract = { type: 'ML', salary: s.minSalary, minorSalary: s.minorSalarySecondML, exp: league.season, oneWay: false, signed: league.season };
+    p.fa = null;
     addTransaction(league, orgId, 'Sign', `Signed ${posLabel(p)} ${pname(p)} to a major league contract`, [p.id]);
     return null;
   }
   if (level === 'MLB') return 'Minor league deals go to an affiliate';
   if (activeAt(league, orgId, level).length >= s.milbActiveMax[level]) return `${level} roster is full`;
   p.orgId = orgId;
+  touchRosters();
   p.on40 = false;
   p.level = level;
   p.contract = { type: 'MiLB', salary: MILB_SALARY[level], minorSalary: MILB_SALARY[level], exp: league.season, oneWay: false, signed: league.season };
+  p.fa = null;
   addTransaction(league, orgId, 'Sign', `Signed ${posLabel(p)} ${pname(p)} to a minor league contract, assigned to ${lvlName(league, orgId, level)}`, [p.id]);
   return null;
 }
@@ -307,6 +319,7 @@ export function resolveWaivers(league: League, p: Player): void {
   if (claimer !== null) {
     const fromName = orgById(league, from)?.affiliates.MLB.name ?? '';
     p.orgId = claimer;
+    touchRosters();
     p.on40 = true;
     p.waivers = null;
     p.dfa = null;
@@ -322,6 +335,19 @@ export function resolveWaivers(league: League, p: Player): void {
     return;
   }
   // Cleared waivers.
+  if (p.rule5 && p.rule5.season === league.season) {
+    const back = p.rule5.fromOrg;
+    p.orgId = back;
+    touchRosters();
+    p.on40 = false;
+    p.waivers = null;
+    p.dfa = null;
+    p.rule5 = null;
+    p.level = 'AAA';
+    p.contract = { type: 'MiLB', salary: MILB_SALARY.AAA, minorSalary: MILB_SALARY.AAA, exp: league.season, oneWay: false, signed: league.season };
+    addTransaction(league, from, 'Rule 5', `Rule 5 pick ${posLabel(p)} ${pname(p)} cleared waivers and was returned to the ${orgById(league, back)!.affiliates.MLB.name}`, [p.id]);
+    return;
+  }
   if (w.type === 'release') {
     makeFreeAgent(league, p, 'Released');
     return;

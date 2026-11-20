@@ -201,6 +201,36 @@ export default function PlayerPage() {
                 ? `${fmtMoney(p.contract.salary)}/yr through ${p.contract.exp} (${p.contract.oneWay ? 'one-way' : `split, ${fmtMoney(p.contract.minorSalary)} in minors`})`
                 : `Minor league deal (${fmtMoney(p.contract.salary)})`}
             </div>
+            {p.contract.option && (
+              <>
+                <div>{p.contract.option.type === 'club' ? 'Club' : 'Player'} option</div>
+                <div>{p.contract.option.season}: {fmtMoney(p.contract.option.salary)}{p.contract.option.buyout ? ` (${fmtMoney(p.contract.option.buyout)} buyout)` : ''}</div>
+              </>
+            )}
+            {p.arb && (
+              <>
+                <div>Arbitration</div>
+                <div>{p.arb.settled !== null ? `${p.arb.result}: ${fmtMoney(p.arb.settled)}` : `Projected ${fmtMoney(p.arb.projected)}`}</div>
+              </>
+            )}
+            {p.rule5 && (
+              <>
+                <div>Rule 5</div>
+                <div>Selected from the {orgById(league, p.rule5.fromOrg)?.affiliates.MLB.name}; must stay on the MLB roster in {p.rule5.season}</div>
+              </>
+            )}
+            {p.fa && p.orgId === null && (
+              <>
+                <div>Free agent</div>
+                <div>Asking {p.fa.asking.years} yr × {fmtMoney(p.fa.asking.aav)}; {p.fa.offers.length} offer{p.fa.offers.length === 1 ? '' : 's'}{p.fa.qo ? '; declined a qualifying offer' : ''} · <a href={href('free-agents')}>make an offer</a></div>
+              </>
+            )}
+            {p.draft && (
+              <>
+                <div>Drafted</div>
+                <div>{p.draft.year}, round {p.draft.round} (#{p.draft.pick}) by {orgById(league, p.draft.orgId)?.abbrev}{p.contract.bonus ? `, ${fmtMoney(p.contract.bonus)} bonus` : ''}</div>
+              </>
+            )}
             <div>40-man roster</div><div>{p.on40 ? 'Yes' : 'No'}</div>
             <div>MLB service</div><div>{serviceLabel(p.mlServiceDays, s)} ({serviceClass(p, s)}), {p.serviceThisSeason} days this season</div>
             <div>Option years</div>

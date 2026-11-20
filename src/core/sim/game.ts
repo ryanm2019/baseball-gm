@@ -177,6 +177,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
   const injuries: InjuryEvent[] = [];
   const injured = new Set<number>();
 
+  const mgrOf = (p: Player) => (home.sp === p || home.bullpen.includes(p) ? home.mgr : away.mgr);
   const makeApp = (p: Player, isStarter: boolean, inning: number, lead: number, outsAtEntry: number): PitcherApp => {
     const line = emptyPit();
     line.g = 1;
@@ -186,7 +187,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
       line,
       box: { pid: p.id, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, dec: '' },
       isStarter,
-      limit: pitchLimit(p, isStarter, level) * (0.93 + rand() * 0.12),
+      limit: pitchLimit(p, isStarter, level) * (0.93 + rand() * 0.12) * (isStarter ? mgrOf(p).hook : 1),
       faced: new Map(),
       runsThisOuting: 0,
       entryLead: lead,
@@ -309,6 +310,8 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
     const pool = others.length ? others : avail;
     if (inning <= 5) return [...pool].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina)[0];
     if (Math.abs(lead) >= 5) return [...pool].sort((a, b) => a.ratings.pit.stuff - b.ratings.pit.stuff)[0];
+    // Better managers pick the right arm more often.
+    if (rand() > fs.lu.mgr.bullpenSkill) return pool[Math.floor(rand() * pool.length)];
     return [...pool].sort((a, b) => b.ratings.pit.stuff + b.ratings.pit.control - (a.ratings.pit.stuff + a.ratings.pit.control))[0];
   };
 
@@ -333,7 +336,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
       if (a.runsThisOuting >= 5 && inning >= 3 && rand() < 0.5) return true;
       if (inning >= 6 && pc > a.limit * 0.82 && bases.some(Boolean) && rand() < 0.35) return true;
       const tto = a.faced.get(fs === H ? A.order[A.next].p.id : H.order[H.next].p.id) ?? 0;
-      if (tto >= 3 && inning >= 6 && rand() < 0.3) return true;
+      if (tto >= 3 && inning >= 6 && rand() < fs.lu.mgr.ttoPull) return true;
       return false;
     }
     if (pc >= a.limit) return true;
@@ -361,7 +364,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
     app.line.pitches += n;
     app.box.pitches += n;
     // per-pitch injury risk
-    const pr = 0.00017 * opts.injuryRate * app.p.injuryProne * n;
+    const pr = 0.00017 * opts.injuryRate * app.p.injuryProne * n * (home.sp === app.p || home.bullpen.includes(app.p) ? home.pInjury : away.pInjury);
     if (!injured.has(app.p.id) && rand() < pr) {
       const inj = rollInjury(true);
       injured.add(app.p.id);
@@ -400,7 +403,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
     // stolen base attempts
     if (bases[0] && !bases[1] && outs < 2) {
       const r = bases[0];
-      const att = clamp(0.17 * env.sb * sc(r.p.ratings.run.steal, 0.45), 0.004, 0.45);
+      const att = clamp(0.17 * env.sb * bs.lu.mgr.steal * sc(r.p.ratings.run.steal, 0.45), 0.004, 0.45);
       if (rand() < att) {
         addPitches(app, 1 + (rand() < 0.5 ? 1 : 0));
         const cArm = fs.catcher ? fs.catcher.ratings.def.cArm : 40;

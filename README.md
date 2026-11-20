@@ -43,8 +43,21 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
   - One-way vs. split contracts and dead money.
   - CBT payroll projection with first, second and third-time payer base rates and tier surcharges.
 
+## Milestone 2: staff, offseason, draft
+
+- **Staff**: assistant GM, manager, pitching coach, hitting coach and farm director, each with ratings, a salary and a contract. Hire, fire and extend them; AI clubs replace theirs.
+  - Manager style and tactics change starter hooks, bullpen choices and steals.
+  - Coaches speed up MLB player development, and the pitching coach's health rating lowers MLB pitcher injuries.
+  - **Assistant GM duties** are switchable one by one: injuries, roster moves, depth chart, options and qualifying offers, tenders, arbitration, Rule 5 protection and picks, minor league free agents, the draft, and international signings. Anything you keep, the sim stops for.
+- **Offseason calendar**: options and qualifying offers, free agency, qualifying-offer responses, Rule 5 protection (Nov 18), non-tenders (Nov 22), the Rule 5 draft (Dec 10), the international class (Dec 15), arbitration exchange (Jan 9) and hearings (Feb 5), the international signing period (Jan 15), then spring training and Opening Day.
+- **Free agency with competing offers**: players ask for years and dollars. AI clubs bid based on need and budget, and you can bid too. Each player decides on his own timeline, weighing money, years, how good the team is and loyalty. A player who declined a qualifying offer costs his new team a second-round pick and gives his old team a compensation pick.
+- **Arbitration**: Super Two (top 22% of the 2-year class), projected salaries (no more than a 20% cut), filed figures, settlements and hearings.
+- **Rule 5**: eligibility after 4 or 5 pro seasons depending on signing age; picks must stay on the MLB roster or be offered back.
+- **July amateur draft**: lottery for the top 6 picks, 20 rounds, slot values and bonus pools (up to 5% over is allowed), and a signing deadline.
+- **International amateurs**: bonus pools by market size, a class of 16-17 year olds and AI signings.
+- **Winter**: aging, development, potential that drifts (breakouts and busts), retirements, the 4th option year, luxury tax payer streaks, and rating re-centering so 50 stays MLB average.
+
 ## Next milestones
 
-1. Offseason: aging and development, arbitration (including Super Two), non-tenders, free agency with player mood, extensions, the Rule 5 draft, the amateur draft with bonus pools, international signing pools, minor league free agency, and qualifying offers.
-2. Trades, with AI built on surplus value.
-3. Coaches, scouting director, rehab assignments, a fourth option year, and a full finance model.
+1. Trades, with AI built on surplus value, plus trade offers in the assistant GM's duties.
+2. Contract extensions, rehab assignments, scouting director, full finances.

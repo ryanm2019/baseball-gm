@@ -54,6 +54,8 @@ export default function Depth() {
 
   const save = (auto: boolean) => {
     org.depth[level] = { ...d, auto };
+    // A manual MLB chart means you, not the assistant GM, set the lineup.
+    if (level === 'MLB') org.agm.depth = auto;
     setDraft(null);
     changed();
   };

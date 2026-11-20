@@ -1,0 +1,18 @@
+import { createLeague } from '../src/core/league.ts';
+import { simOneDay } from '../src/core/sim/day.ts';
+import { advanceDraft, availableProspects, poolSpent, poolTotal } from '../src/core/draft.ts';
+import { ovr, potOvr } from '../src/core/ratings.ts';
+const L = createLeague({ name: 't', userOrgIndex: 28, season: 2027 });
+console.log('class size', availableProspects(L).length);
+while (L.day < L.settings.draftDay) simOneDay(L);
+const r = simOneDay(L); console.log('stop', r.stop?.slice(0, 40), 'avail', availableProspects(L).length, 'index', L.draft!.index, '/', L.draft!.picks.length);
+advanceDraft(L, true);
+const d = L.draft!;
+console.log('done', d.done, 'index', d.index, 'made', d.picks.filter(p => p.pid !== null).length, 'avail left', availableProspects(L).length);
+console.log('lottery', d.lottery.map(x => `${L.orgs[x.orgId].abbrev}#${x.pick}(from ${x.from})`).join(' '));
+const top = d.picks.slice(0, 10).map(pk => { const p = L.players[pk.pid!]; return `${pk.pick}. ${L.orgs[pk.orgId].abbrev} ${p.pos} age ${L.season - p.born} ovr ${ovr(p).toFixed(0)} pot ${potOvr(p).toFixed(0)} slot $${(pk.slot / 1e6).toFixed(2)}M ask $${((p.prospect?.asking ?? 0) / 1e6).toFixed(2)}M signed ${pk.signed}`; });
+console.log(top.join('\n'));
+console.log('pool user', (poolTotal(L, 28) / 1e6).toFixed(2), 'spent', (poolSpent(L, 28) / 1e6).toFixed(2));
+const signed = d.picks.filter(p => p.signed).length; console.log('signed', signed);
+for (let i = 0; i < 25; i++) simOneDay(L);
+console.log('after deadline signed', d.picks.filter(p => p.signed).length, 'failed', d.picks.filter(p => p.signed === false).length);

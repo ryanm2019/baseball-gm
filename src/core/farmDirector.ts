@@ -22,19 +22,23 @@ import {
   signFreeAgent,
 } from './rules.ts';
 import { generatePlayer } from './playerGen.ts';
+import { delegated, staffOf } from './staff.ts';
+import { isFreeAgent, isMinorFA } from './freeAgency.ts';
 import { milbContract } from './contracts.ts';
 
 const CHAIN: Level[] = ['DSL', 'CPX', 'A', 'A+', 'AA', 'AAA'];
 const MIN_FILL = 3; // affiliates keep within this many of their max
 
 export function farmDirectorOf(league: League, org: Org): FarmDirector | undefined {
-  return league.farmDirectors.find((f) => f.id === org.farmDirectorId);
+  return staffOf(league, org, 'FD');
 }
 
+// Whether the AI handles roster upkeep at this level. For the user's MLB club
+// that is the assistant GM's "injuries" duty; for affiliates, the farm director.
 export function isManaged(league: League, org: Org, level: Level): boolean {
   if (org.id !== league.userOrgId) return true;
-  if (level === 'MLB') return league.settings.autoMlbMoves;
-  return org.control[level] === 'FD' && org.farmDirectorId !== null;
+  if (level === 'MLB') return delegated(league, org, 'injuries');
+  return org.control[level] === 'FD' && org.staff.FD !== undefined;
 }
 
 function evalSd(league: League, org: Org): number {
@@ -100,11 +104,12 @@ export function manageOrg(league: League, org: Org): void {
     }
   }
 
-  // 3. MLB roster size.
-  if (isManaged(league, org, 'MLB')) {
-    fillMlb(league, org, !isUser);
-    trimMlb(league, org, !isUser);
+  // 3. MLB roster size (and 40-man for clubs whose roster the AI runs).
+  if (!isUser || delegated(league, org, 'roster')) {
+    for (let g = 0; g < 5 && fortyMan(league, org.id).length > league.settings.fortyMax; g++) if (!makeFortyRoom(league, org)) break;
   }
+  if (isManaged(league, org, 'MLB')) fillMlb(league, org, !isUser);
+  if (delegated(league, org, 'roster')) trimMlb(league, org, !isUser);
 
   // 4. DFA and waivers bookkeeping.
   for (const p of players) {
@@ -269,7 +274,7 @@ function balanceAffiliate(league: League, org: Org, level: Level): void {
 
 function signFiller(league: League, org: Org, level: Level, need: 'P' | 'H' | 'C', faOnly = false): boolean {
   const fa = Object.values(league.players)
-    .filter((p) => p.orgId === null && fits(p, need === 'C' ? 'C' : need) && league.season - p.born <= (level === 'DSL' ? 20 : level === 'CPX' ? 23 : 34))
+    .filter((p) => isFreeAgent(p) && isMinorFA(league, p) && fits(p, need === 'C' ? 'C' : need) && league.season - p.born <= (level === 'DSL' ? 20 : level === 'CPX' ? 23 : 34))
     .sort((a, b) => ovr(b) - ovr(a));
   const target = LEVEL_TALENT[level];
   const pick = fa.find((p) => ovr(p) <= target + 4 && ovr(p) >= target - 6);
@@ -371,7 +376,7 @@ export function farmDirectorReview(league: League, org: Org): void {
     addNews(league, org.id, `Farm director ${fd.first} ${fd.last} moved: ${promos.join(', ')}.`);
   }
 
-  if (!isUser) aiMlbReview(league, org);
+  if (delegated(league, org, 'roster')) aiMlbReview(league, org);
 }
 
 // AI clubs swap clearly better AAA 40-man players onto the MLB roster.
@@ -399,23 +404,3 @@ function aiMlbReview(league: League, org: Org): void {
     if (prospect) addTo40(league, prospect);
   }
 }
-
-export function hireFarmDirector(league: League, org: Org, fd: FarmDirector): string | null {
-  if (fd.orgId !== null) return 'Already employed';
-  const cur = farmDirectorOf(league, org);
-  if (cur) cur.orgId = null;
-  fd.orgId = org.id;
-  fd.exp = league.season + 2;
-  org.farmDirectorId = fd.id;
-  addNews(league, org.id, `Hired ${fd.first} ${fd.last} as farm director.`);
-  return null;
-}
-
-export function fireFarmDirector(league: League, org: Org): void {
-  const cur = farmDirectorOf(league, org);
-  if (!cur) return;
-  cur.orgId = null;
-  org.farmDirectorId = null;
-  addNews(league, org.id, `Fired farm director ${cur.first} ${cur.last}. Affiliates now need manual management until a new farm director is hired.`);
-}
-

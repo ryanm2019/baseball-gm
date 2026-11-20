@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, sim, requestStop, setMessage } from './store.ts';
 import type { ReactNode } from 'react';
-import { useRoute, href } from './router.ts';
+import { useRoute, href, go } from './router.ts';
 import { dayLabel } from './core/settings.ts';
 import type { League } from './core/types.ts';
 import Home from './ui/pages/Home.tsx';
@@ -26,11 +26,18 @@ import Playoffs from './ui/pages/Playoffs.tsx';
 import SettingsPage from './ui/pages/Settings.tsx';
 import News from './ui/pages/News.tsx';
 import Prospects from './ui/pages/Prospects.tsx';
+import Offseason from './ui/pages/Offseason.tsx';
+import Tenders from './ui/pages/Tenders.tsx';
+import Rule5 from './ui/pages/Rule5.tsx';
+import International from './ui/pages/International.tsx';
+import Draft from './ui/pages/Draft.tsx';
+import { nextEvent } from './core/offseason.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
+  { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
 ];
 
@@ -53,18 +60,26 @@ function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
   }
   const items: { label: string; run?: () => void; disabled?: boolean }[] = [];
   if (league.phase === 'regular') {
+    const draftLive = league.day === league.settings.draftDay && (!league.draft || league.draft.season !== league.season || !league.draft.done);
+    if (draftLive) items.push({ label: 'Go to the draft', run: () => go('draft') });
     items.push({ label: 'One day', run: () => sim(1, 'Playing') });
     items.push({ label: 'One week', run: () => sim(7, 'Playing') });
     items.push({ label: 'One month', run: () => sim(30, 'Playing') });
-    if (league.day < league.settings.septemberDay) {
-      items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
-    }
+    if (league.day < league.settings.draftDay) items.push({ label: 'Until the draft', run: () => sim((l) => l.day >= l.settings.draftDay, 'Playing') });
+    if (league.day < league.settings.septemberDay) items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
     items.push({ label: 'Until end of regular season', run: () => sim((l) => l.phase !== 'regular', 'Playing') });
   } else if (league.phase === 'playoffs') {
     items.push({ label: 'One day', run: () => sim(1, 'Playoffs') });
     items.push({ label: 'Until end of playoffs', run: () => sim((l) => l.phase !== 'playoffs', 'Playoffs') });
   } else {
-    items.push({ label: 'Offseason: coming in the next milestone', disabled: true });
+    const ev = nextEvent(league);
+    items.push({ label: 'One day', run: () => sim(1, 'Offseason') });
+    items.push({ label: 'One week', run: () => sim(7, 'Offseason') });
+    if (ev) {
+      const n = league.events.length;
+      items.push({ label: `Until ${ev.label.toLowerCase()}`, run: () => sim((l) => l.events.length > n || l.phase !== 'offseason', 'Offseason') });
+    }
+    items.push({ label: 'Until Opening Day', run: () => sim((l) => l.phase === 'regular', 'Offseason') });
   }
   return (
     <div className="dropdown" ref={ref}>
@@ -117,7 +132,7 @@ export default function App() {
   if (!league || route.page === '') return wrap(<Home />);
 
   const org = league.orgs[league.userOrgId];
-  const phaseLabel = league.phase === 'regular' ? 'regular season' : league.phase === 'playoffs' ? 'playoffs' : 'offseason';
+  const phaseLabel = league.phase === 'regular' ? 'regular season' : league.phase === 'playoffs' ? 'playoffs' : league.phase === 'preseason' ? 'spring training' : 'offseason';
   let page;
   switch (route.page) {
     case 'dashboard': page = <Dashboard />; break;
@@ -141,6 +156,11 @@ export default function App() {
     case 'settings': page = <SettingsPage />; break;
     case 'news': page = <News />; break;
     case 'prospects': page = <Prospects />; break;
+    case 'offseason': page = <Offseason />; break;
+    case 'tenders': page = <Tenders />; break;
+    case 'rule5': page = <Rule5 />; break;
+    case 'international': page = <International />; break;
+    case 'draft': page = <Draft />; break;
     default: page = <Dashboard />;
   }
 

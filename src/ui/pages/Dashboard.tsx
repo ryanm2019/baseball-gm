@@ -9,6 +9,7 @@ import { activeAt, fortyMan, orgById, pname } from '../../core/util.ts';
 import { era, fmt3, obp, ops, seasonBat, seasonPit, slg, avg } from '../fmt.tsx';
 import { isPitcher } from '../../core/ratings.ts';
 import { farmDirectorOf } from '../../core/farmDirector.ts';
+import { nextEvent } from '../../core/offseason.ts';
 
 export function divStandings(league: League, org: Org) {
   const st = league.standings.MLB;
@@ -48,6 +49,20 @@ export default function Dashboard() {
   return (
     <>
       <h1>{org.region} {org.name} Dashboard</h1>
+      {league.phase === 'offseason' && (() => {
+        const ev = nextEvent(league);
+        return (
+          <div className="alert alert-info">
+            Offseason. {ev ? <>Next: <b>{ev.label}</b> on {dayShort(league.season, ev.day)}. </> : null}
+            <a href={href('offseason')}>Offseason calendar</a> · <a href={href('free-agents')}>Free agents</a>
+          </div>
+        );
+      })()}
+      {league.phase === 'preseason' && (
+        <div className="alert alert-info">
+          Spring training. Get the MLB roster to {league.settings.activeMax} by Opening Day ({activeAt(league, org.id, 'MLB').length} now). <a href={href('roster')}>Roster</a>
+        </div>
+      )}
       {issues.map((i) => (
         <div key={i} className="alert alert-warn">
           {i} <a href={href('roster')}>Go to roster</a>

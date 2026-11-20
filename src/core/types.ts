@@ -79,6 +79,13 @@ export interface Potential {
 
 export type ContractType = 'ML' | 'MiLB';
 
+export interface ContractOption {
+  type: 'club' | 'player';
+  season: number; // the option year
+  salary: number;
+  buyout: number;
+}
+
 export interface Contract {
   type: ContractType;
   salary: number; // annual MLB salary (dollars). For MiLB deals this is the minor league salary.
@@ -86,6 +93,42 @@ export interface Contract {
   exp: number; // last season of the contract
   oneWay: boolean; // one-way ML contracts pay the MLB salary even in the minors
   signed: number; // season signed
+  option?: ContractOption;
+  bonus?: number; // signing bonus (draft / international)
+}
+
+export interface FaOffer {
+  orgId: number;
+  years: number;
+  aav: number;
+  day: number;
+}
+
+export interface FaStatus {
+  opened: number; // league day the player hit the market
+  decideDay: number;
+  asking: { years: number; aav: number };
+  offers: FaOffer[];
+  formerOrg: number | null;
+  qo: boolean; // declined a qualifying offer (signing team forfeits a pick)
+}
+
+export interface ArbCase {
+  projected: number;
+  player: number | null; // filed figures
+  team: number | null;
+  settled: number | null;
+  result: string | null;
+}
+
+export interface DraftInfo {
+  year: number;
+  college: boolean;
+  slot?: number;
+  asking?: number;
+  orgId?: number; // drafted by, unsigned
+  round?: number;
+  pick?: number;
 }
 
 export interface IlStatus {
@@ -183,6 +226,15 @@ export interface Player {
   proSeasons: number; // seasons since first pro contract
   outrightedBefore: boolean;
   draft: { year: number; round: number; pick: number; orgId: number } | null;
+  prospect?: DraftInfo; // in the upcoming/active amateur draft class
+  ifa?: { year: number; asking: number }; // international amateur, unsigned
+  fa?: FaStatus | null;
+  arb?: ArbCase | null;
+  rule5?: { fromOrg: number; season: number } | null;
+  qoReceived?: boolean;
+  qoPending?: number;
+  signAge?: number;
+  retired?: number;
 
   // pitcher workload
   lastPitchedDay: number;
@@ -195,18 +247,69 @@ export interface Player {
 
 export type Philosophy = 'Conservative' | 'Balanced' | 'Aggressive';
 
-export interface FarmDirector {
+export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD';
+export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD'];
+export const STAFF_NAMES: Record<StaffRole, string> = {
+  AGM: 'Assistant GM',
+  MGR: 'Manager',
+  PC: 'Pitching Coach',
+  HC: 'Hitting Coach',
+  FD: 'Farm Director',
+};
+
+export type ManagerStyle = 'Old school' | 'Balanced' | 'Analytical';
+
+// One shape for every staff role; each role uses a subset of the ratings.
+//  AGM: evaluation, negotiation
+//  MGR: tactics, style (in-game decisions)
+//  PC/HC: development, health (PC only)
+//  FD: development, evaluation, philosophy
+export interface Staff {
   id: number;
+  role: StaffRole;
   first: string;
   last: string;
   age: number;
-  development: number; // 20-80, affects player development speed
-  evaluation: number; // 20-80, how well he judges readiness
+  development: number;
+  evaluation: number;
+  negotiation: number;
+  tactics: number;
+  health: number;
   philosophy: Philosophy;
+  style: ManagerStyle;
   salary: number;
   exp: number;
   orgId: number | null;
 }
+
+export type FarmDirector = Staff;
+
+export type AgmDuty =
+  | 'injuries'
+  | 'roster'
+  | 'depth'
+  | 'options'
+  | 'tender'
+  | 'arbitration'
+  | 'rule5protect'
+  | 'rule5draft'
+  | 'milbfa'
+  | 'draft'
+  | 'ifa';
+
+export const AGM_DUTIES: { key: AgmDuty; label: string; def: boolean }[] = [
+  { key: 'injuries', label: 'Injuries: IL placements, activations and injury call-ups', def: true },
+  { key: 'roster', label: 'MLB roster: call-ups, send-downs and roster limits', def: false },
+  { key: 'depth', label: 'MLB lineups, rotation and bullpen roles', def: true },
+  { key: 'options', label: 'Contract options and qualifying offers', def: false },
+  { key: 'tender', label: 'Tender / non-tender decisions', def: false },
+  { key: 'arbitration', label: 'Arbitration figures and settlements', def: false },
+  { key: 'rule5protect', label: 'Rule 5 protection (40-man adds)', def: false },
+  { key: 'rule5draft', label: 'Rule 5 draft picks', def: false },
+  { key: 'milbfa', label: 'Minor league free agent signings', def: true },
+  { key: 'draft', label: 'Amateur draft picks and signings', def: false },
+  { key: 'ifa', label: 'International amateur signings', def: false },
+];
 
 export interface Affiliate {
   name: string;
@@ -231,7 +334,13 @@ export interface Org {
   league: 'AL' | 'NL';
   div: 'East' | 'Central' | 'West';
   affiliates: Record<Level, Affiliate>;
-  farmDirectorId: number | null;
+  market: number;
+  staff: Partial<Record<StaffRole, number>>;
+  agm: Record<AgmDuty, boolean>;
+  tenderPlan: Record<number, boolean>; // pid -> tender?
+  optionPlan: Record<number, boolean>; // pid -> exercise club option
+  qoPlan: Record<number, boolean>; // pid -> extend a qualifying offer
+  rule5Targets: number[];
   control: Record<Level, Control>;
   depth: Partial<Record<Level, DepthChart>>;
   rotationIndex: Partial<Record<Level, number>>;
@@ -384,8 +493,36 @@ export interface Settings {
   scoutingAccuracy: 'Low' | 'Normal' | 'High' | 'Perfect';
   ratingIncrement: 1 | 5;
   injuryRate: number;
-  autoMlbMoves: boolean;
+  draftDay: number; // regular-season day of the amateur draft (All-Star break)
+  draftSigningDays: number;
+  draftRounds: number;
   extraInningRunner: boolean;
+}
+
+export interface DraftPick {
+  round: number;
+  pick: number; // overall
+  orgId: number;
+  slot: number;
+  pid: number | null;
+  signed: boolean | null;
+}
+
+export interface DraftState {
+  season: number;
+  picks: DraftPick[];
+  index: number; // next pick to make
+  done: boolean;
+  deadline: number; // league day signing deadline
+  pools: Record<number, number>;
+  lottery: { orgId: number; pick: number; from: number }[];
+}
+
+export interface CbtRecord {
+  season: number;
+  orgId: number;
+  cbt: number;
+  tax: number;
 }
 
 export interface League {
@@ -395,13 +532,13 @@ export interface League {
   created: number;
   startYear: number;
   season: number;
-  phase: 'regular' | 'playoffs' | 'offseason';
+  phase: 'preseason' | 'regular' | 'playoffs' | 'offseason';
   day: number;
   userOrgId: number;
   settings: Settings;
   orgs: Org[];
   players: Record<number, Player>;
-  farmDirectors: FarmDirector[];
+  staff: Staff[];
   schedule: Game[];
   standings: Record<Level, Record<number, StandingRow>>;
   transactions: Transaction[];
@@ -413,4 +550,12 @@ export interface League {
   lastFdRun: number;
   waiverClaims: Record<number, number[]>;
   lastDevDay: number;
+  events: string[]; // offseason / calendar events already processed or prompted this cycle
+  draft: DraftState | null;
+  intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean };
+  cbtHistory: CbtRecord[];
+  wsEndDay: number | null;
+  lastStandings?: number[]; // org ids, worst record first
+  lastPlayoffTeams?: number[];
+  draftAdjust?: { comp: number[]; forfeit: number[] };
 }

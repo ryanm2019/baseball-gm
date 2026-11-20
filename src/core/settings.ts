@@ -42,7 +42,9 @@ export function defaultSettings(): Settings {
     scoutingAccuracy: 'Normal',
     ratingIncrement: 5,
     injuryRate: 1,
-    autoMlbMoves: true,
+    draftDay: 108,
+    draftSigningDays: 22,
+    draftRounds: 20,
     extraInningRunner: true,
   };
 }
