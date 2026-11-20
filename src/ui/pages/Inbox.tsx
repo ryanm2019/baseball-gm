@@ -5,6 +5,7 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { href } from '../../router.ts';
 import { answerInbox, moraleLabel } from '../../core/morale.ts';
 import { answerStory } from '../../core/storylines.ts';
+import { answerPosition } from '../../core/positions.ts';
 import { dayShort } from '../../core/settings.ts';
 import { LinkedText } from '../components.tsx';
 
@@ -52,7 +53,11 @@ export default function Inbox() {
                     className="btn btn-sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setMessage(answerStory(league, m, a.key) ?? answerInbox(league, m, a.key));
+                      if (m.kind === 'position') {
+                        m.resolved = a.label;
+                        m.read = true;
+                        setMessage(answerPosition(league, m.pids[0], a.key));
+                      } else setMessage(answerStory(league, m, a.key) ?? answerInbox(league, m, a.key));
                       changed();
                     }}
                   >

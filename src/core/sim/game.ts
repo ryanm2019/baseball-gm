@@ -5,10 +5,11 @@
 // into a matchup probability. Ratings move a player's rate up or down from the
 // league average. Pitch counts are simulated per PA to drive fatigue, pitcher
 // hooks and bullpen workload.
-import type { BatStats, BoxBatLine, BoxPitLine, BoxScore, FieldPos, Level, PenRole, PitStats, Player, Pos } from '../types.ts';
+import type { BatStats, BoxBatLine, BoxPitLine, BoxScore, FieldPos, League, Level, PenRole, PitStats, Player, Pos } from '../types.ts';
 import { moraleBoost } from '../morale.ts';
+import { catcherFatigue } from '../positions.ts';
 import { clamp, normal, rand } from '../random.ts';
-import { posRating } from '../ratings.ts';
+import { defAt } from '../ratings.ts';
 import { emptyBat, emptyPit } from '../util.ts';
 import type { GameLineup } from './lineup.ts';
 
@@ -48,6 +49,9 @@ const sc = (r: number, coef: number) => Math.exp((coef * (r - 50)) / 10);
 // league.offenseAdj so the run environment doesn't drift as players develop.
 let OFFENSE_ADJ = 0;
 export function setOffenseAdj(x: number): void { OFFENSE_ADJ = x; }
+// The league for the game being played (for streak-based fatigue).
+let currentLeague: League = null as unknown as League;
+export function setGameLeague(l: League): void { currentLeague = l; }
 
 const SOFT_AT = 57;
 const soft = (r: number): number => (r <= SOFT_AT ? r : SOFT_AT + (r - SOFT_AT) * 0.4);
@@ -64,6 +68,7 @@ interface Runner {
 }
 
 interface PitcherApp {
+  bulk?: boolean; // the long man behind an opener on a bullpen day
   p: Player;
   line: PitStats;
   box: BoxPitLine;
@@ -83,6 +88,7 @@ interface PitcherApp {
 }
 
 interface Side {
+  bulkDone?: boolean;
   lu: GameLineup;
   order: { p: Player; pos: Pos }[];
   next: number;
@@ -158,7 +164,7 @@ function teamDefense(order: { p: Player; pos: Pos }[]): { def: number; err: numb
   for (const { p, pos } of order) {
     if (pos === 'DH' || pos === 'SP' || pos === 'RP') continue;
     const fp = pos as FieldPos;
-    def += DEF_WEIGHT[fp] * posRating(p.ratings.def, fp);
+    def += DEF_WEIGHT[fp] * defAt(p, fp);
     w += DEF_WEIGHT[fp];
     const d = p.ratings.def;
     err += fp === 'LF' || fp === 'CF' || fp === 'RF' ? d.ofErr : fp === 'C' ? d.cAbil : d.ifErr;
@@ -183,7 +189,8 @@ function teamDefense(order: { p: Player; pos: Pos }[]): { def: number; err: numb
 
 function pitchLimit(p: Player, starter: boolean, level: Level): number {
   const st = p.ratings.pit.stamina;
-  if (starter) return Math.min(PITCH_LIMIT_CAP[level], 60 + (st - 20) * 0.75);
+  // A reliever being stretched out as a starter is held to his current limit.
+  if (starter) return Math.min(PITCH_LIMIT_CAP[level], 60 + (st - 20) * 0.75, p.stretch?.limit ?? 999);
   return Math.max(15, 14 + (st - 20) * 1.0);
 }
 
@@ -311,7 +318,8 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       line,
       box: { pid: p.id, outs: 0, h: 0, r: 0, er: 0, bb: 0, k: 0, hr: 0, pitches: 0, dec: '' },
       isStarter,
-      limit: pitchLimit(p, isStarter, level) * (0.93 + rand() * 0.12) * (isStarter ? mgrOf(p).hook : 1),
+      // An opener goes an inning or two on a bullpen day.
+      limit: isStarter && ((home.sp === p && home.opener) || (away.sp === p && away.opener)) ? 24 + rand() * 12 : pitchLimit(p, isStarter, level) * (0.93 + rand() * 0.12) * (isStarter ? mgrOf(p).hook : 1),
       faced: new Map(),
       runsThisOuting: 0,
       entryLead: lead,
@@ -464,6 +472,10 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       return any.sort((a, b) => a.lastPitchedDay - b.lastPitchedDay)[0] ?? null;
     }
     const has = (p: Player | null) => p !== null && avail.includes(p);
+    if (fs.lu.opener && inning <= 4 && !fs.bulkDone) {
+      const bulk = [...avail].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina)[0];
+      if (bulk) return bulk;
+    }
     const role = (p: Player) => fs.lu.roles.get(p.id) ?? 'MR';
     const best = (ps: Player[]) => [...ps].sort((a, b) => b.ratings.pit.stuff + b.ratings.pit.control - (a.ratings.pit.stuff + a.ratings.pit.control))[0];
     // Pick by role; fall back through the other roles in a sensible order.
@@ -495,6 +507,12 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
   const installPitcher = (fs: Side, fIdx: number, np: Player) => {
     const lead = leadFor(fIdx);
     const app = makeApp(np, false, inning, lead, outs);
+    // Bullpen day: the first arm after the opener is the bulk guy.
+    if (fs.lu.opener && inning <= 4 && !fs.bulkDone) {
+      fs.bulkDone = true;
+      app.bulk = true;
+      app.limit = Math.max(50, pitchLimit(np, true, level) * 0.7);
+    }
     // Brought in before he was loose: worse for his first few hitters.
     const w = warm[fIdx].get(np.id) ?? 0;
     if (live && w < WARM_READY) {
@@ -541,7 +559,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     const a = fs.pitcher;
     const pc = a.line.pitches;
     if (injured.has(a.p.id)) return true;
-    if (a.isStarter) {
+    if (a.isStarter || a.bulk) {
       if (pc >= a.limit) return true;
       if (a.runsThisOuting >= 7) return true;
       if (a.runsThisOuting >= 5 && inning >= 3 && rand() < 0.5) return true;
@@ -660,7 +678,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     // wild pitch / passed ball
     if (bases.some(Boolean)) {
       const cAbil = fs.catcher ? fs.catcher.ratings.def.cAbil : 35;
-      if (rand() < 0.007 * sc(cAbil, -0.2) * sc(pr.control, -0.15)) {
+      if (rand() < 0.007 * sc(cAbil, -0.35) * sc(pr.control, -0.15)) {
         if (bases[2]) {
           const r = bases[2];
           bases[2] = null;
@@ -685,11 +703,16 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     if (app.boost > 0) app.boost--;
 
     const pm = moraleBoost(pit) + form(pit);
-    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold + pm;
-    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm;
+    // Starters' stuff plays up in short relief stints.
+    const playUp = !app.isStarter && pr.stamina >= 50 ? 2 : 0;
+    // Pitch framing: a good receiver steals strikes; a worn-down one gives them back.
+    const cat = fs.catcher;
+    const frame = cat ? (defAt(cat, 'C') - 50) * 0.07 - catcherFatigue(currentLeague, cat) : -1.5;
+    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold + pm + playUp;
+    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm + frame;
     const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5 + pm;
     const raw = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
-    const bm = moraleBoost(batter) + form(batter) + OFFENSE_ADJ;
+    const bm = moraleBoost(batter) + form(batter) + OFFENSE_ADJ - (batter.pos === 'C' ? catcherFatigue(currentLeague, batter) * 0.5 : 0);
     const split = { ...raw, avoidK: soft(raw.avoidK) + bm, eye: soft(raw.eye) + bm, power: soft(raw.power) + bm, babip: soft(raw.babip) + bm, gap: soft(raw.gap) + bm };
     const speed = batter.ratings.run.speed;
 
@@ -985,7 +1008,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
         const rep =
           pos === 'DH' || pos === 'SP' || pos === 'RP'
             ? bench[0]
-            : [...bench].sort((a, b) => posRating(b.ratings.def, pos as FieldPos) - posRating(a.ratings.def, pos as FieldPos))[0];
+            : [...bench].sort((a, b) => defAt(b, pos as FieldPos) - defAt(a, pos as FieldPos))[0];
         const line = emptyBat();
         line.g = 1;
         bs.bat.set(rep.id, { line, box: { pid: rep.id, pos: slot.pos, ab: 0, r: 0, h: 0, rbi: 0, bb: 0, k: 0, hr: 0, d: 0, t: 0 } });

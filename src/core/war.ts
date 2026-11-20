@@ -4,7 +4,7 @@
 //  pitchers: FIP-based runs saved against a replacement-level RA9
 // League constants are derived from each season's own MLB totals.
 import type { BatStats, FieldPos, League, Level, PitStats, Player, StatEntry } from './types.ts';
-import { isPitcher, posRating } from './ratings.ts';
+import { defAt, isPitcher } from './ratings.ts';
 import { emptyBat, emptyPit } from './util.ts';
 
 export interface Ctx {
@@ -94,7 +94,7 @@ export function batWar(p: Player, b: BatStats, ctx: Ctx): number {
   const running = 0.2 * b.sb - 0.41 * b.cs - 0.3 * Math.max(0, b.gidp - b.pa * 0.018);
   const pos = isPitcher(p) ? 'DH' : p.pos;
   const share = b.pa / 650;
-  const fielding = pos === 'DH' ? 0 : (posRating(p.ratings.def, pos as FieldPos) - 50) * 0.3 * share;
+  const fielding = pos === 'DH' ? 0 : (defAt(p, pos as FieldPos) - 50) * 0.3 * share;
   const positional = (POS_RUNS[pos] ?? 0) * share;
   const repl = REPL_PER_PA * b.pa;
   return (batting + running + fielding + positional + repl) / ctx.rpw;

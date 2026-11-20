@@ -4,7 +4,7 @@
 import type { Game, League, Level, PlayoffSeries } from '../types.ts';
 import { LEVELS } from '../types.ts';
 import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from './lineup.ts';
-import { createGame, setOffenseAdj, simGame, type GameEngine, type GameOutput } from './game.ts';
+import { createGame, setGameLeague, setOffenseAdj, simGame, type GameEngine, type GameOutput } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
 import { weeklyFarmReport } from '../farmReport.ts';
@@ -21,6 +21,7 @@ import { inboxStop, moraleWeek } from '../morale.ts';
 import { storylinesWeek } from '../storylines.ts';
 import { selectAllStars } from '../awards.ts';
 import { homeGate, hypeWeek } from '../finances.ts';
+import { afterStart, aiPositionMoves, gainFromGame, springWork, suggestPositionMoves } from '../positions.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { clamp, rand } from '../random.ts';
@@ -46,6 +47,13 @@ export function invalidateScheduleIndex(): void {
 }
 
 // Problems that must be fixed before the user's club can play.
+// Warnings that don't stop the sim.
+export function userRosterWarnings(league: League): string[] {
+  const active = activeAt(league, league.userOrgId, 'MLB');
+  const c = active.filter((p) => p.pos === 'C' && !p.injury).length;
+  return c < 2 ? [`Only ${c} healthy catcher${c === 1 ? '' : 's'} on the active roster. Teams carry two: your starter will wear down without a backup.`] : [];
+}
+
 export function userRosterIssues(league: League): string[] {
   const issues: string[] = [];
   const org = league.userOrgId;
@@ -83,10 +91,14 @@ function updateStanding(league: League, level: Level, orgId: number, won: boolea
 
 // Today's lineups for a game, or null if a club can't field a team.
 export function gameLineups(league: League, g: Game): { home: GameLineup; away: GameLineup } | null {
-  const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.home].depth[g.level]);
-  const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.away].depth[g.level]);
+  const oh: { bullpenDay?: boolean } = {};
+  const oa: { bullpenDay?: boolean } = {};
+  const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.home].depth[g.level], oh);
+  const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.away].depth[g.level], oa);
   const home = buildLineup(league, g.home, g.level, spAway?.throws ?? 'R', spHome ?? undefined);
   const away = buildLineup(league, g.away, g.level, spHome?.throws ?? 'R', spAway ?? undefined);
+  if (home) home.opener = !!oh.bullpenDay;
+  if (away) away.opener = !!oa.bullpenDay;
   if (!home || !away || home.batters.length < 9 || away.batters.length < 9) {
     // Forfeit-style result if a club cannot field a team (should be rare).
     const homeWins = !!home && home.batters.length >= 9;
@@ -106,7 +118,12 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
   const lus = gameLineups(league, g);
   if (!lus) return;
   setOffenseAdj(league.offenseAdj ?? 0);
+  setGameLeague(league);
   const out = simGame(lus.home, lus.away, gameOpts(league, g));
+  gainFromGame(league, lus.home);
+  gainFromGame(league, lus.away);
+  if (!lus.home.opener) afterStart(lus.home.sp);
+  if (!lus.away.opener) afterStart(lus.away.sp);
   applyGameOutput(league, g, out, recordStats);
 }
 
@@ -371,6 +388,8 @@ function finishRegularDay(league: League): DayResult {
   ifaDay(league);
   tradeDay(league);
   aiExtensions(league);
+  aiPositionMoves(league);
+  suggestPositionMoves(league);
   dailyUpkeep(league);
   if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); hypeWeek(league); }
   league.day++;
@@ -427,6 +446,7 @@ export function startLiveDay(league: League): LiveDay | { stop: string } {
   const lus = gameLineups(league, game);
   if (!lus) return { stop: 'Your team could not field a lineup.' };
   setOffenseAdj(league.offenseAdj ?? 0);
+  setGameLeague(league);
   const engine = createGame(lus.home, lus.away, gameOpts(league, game, true));
   return { game, engine, userSide: game.home === u ? 1 : 0, series };
 }
@@ -465,6 +485,9 @@ export function simOneDay(league: League): DayResult {
     ifaDay(league);
     tradeDay(league);
     aiExtensions(league);
+    springWork(league);
+    aiPositionMoves(league);
+    suggestPositionMoves(league);
     dailyUpkeep(league);
     if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
     league.day++;

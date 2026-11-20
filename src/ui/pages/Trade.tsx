@@ -12,6 +12,12 @@ import { seasonFraction } from '../../core/value.ts';
 
 // The trade being built survives page changes.
 let saved: { other: number; give: [TradeAssets, TradeAssets] } | null = null;
+
+// Load a package (from the Trade Finder) into the trade screen.
+export function loadTrade(other: number, give: [TradeAssets, TradeAssets]): void {
+  saved = { other, give: JSON.parse(JSON.stringify(give)) };
+  lastQuery = '';
+}
 let lastQuery = '';
 
 const LEVEL_ORDER = ['MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL'];

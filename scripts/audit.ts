@@ -233,3 +233,15 @@ console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, playe
   console.log(`Revenue last season min/med/max ${(revs[0] / 1e6).toFixed(0)}/${(revs[15] / 1e6).toFixed(0)}/${(revs[29] / 1e6).toFixed(0)}M | avg attendance ${Math.round(fins.reduce((t, f) => t + (f!.last?.avgAtt ?? 0), 0) / fins.length)} | hype range ${Math.round(Math.min(...fins.map((f) => f!.hype)))}-${Math.round(Math.max(...fins.map((f) => f!.hype)))} | budgets ${(Math.min(...L.orgs.map((o) => o.budget)) / 1e6).toFixed(0)}-${(Math.max(...L.orgs.map((o) => o.budget)) / 1e6).toFixed(0)}M`);
   console.log(`Rehab assignments active now: ${Object.values(L.players).filter((p) => p.rehab).length} | season records ${(L.seasonRecs ?? []).length} | offenseAdj ${(L.offenseAdj ?? 0).toFixed(2)} devAdj ${(L.devAdj ?? 1).toFixed(2)}`);
 }
+
+// Position changes and catchers.
+{
+  const pos = L.transactions.filter((t) => t.type === 'Position');
+  const kinds: Record<string, number> = {};
+  for (const t of pos) { const m = t.text.match(/from (\w+) to (\w+)/); if (m) kinds[`${m[1]}>${m[2]}`] = (kinds[`${m[1]}>${m[2]}`] ?? 0) + 1; }
+  console.log(`Position moves (transaction log): ${pos.length}`, JSON.stringify(kinds));
+  const cs = Object.values(L.players).filter((p) => p.pos === 'C' && p.level === 'MLB');
+  const last = L.phase === 'regular' || L.phase === 'playoffs' ? L.season : L.season - 1;
+  const pa = Object.values(L.players).filter((p) => p.pos === 'C').map((p) => p.stats.filter((e) => e.season === last && e.level === 'MLB').reduce((t, e) => t + e.bat.pa, 0)).sort((a, b) => b - a);
+  console.log(`Catchers: top PA ${pa.slice(0, 5).join(', ')} | teams with <2 C ${L.orgs.filter((o) => cs.filter((p) => p.orgId === o.id).length < 2).length}`);
+}

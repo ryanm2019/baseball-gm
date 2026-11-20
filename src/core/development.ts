@@ -30,7 +30,7 @@ export function developPlayer(league: League, p: Player): void {
   const fdm = devMultiplier(league, p);
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
-  const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * (a >= 23 && a <= 27 ? (league.devAdj ?? 1) : 1);
+  const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * (a >= 22 && a <= 28 ? (league.devAdj ?? 1) : 1);
   const dec = decline(a, p);
   const tcr = 0.45;
 

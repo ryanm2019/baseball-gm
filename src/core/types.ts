@@ -257,6 +257,10 @@ export interface Player {
   ext?: { lastOffer?: number; stiff?: number; season?: number } | null; // extension talks this season
   agent?: number; // Agent id
   morale?: Morale;
+  posInfo?: { home: Pos; exp: Partial<Record<FieldPos, number>> }; // position experience (home = where he learned the game)
+  stretch?: { limit: number } | null;
+  straight?: number; // consecutive games started in the field
+  straightDay?: number; // pitch limit while a converted reliever is stretched out as a starter
   rehab?: { level: Level; daysLeft: number; total: number } | null; // rehab assignment before coming off the IL
   storyFx?: { text: string; until: number; add: Record<string, number> }[]; // temporary rating changes from storylines
   arb?: ArbCase | null;
@@ -462,6 +466,8 @@ export interface DepthChart {
   closer: number | null;
   setup: number[];
   pen?: Record<number, PenRole>; // role for every reliever
+  playoffRotation?: 3 | 4; // starters used in the playoffs (the rest go to the bullpen)
+  bullpenDays?: number[]; // rotation slots (0-based) that are bullpen games
 }
 
 export interface Org {
@@ -489,7 +495,8 @@ export interface Org {
   cbtPayerYears: number; // consecutive prior seasons over the CBT threshold
   deadMoney: { pid: number; name: string; amount: number; season: number }[];
   deferred?: { pid: number; name: string; amount: number; season: number }[];
-  fin?: import('./finances.ts').Fin; // attendance, revenue, hype // deferred salary owed in later seasons
+  fin?: import('./finances.ts').Fin; // attendance, revenue, hype
+  lastGameDay?: Partial<Record<Level, number>>; // last day each affiliate played (for fatigue streaks) // deferred salary owed in later seasons
   stance: TradeStance;
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
@@ -577,7 +584,7 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position';
   actions?: InboxAction[];
   resolved?: string; // what you chose
   read?: boolean;

@@ -3,7 +3,7 @@ import { finOf, revenueSoFar } from '../../core/finances.ts';
 import { href } from '../../router.ts';
 import { LEVELS } from '../../core/types.ts';
 import type { League, Org } from '../../core/types.ts';
-import { userRosterIssues } from '../../core/sim/day.ts';
+import { userRosterIssues, userRosterWarnings } from '../../core/sim/day.ts';
 import { dayShort, LEVEL_NAMES } from '../../core/settings.ts';
 import { cbtTax, fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { activeAt, fortyMan, orgById, pname } from '../../core/util.ts';
@@ -106,6 +106,7 @@ export default function Dashboard() {
   if (!league) return null;
   const org = league.orgs[league.userOrgId];
   const issues = league.phase === 'regular' ? userRosterIssues(league) : [];
+  const warnings = league.phase === 'regular' || league.phase === 'playoffs' ? userRosterWarnings(league) : [];
   const st = league.standings.MLB[org.id];
   const div = divStandings(league, org);
   const myGames = league.schedule.filter((g) => g.level === 'MLB' && (g.home === org.id || g.away === org.id));
@@ -152,6 +153,11 @@ export default function Dashboard() {
       {issues.map((i) => (
         <div key={i} className="alert alert-warn">
           {i} <a href={href('roster')}>Go to roster</a>
+        </div>
+      ))}
+      {warnings.map((i) => (
+        <div key={i} className="alert alert-info small">
+          {i} <a href={href('roster-moves')}>Roster Moves</a>
         </div>
       ))}
       <div className="cards">

@@ -173,7 +173,10 @@ function makeFortyRoom(league: League, org: Org): boolean {
 }
 
 function makeMlbRoom(league: League, org: Org, pitcher: boolean, allowDfa: boolean): boolean {
-  const active = activeAt(league, org.id, 'MLB').filter((p) => isPitcher(p) === pitcher);
+  const all = activeAt(league, org.id, 'MLB');
+  const catchers = all.filter((p) => p.pos === 'C').length;
+  // Never send down the second catcher.
+  const active = all.filter((p) => isPitcher(p) === pitcher && !(p.pos === 'C' && catchers <= 2));
   const sorted = active.sort((a, b) => ovr(a) - ovr(b));
   for (const p of sorted) {
     if (!canOption(league, p)) {

@@ -7,7 +7,7 @@
 //  Each winter: Hall of Fame voting for players retired five or more seasons
 //  (ten years on the ballot), scored on career WAR, awards and milestones.
 import type { AwardName, AwardRec, BatStats, League, PitStats, Player } from './types.ts';
-import { isPitcher, posRating } from './ratings.ts';
+import { defAt, isPitcher } from './ratings.ts';
 import { batAdvanced, batWar, pitAdvanced, pitWar, seasonCtx } from './war.ts';
 import { addNews, emptyBat, emptyPit, pname } from './util.ts';
 import { posLabel } from './rules.ts';
@@ -120,7 +120,7 @@ export function seasonAwards(league: League): void {
     if (rel) give(league, rel, 'Reliever of the Year');
     // Gold Gloves: best fielder at each spot among regulars.
     for (const pos of ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'] as FieldPos[]) {
-      const gg = qualH.filter((l) => l.p.pos === pos).sort((a, b) => posRating(b.p.ratings.def, pos) - posRating(a.p.ratings.def, pos))[0];
+      const gg = qualH.filter((l) => l.p.pos === pos).sort((a, b) => defAt(b.p, pos) - defAt(a.p, pos))[0];
       if (gg) give(league, gg, 'Gold Glove', pos);
     }
     // Silver Sluggers: best wRC+ at each spot (three outfielders).

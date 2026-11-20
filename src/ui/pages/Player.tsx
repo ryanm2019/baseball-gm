@@ -1,12 +1,13 @@
-import { useStore, changed } from '../../store.ts';
+import { useStore, changed, setMessage } from '../../store.ts';
 import { href, useRoute } from '../../router.ts';
-import type { BatSplit, DefRatings, FieldPos, League, Player, StatEntry } from '../../core/types.ts';
+import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
 import { project } from '../../core/projections.ts';
+import { canStart, changePosition, positionReads } from '../../core/positions.ts';
 
 const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
@@ -223,6 +224,52 @@ function PitStatsTable({ league, p, entries }: { league: League; p: Player; entr
   );
 }
 
+// Where he could play: your scouts' read at each position, his comfort there,
+// and (for your players) the move itself. Pitchers: rotation or bullpen.
+function PositionsPanel({ p }: { p: Player }) {
+  const { league } = useStore();
+  if (!league || p.orgId === null) return null;
+  const org = league.orgs[league.userOrgId];
+  const mine = p.orgId === org.id;
+  const move = (pos: Pos) => { setMessage(changePosition(league, p, pos)); changed(); };
+  if (isPitcher(p)) {
+    const other: Pos = p.pos === 'SP' ? 'RP' : 'SP';
+    const warn = other === 'SP' ? canStart(p) : null;
+    return (
+      <div className="box small" style={{ margin: '8px 0' }}>
+        <b>Role:</b> {p.pos === 'SP' ? 'Starter' : 'Reliever'}
+        {p.stretch && <> · being stretched out (current limit about {Math.round(p.stretch.limit)} pitches)</>}
+        {mine && (
+          <> · <button className="btn btn-sm" onClick={() => move(other)}>Move to the {other === 'SP' ? 'rotation' : 'bullpen'}</button>
+            <span className="muted"> {other === 'SP' ? `He'd be stretched out over his next several starts (or through spring training).${warn ? ` Caution: ${warn}.` : ''}` : 'His stuff plays up in short stints.'}</span></>
+        )}
+      </div>
+    );
+  }
+  const reads = positionReads(league, org, p);
+  return (
+    <div className="box" style={{ margin: '8px 0' }}>
+      <h3>Positions</h3>
+      <table className="data compact" style={{ width: 'auto' }}>
+        <thead><tr><th className="l">Pos</th><th className="l">Scouts' read</th><th title="Overall at this position today">Now</th><th title="Your scouts' projection once he settles in">Settled</th><th title="Experience at the position (100 = fully at home)">Exp</th>{mine && <th />}</tr></thead>
+        <tbody>
+          {reads.map((r) => (
+            <tr key={r.pos} className={r.pos === p.pos ? 'user' : ''}>
+              <td className="l">{r.pos}{r.pos === (p.posInfo?.home ?? p.pos) && r.pos !== 'DH' ? ' (home)' : ''}</td>
+              <td className="l">{r.fit}</td>
+              <td>{Math.round(r.now)}</td>
+              <td>{Math.round(r.projected)}</td>
+              <td>{Math.round(r.exp)}</td>
+              {mine && <td>{r.pos !== p.pos && <button className="btn btn-sm" onClick={() => move(r.pos)}>Move</button>}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">A new position takes time: he gains experience with every game played there (spring training counts double). Some players turn out better than their ratings suggest, some grow into it slowly, and some never quite settle in. "Settled" is your scouts' best guess; better scouting, better guesses.</p>
+    </div>
+  );
+}
+
 export default function PlayerPage() {
   const { league } = useStore();
   const route = useRoute();
@@ -381,6 +428,7 @@ export default function PlayerPage() {
         </div>
       </div>
 
+      <PositionsPanel p={p} />
       <h2>Ratings</h2>
       <p className="muted small">Scouted values on the 20-80 scale, from your {({ own: 'scouting director and coaches', pro: 'pro scout', amateur: 'amateur scout', intl: 'international scout' } as const)[scoutArea(league, p)]}. Lower levels and other organizations' players are harder to scout; better scouts see more clearly (Staff page).</p>
       <div className="ratings">

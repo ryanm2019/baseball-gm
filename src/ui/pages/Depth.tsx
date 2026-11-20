@@ -5,7 +5,7 @@ import { go, useRoute } from '../../router.ts';
 import type { DepthChart, Level, PenRole, Player, Pos } from '../../core/types.ts';
 import { PEN_ROLES } from '../../core/types.ts';
 import { activeAt, playersAt } from '../../core/util.ts';
-import { isPitcher, posRating, scoutedOvr } from '../../core/ratings.ts';
+import { defAt, isPitcher, scoutedOvr } from '../../core/ratings.ts';
 import { battingOrder, buildLineup } from '../../core/sim/lineup.ts';
 import { LevelTabs } from '../components.tsx';
 import { PlayerCard } from '../PlayerCard.tsx';
@@ -190,7 +190,7 @@ export default function Depth() {
             <tbody>
               {cur.map((s, i) => {
                 const p = league.players[s.pid];
-                const def = p && s.pos !== 'DH' && s.pos !== 'SP' && s.pos !== 'RP' ? Math.round(posRating(p.ratings.def, s.pos)) : '-';
+                const def = p && s.pos !== 'DH' && s.pos !== 'SP' && s.pos !== 'RP' ? Math.round(defAt(p, s.pos)) : '-';
                 const out = p ? outReason(p) : null;
                 return (
                   <tr
@@ -248,15 +248,29 @@ export default function Depth() {
         </div>
         <div className="box">
           <h3>Rotation</h3>
-          {d.rotation.map((pid, i) => (
-            <div key={i} className="form-row">
-              {i + 1}.{' '}
-              <select value={pid} onChange={(e) => update((x) => { x.rotation[i] = Number(e.target.value); })}>
-                {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-              </select>{' '}
-              <button className="btn btn-sm" onClick={() => setSel(pid)}>Ratings</button>
-            </div>
-          ))}
+          {d.rotation.map((pid, i) => {
+            const bp = (d.bullpenDays ?? []).includes(i);
+            return (
+              <div key={i} className="form-row">
+                {i + 1}.{' '}
+                {bp ? <b>Bullpen game</b> : (
+                  <select value={pid} onChange={(e) => update((x) => { x.rotation[i] = Number(e.target.value); })}>
+                    {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
+                  </select>
+                )}{' '}
+                {!bp && <button className="btn btn-sm" onClick={() => setSel(pid)}>Ratings</button>}{' '}
+                <label className="small"><input type="checkbox" checked={bp} onChange={(e) => update((x) => { const s = new Set(x.bullpenDays ?? []); if (e.target.checked) s.add(i); else s.delete(i); x.bullpenDays = [...s].sort(); })} /> Bullpen game</label>
+              </div>
+            );
+          })}
+          <p className="muted small">A bullpen game: a rested reliever (not your closer) opens for an inning or two, then your long relievers and the rest of the pen cover the game.</p>
+          <div className="form-row small">
+            Playoff rotation:{' '}
+            <select value={d.playoffRotation ?? 4} onChange={(e) => update((x) => { x.playoffRotation = Number(e.target.value) as 3 | 4; })}>
+              <option value={4}>4 starters</option><option value={3}>3 starters</option>
+            </select>{' '}
+            <span className="muted">The others move to the bullpen for the playoffs, where their stuff plays up.</span>
+          </div>
           <h3>Bullpen roles</h3>
           <p className="muted small">The manager goes to each role by game situation. One closer, up to two setup men; setup 1 gets the 8th, setup 2 the 7th.</p>
           <table className="data compact">

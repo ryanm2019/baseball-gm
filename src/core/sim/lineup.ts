@@ -1,6 +1,7 @@
 // Builds a game-day lineup, starting pitcher and bullpen for one team at one level.
 import type { DepthChart, FieldPos, League, Level, PenRole, Player, Pos } from '../types.ts';
-import { blendSplits, isPitcher, offense, ovr, posRating } from '../ratings.ts';
+import { streak } from '../positions.ts';
+import { blendSplits, defAt, isPitcher, offense, ovr } from '../ratings.ts';
 import { activeAt } from '../util.ts';
 import { rand } from '../random.ts';
 import { delegated, managerMods, pitcherInjuryMult, type ManagerMods } from '../staff.ts';
@@ -8,6 +9,7 @@ import { deptEffect } from '../depts.ts';
 
 export interface GameLineup {
   orgId: number;
+  opener?: boolean; // bullpen day: the starter is an opener
   level: Level;
   batters: { p: Player; pos: Pos }[];
   sp: Player;
@@ -29,10 +31,13 @@ export function restDays(league: League, p: Player): number {
   return league.day - p.lastStartDay;
 }
 
-export function pickStarter(league: League, orgId: number, level: Level, pitchers: Player[], depth: DepthChart | undefined): Player | null {
-  const org = league.orgs[orgId];
+const manualDepth = (league: League, orgId: number, level: Level, depth: DepthChart | undefined): depth is DepthChart =>
+  !!depth && !depth.auto && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, league.orgs[orgId], 'depth'));
+
+// The rotation in order (in the playoffs, only the playoff starters).
+export function rotationOf(league: League, orgId: number, level: Level, pitchers: Player[], depth: DepthChart | undefined): Player[] {
   let rotation: Player[] = [];
-  if (depth && !depth.auto && depth.rotation.length && !(orgId === league.userOrgId && level === 'MLB' && delegated(league, org, 'depth'))) {
+  if (manualDepth(league, orgId, level, depth) && depth.rotation.length) {
     rotation = depth.rotation.map((id) => league.players[id]).filter((p) => p && pitchers.includes(p));
   }
   if (rotation.length < 5) {
@@ -43,25 +48,61 @@ export function pickStarter(league: League, orgId: number, level: Level, pitcher
     rotation = rotation.concat(auto.slice(0, 5 - rotation.length));
   }
   if (rotation.length === 0) rotation = [...pitchers].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina).slice(0, 5);
+  if (league.phase === 'playoffs' && level === 'MLB') rotation = rotation.slice(0, depth?.playoffRotation ?? 4);
+  return rotation;
+}
+
+// Bullpen day: a rested reliever opens (not the closer), the bullpen covers the rest.
+function opener(league: League, pitchers: Player[]): Player | null {
+  const rps = pitchers.filter((p) => p.pos === 'RP' && league.day - p.lastPitchedDay >= 2).sort((a, b) => ovr(b) - ovr(a));
+  return rps[Math.min(1, rps.length - 1)] ?? null;
+}
+
+export function pickStarter(league: League, orgId: number, level: Level, pitchers: Player[], depth: DepthChart | undefined, out?: { bullpenDay?: boolean }): Player | null {
+  const org = league.orgs[orgId];
+  const playoffs = league.phase === 'playoffs' && level === 'MLB';
+  const rotation = rotationOf(league, orgId, level, pitchers, depth);
   if (rotation.length === 0) return null;
-  const idx = org.rotationIndex[level] ?? 0;
-  for (let k = 0; k < rotation.length; k++) {
-    const p = rotation[(idx + k) % rotation.length];
-    if (restDays(league, p) >= 5 && league.day - p.lastPitchedDay >= 2) {
-      org.rotationIndex[level] = (idx + k + 1) % rotation.length;
+  // Rotation slots marked as bullpen games (yours, from the Depth Chart).
+  const bpd = new Set(!playoffs && manualDepth(league, orgId, level, depth) ? depth.bullpenDays ?? [] : []);
+  const cycle = Math.max(rotation.length, ...[...bpd].map((x) => x + 1));
+  const idx0 = (org.rotationIndex[level] ?? 0) % cycle;
+  for (let k = 0; k < cycle; k++) {
+    const slot = (idx0 + k) % cycle;
+    if (bpd.has(slot)) {
+      const op = opener(league, pitchers);
+      if (!op) continue;
+      org.rotationIndex[level] = (slot + 1) % cycle;
+      if (out) out.bullpenDay = true;
+      return op;
+    }
+    const p = rotation[slot];
+    if (!p) continue;
+    // Playoff off days let a short rotation go on four days' rest.
+    if (restDays(league, p) >= (playoffs ? 4 : 5) && league.day - p.lastPitchedDay >= 2) {
+      org.rotationIndex[level] = (slot + 1) % cycle;
       return p;
     }
   }
-  // Nobody fully rested: spot start the most rested arm.
+  // Nobody rested: a big-league club goes with a bullpen game; the minors spot start.
+  if (level === 'MLB' && !playoffs) {
+    const op = opener(league, pitchers);
+    if (op) { if (out) out.bullpenDay = true; return op; }
+  }
   const all = [...pitchers].sort((a, b) => restDays(league, b) - restDays(league, a) || b.ratings.pit.stamina - a.ratings.pit.stamina);
   return all[0] ?? null;
 }
 
-function autoLineup(hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: Player; pos: Pos }[] {
+
+function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: Player; pos: Pos }[] {
   const pool = [...hitters];
   // Regulars occasionally rest when there is a bench to cover.
   if (pool.length > 10) {
-    const restChance = (p: Player) => (p.pos === 'C' ? 0.16 : level === 'MLB' ? 0.05 : 0.08);
+    // Rest follows fatigue: catchers wear down about 1.5x as fast.
+    const restChance = (p: Player) => {
+      const s = streak(league, p);
+      return p.pos === 'C' ? 0.1 + 0.16 * Math.max(0, s - 3) : (level === 'MLB' ? 0.015 : 0.03) + 0.02 * Math.max(0, s - 7);
+    };
     for (let i = pool.length - 1; i >= 0 && pool.length > 10; i--) if (rand() < restChance(pool[i])) pool.splice(i, 1);
   }
   const chosen: { p: Player; pos: Pos }[] = [];
@@ -71,7 +112,7 @@ function autoLineup(hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: P
     let bestV = -Infinity;
     for (const p of pool) {
       if (used.has(p.id)) continue;
-      const d = posRating(p.ratings.def, pos);
+      const d = defAt(p, pos);
       let v = offVs(p, oppHand) + 0.6 * (d - 50);
       if (pos === 'C' && p.pos !== 'C') v -= 40;
       if (p.pos === pos) v += 4;
@@ -155,7 +196,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
         if (used.has(p.id)) continue;
         let v = offVs(p, oppHand);
         if (pos !== 'DH' && pos !== 'SP' && pos !== 'RP') {
-          v += 0.6 * (posRating(p.ratings.def, pos) - 50);
+          v += 0.6 * (defAt(p, pos) - 50);
           if (pos === 'C' && p.pos !== 'C') v -= 40;
           if (p.pos === pos) v += 4;
         }
@@ -171,7 +212,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
     }
     if (slots.every(Boolean)) batters = slots as { p: Player; pos: Pos }[];
   }
-  if (batters.length !== 9) batters = autoLineup(hitters, oppHand, level);
+  if (batters.length !== 9) batters = autoLineup(league, hitters, oppHand, level);
   // Too few healthy hitters: borrow pitchers to fill out the card.
   if (batters.length < 9) {
     const spare = pitchers.filter((p) => p !== starter);
@@ -196,7 +237,8 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   }
   if (!closer) closer = rps[0] ?? null;
   if (setup.length < 2) setup = setup.concat(rps.filter((p) => p !== closer && !setup.includes(p)).slice(0, 2 - setup.length));
-  const roles = penRoles(bullpen, closer, setup, manual ? depth.pen : undefined);
+  const penStarters = league.phase === 'playoffs' && level === 'MLB' ? new Set(pitchers.filter((p) => p.pos === 'SP' && !rotationOf(league, orgId, level, pitchers, depth).includes(p)).map((p) => p.id)) : undefined;
+  const roles = penRoles(bullpen, closer, setup, manual ? depth.pen : undefined, penStarters);
 
   const medical = 1 - 0.18 * deptEffect(org, 'medical');
   return { orgId, level, batters, sp: starter, bullpen, closer, setup, roles, medical, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) * medical };
@@ -209,10 +251,11 @@ export function blendedOffense(p: Player): number {
 // Roles for every bullpen arm: your choices first, then the manager fills in
 // (two long men with the most stamina, the weakest arm for mop-up, the rest in
 // middle relief).
-export function penRoles(allArms: Player[], closer: Player | null, setup: Player[], manual?: Record<number, PenRole>): Map<number, PenRole> {
+export function penRoles(allArms: Player[], closer: Player | null, setup: Player[], manual?: Record<number, PenRole>, penStarters?: Set<number>): Map<number, PenRole> {
   const roles = new Map<number, PenRole>();
-  // Starters between turns aren't part of the bullpen unless the pen is short.
-  const rps = allArms.filter((p) => p.pos !== 'SP' || manual?.[p.id]);
+  // Starters between turns aren't part of the bullpen unless the pen is short
+  // (or it's the playoffs and he's not in the playoff rotation).
+  const rps = allArms.filter((p) => p.pos !== 'SP' || manual?.[p.id] || penStarters?.has(p.id));
   const bullpen = rps.length >= 6 ? rps : allArms;
   if (closer) roles.set(closer.id, 'CL');
   for (const p of setup) roles.set(p.id, 'SU');

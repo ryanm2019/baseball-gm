@@ -77,7 +77,7 @@ export function ovr(p: Player): number {
     return pitcherOvr(r.stuff, r.movement, r.control, r.stamina, p.pos);
   }
   const pos = p.pos as FieldPos | 'DH';
-  const def = pos === 'DH' ? 50 : posRating(p.ratings.def, pos);
+  const def = pos === 'DH' ? 50 : defAt(p, pos);
   return hitterOvrAt(offense(blendSplits(p)), def, p.ratings.run.speed, pos);
 }
 
@@ -88,11 +88,59 @@ export function potOvr(p: Player): number {
     pot = pitcherOvr(p.pot.stuff, p.pot.movement, p.pot.control, p.pot.stamina, p.pos);
   } else {
     const pos = p.pos as FieldPos | 'DH';
-    const def = pos === 'DH' ? 50 : posRating(p.pot.def, pos);
+    const def = pos === 'DH' ? 50 : posRating(p.pot.def, pos) + Math.max(0, defShift(p, pos));
     pot = hitterOvrAt(offense(p.pot.bat), def, p.pot.speed, pos);
   }
   return Math.max(cur, pot);
 }
+
+// ---------- playing a new position ----------
+//
+// Each player has a hidden aptitude for every position (how his skills
+// translate there once he's settled in), a pace of adapting, and a limit: some
+// never fully get comfortable. A new position starts with a penalty that
+// fades with experience. His home position (where he came up) is rated as is.
+export const FIELD_POSITIONS: FieldPos[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+const LEARN: Record<FieldPos, number> = { C: 16, '1B': 4, '2B': 7, '3B': 6, SS: 10, LF: 4, CF: 8, RF: 4 };
+
+const homeOf = (p: Player): Pos => p.posInfo?.home ?? p.pos;
+
+// Experience he already has from nearby positions.
+function familiar(home: Pos, pos: FieldPos): number {
+  const of = ['LF', 'CF', 'RF'];
+  if (home === pos) return 100;
+  if (of.includes(home) && of.includes(pos)) return home === 'CF' ? 75 : pos === 'CF' ? 20 : 65;
+  if (home === 'SS' && (pos === '2B' || pos === '3B')) return 55;
+  if ((home === '2B' || home === '3B') && pos !== 'C' && ['SS', '2B', '3B'].includes(pos)) return 25;
+  if (pos === '1B') return home === 'C' ? 30 : ['2B', '3B', 'SS'].includes(home) ? 45 : of.includes(home) ? 20 : 0;
+  return 0;
+}
+
+export function posExp(p: Player, pos: FieldPos): number {
+  return clamp(p.posInfo?.exp[pos] ?? familiar(homeOf(p), pos), 0, 100);
+}
+
+// Hidden: rating points at the position once fully settled in.
+export const aptitude = (p: Player, pos: FieldPos): number => clamp(seededNormal(p.scoutSeed, FIELD_POSITIONS.indexOf(pos), 7777) * 5, -11, 9);
+// Hidden: how far he can adapt (a few never get past halfway).
+export function adaptCap(p: Player, pos: FieldPos): number {
+  const s = seededNormal(p.scoutSeed, FIELD_POSITIONS.indexOf(pos), 7778);
+  return s < -1.15 ? 0.45 : s < -0.6 ? 0.75 : 1;
+}
+// Hidden: how quickly (younger, harder-working players learn faster).
+export function adaptSpeed(league: League | null, p: Player, pos: FieldPos): number {
+  const s = clamp(1 + 0.4 * seededNormal(p.scoutSeed, FIELD_POSITIONS.indexOf(pos), 7779), 0.4, 1.9);
+  const age = league ? league.season - p.born : 27;
+  return s * (age >= 31 ? 0.7 : age <= 24 ? 1.15 : 1) * (0.8 + p.personality.workEthic / 250);
+}
+
+// Effective defense at a position: raw skills, adjusted for how settled he is.
+export function defShift(p: Player, pos: FieldPos): number {
+  if (homeOf(p) === pos) return 0;
+  const e = Math.min(posExp(p, pos) / 100, adaptCap(p, pos));
+  return aptitude(p, pos) * e - LEARN[pos] * (1 - e);
+}
+export const defAt = (p: Player, pos: FieldPos): number => posRating(p.ratings.def, pos) + defShift(p, pos);
 
 // Best defensive position rating among positions a player can handle.
 export function bestPositions(p: Player): { pos: FieldPos; rating: number }[] {

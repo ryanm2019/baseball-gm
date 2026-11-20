@@ -85,7 +85,7 @@ export function onSeasonEnd(league: League): void {
   // young players develop a little faster next year (and slower if more).
   {
     const n60 = Object.values(league.players).filter((p) => p.orgId !== null && p.level === 'MLB' && displayOvr(p, ovr(p)) >= 60).length;
-    if (n60 > 0) league.devAdj = clamp((league.devAdj ?? 1) * clamp(Math.sqrt(66 / n60), 0.9, 1.15), 0.85, 1.6);
+    if (n60 > 0) league.devAdj = clamp((league.devAdj ?? 1) * clamp(Math.pow(66 / n60, 0.8), 0.85, 1.3), 0.85, 2);
   }
   // Hold the run environment near 4.45 runs per game as talent shifts.
   {
