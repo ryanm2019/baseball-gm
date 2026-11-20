@@ -170,6 +170,7 @@ export function StatusTags({ league, p }: { league: League; p: Player }) {
       {p.waivers && <span className="tag tag-dfa">Waivers</span>}
       {p.on40 && p.level !== 'MLB' && !p.il && <span className="tag tag-opt">40</span>}
       {p.optionedOnDay !== null && p.on40 && p.level !== 'MLB' && league.day - p.optionedOnDay < 15 && <span className="tag">opt</span>}
+      {p.orgId !== null && league.orgs[p.orgId]?.block.includes(p.id) && <span className="tag tag-block" title="On his team's trading block">block</span>}
     </>
   );
 }

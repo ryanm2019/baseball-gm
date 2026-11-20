@@ -22,7 +22,27 @@ export default function TradeMarket() {
     { key: 'strategy', label: 'Direction', left: true, value: (r) => r.o.strategy, render: (r) => ({ Contend: 'Contending', Retool: 'Retooling', Rebuild: 'Rebuilding' })[r.o.strategy] },
     { key: 'stance', label: 'Stance', left: true, value: (r) => r.o.stance, render: (r) => <span title={STANCE_HELP[r.o.stance]} className={r.o.stance === 'Buying' ? 'pos' : r.o.stance === 'Selling' ? 'neg' : ''}>{r.o.stance}</span> },
     { key: 'needs', label: 'Looking for', left: true, value: (r) => r.needs.join(' '), render: (r) => r.needs.join(', ') || <span className="muted">-</span> },
-    { key: 'block', label: 'On the block', value: (r) => r.o.block.length, sortDesc: true },
+    {
+      key: 'block',
+      label: 'On the block',
+      left: true,
+      value: (r) => r.o.block.length,
+      sortDesc: true,
+      render: (r) => {
+        const ps = r.o.block.map((id) => league.players[id]).filter(Boolean);
+        if (!ps.length) return <span className="muted">-</span>;
+        return (
+          <span className="small">
+            {ps.map((p, i) => (
+              <span key={p.id}>
+                {i > 0 && ', '}
+                <a href={href('player', [p.id])}>{p.last}</a> <span className="muted">{posLabel(p)} {p.level}</span>
+              </span>
+            ))}
+          </span>
+        );
+      },
+    },
     { key: 'go', label: '', noSort: true, render: (r) => r.o.id === user.id ? <a href={href('trading-block')}>Your block</a> : <a href={href('trade', [], { org: r.o.id })}>Trade</a> },
   ];
 
@@ -64,7 +84,7 @@ export default function TradeMarket() {
   return (
     <>
       <h1>Trade Market</h1>
-      <p className="muted small">What every club is signaling. Stances shift with the standings before the deadline and again each winter.</p>
+      <p className="muted small">What every club is signaling. Stances shift with the standings before the deadline and again each winter. Sellers shop veterans; buyers dangle upper-minors prospects; clubs listening shop their spare parts. Players on a block are tagged "block" everywhere they appear.</p>
       <DataTable cols={teamCols} rows={teams} rowKey={(r) => r.o.id} rowClass={(r) => (r.o.id === user.id ? 'user' : '')} defaultSort={{ key: 'rec', desc: true }} compact />
       <h2>Players on the block</h2>
       <div className="btn-group tabs">

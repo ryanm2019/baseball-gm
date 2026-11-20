@@ -170,3 +170,4 @@ tr.selected td { background: #fff7d6; }
 .live-row { display: grid; grid-template-columns: minmax(300px, 1.4fr) minmax(260px, 1fr) minmax(220px, 0.9fr); gap: 16px; margin-bottom: 16px; align-items: start; }
 .live-row .box { min-width: 0; }
 @media (max-width: 1000px) { .live-row { grid-template-columns: 1fr; } }
+.tag-block { background: #fff3cd; color: #7a5b00; }
