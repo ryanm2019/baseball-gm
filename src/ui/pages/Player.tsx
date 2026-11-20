@@ -4,6 +4,7 @@ import type { BatSplit, DefRatings, FieldPos, League, Player, StatEntry } from '
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
+import { describeContract } from '../../core/terms.ts';
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
 import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
@@ -276,10 +277,16 @@ export default function PlayerPage() {
                 ? `${fmtMoney(p.contract.salary)}/yr through ${p.contract.exp} (${p.contract.oneWay ? 'one-way' : `split, ${fmtMoney(p.contract.minorSalary)} in minors`})`
                 : `Minor league deal (${fmtMoney(p.contract.salary)})`}
             </div>
-            {p.contract.option && (
+            {p.contract.type === 'ML' && (p.contract.sched || p.contract.option || p.contract.optOuts || p.contract.ntc || p.contract.deferPct) && (
               <>
-                <div>{p.contract.option.type === 'club' ? 'Club' : 'Player'} option</div>
-                <div>{p.contract.option.season}: {fmtMoney(p.contract.option.salary)}{p.contract.option.buyout ? ` (${fmtMoney(p.contract.option.buyout)} buyout)` : ''}</div>
+                <div>Terms</div>
+                <div className="small">{describeContract(league, p.contract)}</div>
+              </>
+            )}
+            {p.orgId === league.userOrgId && p.contract.type === 'ML' && p.on40 && (
+              <>
+                <div />
+                <div><a className="btn btn-sm" href={href('negotiate', ['ext', p.id])}>Negotiate extension</a></div>
               </>
             )}
             {p.arb && (

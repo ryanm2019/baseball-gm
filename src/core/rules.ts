@@ -3,6 +3,7 @@
 // Every action has a matching can*() check that returns a reason string when
 // the move is not allowed, so the UI can show why.
 import type { IlStatus, League, Level, Player } from './types.ts';
+import { salaryIn } from './terms.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname, touchRosters } from './util.ts';
 import { isPitcher, ovr } from './ratings.ts';
@@ -240,7 +241,7 @@ export function makeFreeAgent(league: League, p: Player, reason: string): void {
     const owed = remainingOwed(league, p);
     if (owed > 0) org.deadMoney.push({ pid: p.id, name: pname(p), amount: owed, season: league.season });
     for (let y = league.season + 1; y <= p.contract.exp; y++) {
-      org.deadMoney.push({ pid: p.id, name: pname(p), amount: p.contract.salary, season: y });
+      org.deadMoney.push({ pid: p.id, name: pname(p), amount: salaryIn(p.contract, y) || p.contract.salary, season: y });
     }
   }
   if (org) addTransaction(league, org.id, 'Release', `${reason} ${posLabel(p)} ${pname(p)}`, [p.id]);

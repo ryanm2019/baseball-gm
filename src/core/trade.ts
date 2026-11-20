@@ -10,6 +10,7 @@ import { rand, shuffle } from './random.ts';
 import { dayToDate } from './settings.ts';
 import { pruneBlocks, teamNeeds, tradeIntensity } from './market.ts';
 import { logMove, side } from './moves.ts';
+import { ntcBlocks } from './terms.ts';
 
 export const emptyAssets = (): TradeAssets => ({ pids: [], cash: 0, pool: 0, cbPicks: [] });
 
@@ -148,17 +149,31 @@ export function aiOpinion(league: League, org: Org, prop: TradeProposal): string
 
 // ---------- 10-and-5 vetoes ----------
 
-function vetoes(league: League, prop: TradeProposal): Player | null {
+function vetoes(league: League, prop: TradeProposal): { p: Player; why: string } | null {
   for (let i = 0; i < 2; i++) {
     const dest = league.orgs[prop.orgs[1 - i]];
     for (const id of prop.give[i].pids) {
       const p = league.players[id];
-      if (!hasTenAndFive(league, p)) continue;
-      const chance = dest.strategy === 'Contend' && p.personality.winning >= 50 ? 0.2 : 0.55;
-      if (rand() < chance) return p;
+      const tenFive = hasTenAndFive(league, p);
+      const ntc = ntcBlocks(p, dest.id);
+      if (!tenFive && !ntc) continue;
+      // Players waive more readily to join a contender.
+      const contender = dest.strategy === 'Contend' && p.personality.winning >= 50;
+      const chance = ntc && p.contract.ntc !== 'full' ? 0.75 : contender ? 0.25 : 0.55;
+      if (rand() < chance) return { p, why: tenFive ? '10-and-5 rights' : 'no-trade clause' };
     }
   }
   return null;
+}
+
+// Would anyone in this trade have the right to block it? (shown before you propose)
+export function vetoRisk(league: League, prop: TradeProposal): Player[] {
+  const out: Player[] = [];
+  for (let i = 0; i < 2; i++) for (const id of prop.give[i].pids) {
+    const p = league.players[id];
+    if (p && (hasTenAndFive(league, p) || ntcBlocks(p, prop.orgs[1 - i]))) out.push(p);
+  }
+  return out;
 }
 
 // ---------- execution ----------
@@ -168,8 +183,8 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
   if (err) return err;
   const v = vetoes(league, prop);
   if (v) {
-    addNews(league, v.orgId, `${pname(v)} used his 10-and-5 rights to veto a trade to the ${league.orgs[prop.orgs[0] === v.orgId ? prop.orgs[1] : prop.orgs[0]].affiliates.MLB.name}.`, [v.id]);
-    return `${pname(v)} used his 10-and-5 rights to veto the trade.`;
+    addNews(league, v.p.orgId, `${pname(v.p)} used his ${v.why} to veto a trade to the ${league.orgs[prop.orgs[0] === v.p.orgId ? prop.orgs[1] : prop.orgs[0]].affiliates.MLB.name}.`, [v.p.id]);
+    return `${pname(v.p)} used his ${v.why} to veto the trade.`;
   }
   const seasonForCash = league.phase === 'offseason' ? league.season + 1 : league.season;
   const desc: string[] = ['', ''];

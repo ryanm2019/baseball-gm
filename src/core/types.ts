@@ -80,10 +80,11 @@ export interface Potential {
 export type ContractType = 'ML' | 'MiLB';
 
 export interface ContractOption {
-  type: 'club' | 'player';
+  type: 'club' | 'player' | 'mutual' | 'vesting';
   season: number; // the option year
   salary: number;
   buyout: number;
+  vest?: { stat: 'pa' | 'ip' | 'g'; need: number }; // vesting: guaranteed if he reaches this in the final season
 }
 
 export interface Contract {
@@ -95,6 +96,12 @@ export interface Contract {
   signed: number; // season signed
   option?: ContractOption;
   bonus?: number; // signing bonus (draft / international)
+  start?: number; // first season of a scheduled (year-by-year) deal
+  sched?: number[]; // salary by season from `start`
+  aav?: number; // CBT average annual value (deferred money at present value)
+  optOuts?: number[]; // seasons after which the player may opt out
+  ntc?: 'full' | number[]; // no-trade clause: full, or org ids he can block
+  deferPct?: number; // share of each year's salary deferred
 }
 
 export interface FaOffer {
@@ -102,6 +109,7 @@ export interface FaOffer {
   years: number;
   aav: number;
   day: number;
+  terms?: import('./terms.ts').Terms; // full structure (schedule and clauses); years/aav summarize it
 }
 
 export interface FaStatus {
@@ -246,6 +254,9 @@ export interface Player {
   prospect?: DraftInfo; // in the upcoming/active amateur draft class
   ifa?: IfaInfo; // international amateur, unsigned
   fa?: FaStatus | null;
+  ext?: { lastOffer?: number; stiff?: number; season?: number } | null; // extension talks this season
+  agent?: number; // Agent id
+  morale?: Morale;
   arb?: ArbCase | null;
   rule5?: { fromOrg: number; season: number } | null;
   qoReceived?: boolean;
@@ -346,8 +357,8 @@ export interface TradeInterest {
   pos: NeedPos[]; // positions the user wants
 }
 
-export type MoveType = 'Trade' | 'Free agent' | 'Waiver claim' | 'Draft' | 'International' | 'Rule 5';
-export const MOVE_TYPES: MoveType[] = ['Trade', 'Free agent', 'Waiver claim', 'Draft', 'International', 'Rule 5'];
+export type MoveType = 'Trade' | 'Free agent' | 'Waiver claim' | 'Draft' | 'International' | 'Rule 5' | 'Extension';
+export const MOVE_TYPES: MoveType[] = ['Trade', 'Free agent', 'Waiver claim', 'Draft', 'International', 'Rule 5', 'Extension'];
 export interface MoveSide {
   orgId: number;
   gets: number[]; // players this club acquired
@@ -475,6 +486,7 @@ export interface Org {
   rotationIndex: Partial<Record<Level, number>>;
   cbtPayerYears: number; // consecutive prior seasons over the CBT threshold
   deadMoney: { pid: number; name: string; amount: number; season: number }[];
+  deferred?: { pid: number; name: string; amount: number; season: number }[]; // deferred salary owed in later seasons
   stance: TradeStance;
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
@@ -529,6 +541,27 @@ export interface Scoop {
   day: number;
   text: string;
   pids: number[];
+}
+
+// Agents represent players; reputation shapes negotiations.
+export interface Agent {
+  id: number;
+  first: string;
+  last: string;
+  firm: string;
+  reputation: number; // 1-100
+  style: 'Hard-liner' | 'Market-driven' | 'Team-friendly' | 'Loyalist';
+  discount: number; // multiplies how much security discount his clients take (<1 = harder)
+  inSeasonBan: number; // pushes clients toward refusing in-season talks
+  toMarket: number; // pushes clients toward testing free agency
+}
+
+export interface MoraleEvent { season: number; day: number; delta: number; text: string }
+
+export interface Morale {
+  value: number; // 0-100, 50 = content
+  parts?: { role: number; team: number; pay: number; treatment: number; performance: number; clubhouse: number };
+  events: MoraleEvent[];
 }
 
 export interface NewsItem {
@@ -725,6 +758,7 @@ export interface League {
   devSnap?: { season: number; ratings: Record<number, number[]> };
   lastWins?: Record<number, number>; // last season's MLB wins by org
   scoops?: Scoop[];
+  agents?: Agent[];
   futureForfeits?: { season: number; orgId: number; round: number }[]; // draft-pool penalties two years out
   draftTax?: { season: number; orgId: number; over: number; tax: number; penalty: string }[];
   preview?: SeasonPreview;

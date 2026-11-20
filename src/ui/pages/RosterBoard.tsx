@@ -7,6 +7,7 @@ import type { League, Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
 import { activeAt, activeLimit, countPitchers, fortyMan, orgPlayers, pitcherLimit } from '../../core/util.ts';
 import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
+import type React from 'react';
 import {
   activateFromIL,
   canActivate,
@@ -24,6 +25,17 @@ import {
 import { serviceYears } from '../../core/contracts.ts';
 import { playerActions } from '../actions.ts';
 import { PlayerCard } from '../PlayerCard.tsx';
+import { avg, era, fmt3, ipStr, obp, seasonBat, seasonPit, slg, whip } from '../fmt.tsx';
+import { batAdvanced, pitAdvanced, seasonCtx } from '../../core/war.ts';
+import { isPitcher } from '../../core/ratings.ts';
+
+type View = 'ratings' | 'hit' | 'pit';
+interface Col { key: string; label: string; title?: string; left?: boolean; value: (p: Player) => number | string; render?: (p: Player) => React.ReactNode; asc?: boolean }
+
+// This season's stats at the level he's at now (last season's in the winter).
+function statSeason(league: League): number {
+  return league.phase === 'offseason' || league.phase === 'preseason' ? league.season - (league.phase === 'preseason' ? 1 : 0) : league.season;
+}
 
 type Box = Level | '40' | 'IL' | 'IL60' | 'DFA';
 const BOXES: Box[] = ['MLB', '40', ...MINOR_LEVELS, 'IL', 'IL60', 'DFA'];
@@ -117,6 +129,8 @@ export default function RosterBoard() {
   const [drag, setDrag] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
+  const [views, setViews] = useState<View[]>(['ratings', 'ratings', 'ratings', 'ratings', 'ratings', 'ratings']);
+  const [sorts, setSorts] = useState<({ key: string; desc: boolean } | null)[]>([null, null, null, null, null, null]);
   if (!league) return null;
   const s = league.settings;
 
@@ -150,6 +164,63 @@ export default function RosterBoard() {
     return out.join(' ');
   };
 
+  const season = statSeason(league);
+  const bat = (p: Player) => seasonBat(p, season, p.level ?? undefined);
+  const pit = (p: Player) => seasonPit(p, season, p.level ?? undefined);
+  const ctx = (p: Player) => seasonCtx(league, season, p.level ?? 'AAA');
+  const base: Col[] = [
+    { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
+    {
+      key: 'name', label: 'Player', left: true, value: (p) => p.last,
+      render: (p) => <><span className={p.injury ? 'neg' : ''}>{p.first[0]}. {p.last}</span> <span className="muted small">{flags(p)}</span></>,
+    },
+    { key: 'age', label: 'Age', value: (p) => league.season - p.born },
+  ];
+  const colsFor = (v: View, b: Box): Col[] => {
+    const tag40: Col = { key: 'f40', label: '40', title: 'On the 40-man roster', value: (p) => (p.on40 ? 1 : 0), render: (p) => (p.on40 && b !== 'MLB' && b !== '40' ? <span className="tag small">40</span> : '') };
+    const lvl: Col = { key: 'lvl', label: 'Lvl', value: (p) => p.level ?? '' };
+    if (v === 'hit') return [...base, lvl, tag40,
+      { key: 'pa', label: 'PA', value: (p) => bat(p).pa },
+      { key: 'avg', label: 'AVG', value: (p) => avg(bat(p)), render: (p) => fmt3(avg(bat(p))) },
+      { key: 'obp', label: 'OBP', value: (p) => obp(bat(p)), render: (p) => fmt3(obp(bat(p))) },
+      { key: 'slg', label: 'SLG', value: (p) => slg(bat(p)), render: (p) => fmt3(slg(bat(p))) },
+      { key: 'hr', label: 'HR', value: (p) => bat(p).hr },
+      { key: 'sb', label: 'SB', value: (p) => bat(p).sb },
+      { key: 'kp', label: 'K%', value: (p) => (bat(p).pa ? bat(p).k / bat(p).pa : 0), render: (p) => (bat(p).pa ? ((100 * bat(p).k) / bat(p).pa).toFixed(1) : '-'), asc: true },
+      { key: 'wrc', label: 'wRC+', title: 'Relative to his level (100 = average)', value: (p) => batAdvanced(bat(p), ctx(p)).wrcPlus },
+    ];
+    if (v === 'pit') return [...base, lvl, tag40,
+      { key: 'g', label: 'G', value: (p) => pit(p).g },
+      { key: 'ip', label: 'IP', value: (p) => pit(p).outs, render: (p) => ipStr(pit(p).outs) },
+      { key: 'era', label: 'ERA', value: (p) => (pit(p).outs ? era(pit(p)) : 99), render: (p) => (pit(p).outs ? era(pit(p)).toFixed(2) : '-'), asc: true },
+      { key: 'fip', label: 'FIP', value: (p) => (pit(p).outs ? pitAdvanced(pit(p), ctx(p)).fip : 99), render: (p) => (pit(p).outs ? pitAdvanced(pit(p), ctx(p)).fip.toFixed(2) : '-'), asc: true },
+      { key: 'whip', label: 'WHIP', value: (p) => (pit(p).outs ? whip(pit(p)) : 99), render: (p) => (pit(p).outs ? whip(pit(p)).toFixed(2) : '-'), asc: true },
+      { key: 'kbb', label: 'K-BB%', value: (p) => pitAdvanced(pit(p), ctx(p)).kbb, render: (p) => (pit(p).bf ? (pitAdvanced(pit(p), ctx(p)).kbb * 100).toFixed(1) : '-') },
+      { key: 'sv', label: 'SV', value: (p) => pit(p).sv },
+    ];
+    return [...base, tag40,
+      { key: 'ovr', label: 'Ovr', value: (p) => scoutedOvr(league, p) },
+      { key: 'pot', label: 'Pot', value: (p) => scoutedPot(league, p) },
+      { key: 'opt', label: 'Opt', title: 'Option years left', value: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : -1), render: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-') },
+      { key: 'svc', label: 'Svc', title: 'MLB service years', value: (p) => serviceYears(p.mlServiceDays, s), render: (p) => serviceYears(p.mlServiceDays, s).toFixed(3) },
+      {
+        key: 'status', label: 'Status', left: true, value: (p) => (p.injury ? p.injury.daysLeft : 0),
+        render: (p) => <span className="small">{p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}{p.il ? ` ${p.il.type}` : ''}{p.dfa ? ' DFA' : ''}{p.waivers ? ' waivers' : ''}</span>,
+      },
+    ];
+  };
+  const sortRows = (ps: Player[], cols: Col[], sort: { key: string; desc: boolean } | null) => {
+    if (!sort) return ps;
+    const c = cols.find((x) => x.key === sort.key);
+    if (!c) return ps;
+    return [...ps].sort((a, b) => {
+      const x = c.value(a);
+      const y = c.value(b);
+      const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+      return sort.desc ? -r : r;
+    });
+  };
+
   const shown = sel !== null ? league.players[sel] : null;
   return (
     <>
@@ -157,10 +228,14 @@ export default function RosterBoard() {
       <p className="muted small">
         Drag a player from one box to another to make the move: onto the active roster to recall, select or activate him; onto a minor league box to option or assign; onto the 40-man box to add him; onto an injured list; onto Designated to DFA him (or send a DFA'd player to outright waivers); or onto the release bar. Pick what each box shows from its drop-down. Click a name for his ratings.
       </p>
-      <p className="muted small">^ can refuse an option (5+ years of service) · ° out of options · R5 Rule 5 pick (must stay active) · Opt = option years left · Svc = MLB service years</p>
+      <p className="muted small">Switch a box to Hitting or Pitching to compare this season's stats at each player's level (wRC+ and FIP are relative to that level); click a column to sort. ^ can refuse an option (5+ years of service) · ° out of options · R5 Rule 5 pick (must stay active) · Opt = option years left · Svc = MLB service years</p>
       <div className="board">
         {boxes.map((b, i) => {
-          const ps = boxPlayers(league, b);
+          const all = boxPlayers(league, b);
+          const v = views[i];
+          const ps = v === 'hit' ? all.filter((p) => !isPitcher(p)) : v === 'pit' ? all.filter(isPitcher) : all;
+          const cols = colsFor(v, b);
+          const rows = sortRows(ps, cols, sorts[i]);
           return (
             <div
               key={i}
@@ -173,13 +248,31 @@ export default function RosterBoard() {
                 <select value={b} onChange={(e) => setBox(i, e.target.value as Box)}>
                   {BOXES.map((x) => <option key={x} value={x}>{boxName(league, x)}</option>)}
                 </select>
-                <span className="small muted">{boxCount(league, b, ps.length)}</span>
+                <span className="nowrap">
+                  <select className="small" value={v} onChange={(e) => { setViews(views.map((x, j) => (j === i ? (e.target.value as View) : x))); setSorts(sorts.map((x, j) => (j === i ? null : x))); }}>
+                    <option value="ratings">Ratings</option><option value="hit">Hitting {season}</option><option value="pit">Pitching {season}</option>
+                  </select>{' '}
+                  <span className="small muted">{boxCount(league, b, all.length)}</span>
+                </span>
               </div>
               <div className="board-list">
                 <table className="data compact">
-                  <thead><tr><th>Pos</th><th className="l">Player</th><th>Age</th><th>Ovr</th><th>Pot</th><th title="Option years left">Opt</th><th title="MLB service years">Svc</th><th className="l">Status</th></tr></thead>
+                  <thead>
+                    <tr>
+                      {cols.map((c) => (
+                        <th
+                          key={c.key}
+                          className={`${c.left ? 'l ' : ''}sortable`}
+                          title={c.title ?? 'Sort'}
+                          onClick={() => setSorts(sorts.map((x, j) => (j === i ? { key: c.key, desc: x?.key === c.key ? !x.desc : !c.asc } : x)))}
+                        >
+                          {c.label}{sorts[i]?.key === c.key ? (sorts[i]!.desc ? ' ▾' : ' ▴') : ''}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
-                    {ps.map((p) => (
+                    {rows.map((p) => (
                       <tr
                         key={p.id}
                         draggable
@@ -188,25 +281,10 @@ export default function RosterBoard() {
                         onDragEnd={() => { setDrag(null); setOver(null); }}
                         onClick={() => setSel(sel === p.id ? null : p.id)}
                       >
-                        <td>{posLabel(p)}</td>
-                        <td className="l">
-                          <span className={p.injury ? 'neg' : ''}>{p.first[0]}. {p.last}</span> <span className="muted small">{flags(p)}</span>
-                          {b !== 'MLB' && b !== '40' && p.on40 && <span className="tag small"> 40</span>}
-                        </td>
-                        <td>{league.season - p.born}</td>
-                        <td>{scoutedOvr(league, p)}</td>
-                        <td>{scoutedPot(league, p)}</td>
-                        <td>{p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-'}</td>
-                        <td>{serviceYears(p.mlServiceDays, s).toFixed(3)}</td>
-                        <td className="l small">
-                          {p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}
-                          {p.il ? ` ${p.il.type}` : ''}
-                          {p.dfa ? ' DFA' : ''}
-                          {p.waivers ? ' waivers' : ''}
-                        </td>
+                        {cols.map((c) => <td key={c.key} className={c.left ? 'l' : ''}>{c.render ? c.render(p) : c.value(p)}</td>)}
                       </tr>
                     ))}
-                    {!ps.length && <tr><td colSpan={8} className="muted small">Empty</td></tr>}
+                    {!rows.length && <tr><td colSpan={cols.length} className="muted small">Empty</td></tr>}
                   </tbody>
                 </table>
               </div>

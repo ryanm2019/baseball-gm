@@ -16,6 +16,7 @@ import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
 import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
+import { aiExtensions } from '../extensions.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { rand } from '../random.ts';
@@ -349,6 +350,7 @@ function finishRegularDay(league: League): DayResult {
   faDay(league);
   ifaDay(league);
   tradeDay(league);
+  aiExtensions(league);
   dailyUpkeep(league);
   league.day++;
   const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
@@ -439,6 +441,7 @@ export function simOneDay(league: League): DayResult {
     faDay(league);
     ifaDay(league);
     tradeDay(league);
+    aiExtensions(league);
     dailyUpkeep(league);
     league.day++;
     if (league.day >= 0) {

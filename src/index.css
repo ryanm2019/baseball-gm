@@ -180,7 +180,8 @@ tr.selected td { background: #fff7d6; }
 .board-box { border: 1px solid var(--border); border-radius: 6px; background: #fff; display: flex; flex-direction: column; min-height: 220px; }
 .board-box.over, .board-release.over { outline: 2px dashed #2e6bd1; background: #eef4ff; }
 .board-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--border); background: var(--nav); }
-.board-head select { max-width: 70%; font-weight: 600; }
+.board-head > select { max-width: 58%; font-weight: 600; }
+th.sortable { cursor: pointer; user-select: none; }
 .board-list { max-height: 340px; overflow-y: auto; }
 .board-list table { width: 100%; }
 .board-list tr.sel td { background: var(--yellow); }

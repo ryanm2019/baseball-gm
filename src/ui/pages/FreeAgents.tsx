@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
-import { go, useRoute } from '../../router.ts';
+import { go, href, useRoute } from '../../router.ts';
 import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
 import { signFreeAgent, posLabel } from '../../core/rules.ts';
@@ -58,6 +58,7 @@ function OfferCell({ p }: { p: Player }) {
         {mine ? 'Update' : 'Offer'}
       </button>{' '}
       {mine && <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId); changed(); }}>Withdraw</button>}{' '}
+      <a className="small" href={href('negotiate', ['fa', p.id])} title="Year-by-year salaries, options, opt-outs, no-trade, deferrals">Full terms</a>{' '}
       <span className="small muted">{interestLabel(preview)}</span>
     </span>
   );

@@ -2,7 +2,7 @@
 // offers based on need and budget; you can bid too. Each player decides on his
 // own timeline, weighing money, years, the team's chances and loyalty.
 import type { FaOffer, League, Org, Player } from './types.ts';
-import { clamp, rand, randInt } from './random.ts';
+import { clamp, rand, randInt, shuffle } from './random.ts';
 import { isPitcher, ovr, potOvr } from './ratings.ts';
 import { fmtMoney, marketValue, roundSalary } from './contracts.ts';
 import { addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
@@ -13,6 +13,7 @@ import { logMove, side } from './moves.ts';
 import { deptEffect } from './depts.ts';
 import { marketOvr } from './war.ts';
 import { postingFee } from './intl.ts';
+import { bookDeferred, buildContract, playerValue, shapeSchedule, type Terms } from './terms.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -82,7 +83,8 @@ export function committed(league: League, orgId: number, season: number): number
   let t = 0;
   for (const p of orgPlayers(league, orgId)) {
     if (p.contract.type !== 'ML') continue;
-    if (p.contract.exp >= season) t += p.contract.oneWay ? p.contract.salary : league.settings.minSalary;
+    // CBT terms: a scheduled deal counts its AAV, not this year's (maybe back-loaded) salary.
+    if (p.contract.exp >= season) t += p.contract.oneWay ? (p.contract.aav ?? p.contract.salary) : league.settings.minSalary;
     else if (p.arb) t += p.arb.settled ?? p.arb.projected;
   }
   for (const d of league.orgs[orgId].deadMoney) if (d.season === season) t += d.amount;
@@ -128,7 +130,10 @@ export function offerScore(league: League, p: Player, o: FaOffer): number {
   const fa = p.fa!;
   const askMoney = fa.asking.aav * Math.pow(fa.asking.years, 0.9);
   const years = Math.min(o.years, fa.asking.years + 1);
-  let score = (o.aav * Math.pow(years, 0.9)) / askMoney;
+  // Full terms: options, opt-outs, no-trade and deferrals change what the deal is worth to him.
+  const age = firstContractSeason(league) - p.born;
+  const per = o.terms ? playerValue(o.terms, fa.asking.aav, { loyalty: p.personality.loyalty, age }) / o.terms.sched.length : o.aav;
+  let score = (per * Math.pow(years, 0.9)) / askMoney;
   const greed = 1 + (p.personality.greed - 50) / 60;
   score = Math.pow(score, greed);
   const win = (p.personality.winning - 50) / 30;
@@ -145,13 +150,13 @@ export function interestLabel(score: number): string {
   return 'Not interested yet';
 }
 
-export function makeOffer(league: League, p: Player, orgId: number, years: number, aav: number): string | null {
+export function makeOffer(league: League, p: Player, orgId: number, years: number, aav: number, terms?: Terms): string | null {
   if (!p.fa) return 'Not a free agent';
   if (aav < league.settings.minSalary) return `Below the MLB minimum`;
   if (years < 1 || years > 10) return 'Contract length must be 1-10 years';
   if (fortyMan(league, orgId).length >= league.settings.fortyMax) return '40-man roster is full';
   p.fa.offers = p.fa.offers.filter((o) => o.orgId !== orgId);
-  p.fa.offers.push({ orgId, years, aav: roundSalary(aav), day: league.day });
+  p.fa.offers.push({ orgId, years, aav: roundSalary(aav), day: league.day, terms });
   return null;
 }
 
@@ -167,7 +172,8 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   p.on40 = true;
   const active = orgPlayers(league, o.orgId).filter((q) => q.level === 'MLB' && !q.il).length;
   p.level = league.phase === 'regular' && active >= league.settings.activeMax ? 'AAA' : 'MLB';
-  p.contract = { type: 'ML', salary: o.aav, minorSalary: 0, exp: start + o.years - 1, oneWay: true, signed: start };
+  p.contract = o.terms ? buildContract(o.terms, start, start) : { type: 'ML', salary: o.aav, minorSalary: 0, exp: start + o.years - 1, oneWay: true, signed: start };
+  if (o.terms) bookDeferred(league.orgs[o.orgId], p, p.contract);
   p.fa = null;
   p.teamSince = start;
   p.faSigned = start;
@@ -191,6 +197,36 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
 }
 
 // One day of the market.
+// How AI clubs structure deals: opt-outs for stars, options for veterans,
+// vesting options for relievers, no-trade clauses and deferrals on big deals.
+export function aiTerms(league: League, org: Org, p: Player, years: number, aav: number): Terms {
+  const age = firstContractSeason(league) - p.born;
+  const o = ovr(p);
+  const shape = years >= 4 && org.strategy === 'Contend' && rand() < 0.35 ? 'back' : years >= 3 && rand() < 0.15 ? 'front' : 'flat';
+  let total = aav * years;
+  const t: Terms = { sched: [] };
+  if (o >= 62 && years >= 4 && rand() < 0.5) {
+    t.optOuts = [Math.min(years - 2, rand() < 0.5 ? 1 : 2)];
+    total *= 0.96; // he gives a little salary back for the opt-out
+  }
+  if (age >= 32 && years <= 2 && rand() < 0.45) {
+    const r = rand();
+    const sal = roundSalary(aav * (0.95 + rand() * 0.15));
+    t.option = { type: r < 0.6 ? 'club' : 'mutual', season: 0, salary: sal, buyout: roundSalary(sal * 0.1) };
+  } else if (p.pos === 'RP' && years >= 2 && rand() < 0.3) {
+    t.option = { type: 'vesting', season: 0, salary: roundSalary(aav), buyout: roundSalary(aav * 0.1), vest: { stat: 'g', need: 60 } };
+  } else if (p.pos === 'SP' && age >= 30 && years >= 2 && rand() < 0.2) {
+    t.option = { type: 'vesting', season: 0, salary: roundSalary(aav), buyout: roundSalary(aav * 0.1), vest: { stat: 'ip', need: 160 } };
+  } else if (years >= 2 && age <= 33 && o >= 55 && rand() < 0.12) {
+    t.option = { type: 'player', season: 0, salary: roundSalary(aav), buyout: 0 };
+  }
+  if (aav * years >= 120e6 && rand() < 0.45) t.ntc = 'full';
+  else if (aav * years >= 40e6 && rand() < 0.35) t.ntc = shuffle(league.orgs.filter((x) => x.id !== org.id)).slice(0, randInt(4, 10)).map((x) => x.id);
+  if (aav * years >= 150e6 && org.market >= 1.2 && rand() < 0.25) t.deferPct = Math.round((0.1 + rand() * 0.2) * 20) / 20;
+  t.sched = shapeSchedule(total, years, shape);
+  return t;
+}
+
 // Big enough that the insiders cover him.
 const notableFa = (p: Player) => ovr(p) >= 55 || p.fa!.asking.aav >= 8e6;
 
@@ -236,7 +272,8 @@ export function faDay(league: League): void {
       const aav = roundSalary(Math.min(mv * 1.15 * eager, p.fa!.asking.aav * (0.86 + rand() * 0.22) * eager));
       if (aav > budget) continue;
       const years = clamp(p.fa!.asking.years + (rand() < 0.3 ? -1 : 0) + (rand() < 0.15 ? 1 : 0), 1, 8);
-      p.fa!.offers.push({ orgId: org.id, years, aav, day: league.day });
+      const terms = aiTerms(league, org, p, years, aav);
+      p.fa!.offers.push({ orgId: org.id, years, aav, day: league.day, terms });
       if (notableFa(p) && rand() < 0.4) {
         const how = rand() < 0.5 ? 'met with' : rand() < 0.5 ? 'made an offer to' : 'have checked in on';
         addScoop(league, `Sources: the ${org.affiliates.MLB.name} ${how} free agent ${posLabel(p)} ${pname(p)}.`, [p.id]);

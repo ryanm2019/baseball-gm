@@ -13,6 +13,8 @@ import Stats from './ui/pages/Stats.tsx';
 import Transactions from './ui/pages/Transactions.tsx';
 import Depth from './ui/pages/Depth.tsx';
 import RosterBoard from './ui/pages/RosterBoard.tsx';
+import Extensions from './ui/pages/Extensions.tsx';
+import Negotiate from './ui/pages/Negotiate.tsx';
 import Farm from './ui/pages/Farm.tsx';
 import Staff from './ui/pages/Staff.tsx';
 import Schedule from './ui/pages/Schedule.tsx';
@@ -49,7 +51,7 @@ const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
-  { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
+  { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb'], ['extensions', 'Extensions']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
 ];
 
@@ -163,6 +165,8 @@ export default function App() {
     case 'transactions': page = <Transactions />; break;
     case 'depth': page = <Depth />; break;
     case 'roster-moves': page = <RosterBoard />; break;
+    case 'extensions': page = <Extensions />; break;
+    case 'negotiate': page = <Negotiate />; break;
     case 'farm': page = <Farm />; break;
     case 'staff': page = <Staff />; break;
     case 'schedule': page = <Schedule />; break;

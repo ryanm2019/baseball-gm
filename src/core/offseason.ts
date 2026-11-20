@@ -15,7 +15,7 @@
 import type { League, Org, Player } from './types.ts';
 import { LEVELS } from './types.ts';
 import { dayToDate } from './settings.ts';
-import { cbtTax, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
+import { cbtTax, fmtMoney, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
 import { isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, sumBat, sumPit, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffContractsExpire, staffOf } from './staff.ts';
@@ -31,6 +31,7 @@ import { generateIfaClass, isIfa, negotiationDay, openIfaPeriod, postPlayers, se
 import { logMove, side } from './moves.ts';
 import { marketOvr } from './war.ts';
 import { setDeptBudgets, updateFacilities } from './depts.ts';
+import { salaryIn, syncContract } from './terms.ts';
 
 export interface CalEvent {
   key: string;
@@ -134,22 +135,62 @@ function aiOfferQo(league: League, org: Org, p: Player, qo: number): boolean {
   return marketValue(p, league.settings) >= qo * 0.85;
 }
 
+// Did a vesting option vest? Checked against his final guaranteed season.
+export function vested(league: League, p: Player): boolean {
+  const v = p.contract.option?.vest;
+  if (!v) return false;
+  const es = p.stats.filter((s) => s.season === league.season && s.level === 'MLB');
+  const n = es.reduce((t, s) => t + (v.stat === 'pa' ? s.bat.pa : v.stat === 'ip' ? s.pit.outs / 3 : s.pit.g), 0);
+  return n >= v.need;
+}
+
+// Players with an opt-out after this season leave if the market pays more.
+function runOptOuts(league: League): void {
+  for (const p of Object.values(league.players)) {
+    const c = p.contract;
+    if (p.orgId === null || c.type !== 'ML' || !c.optOuts?.includes(league.season) || c.exp <= league.season) continue;
+    let owed = 0;
+    for (let y = league.season + 1; y <= c.exp; y++) owed += salaryIn(c, y);
+    const left = c.exp - league.season;
+    const mv = marketValue(p, league.settings, marketOvr(league, p, ovr(p), 0.5));
+    const age = league.season + 1 - p.born;
+    const yrs = Math.max(1, Math.min(left + 2, age <= 30 ? 7 : age <= 33 ? 4 : 2));
+    const org = league.orgs[p.orgId];
+    if (mv * yrs > owed * 1.08 && mv > (owed / left) * 1.05) {
+      p.contract = { ...c, exp: league.season, sched: c.sched?.slice(0, league.season - (c.start ?? league.season) + 1), option: undefined, optOuts: undefined };
+      addTransaction(league, org.id, 'Opt-out', `${posLabel(p)} ${pname(p)} opted out of the last ${left} year${left === 1 ? '' : 's'} (${fmtMoney(owed)}) of his contract`, [p.id]);
+      addNews(league, null, `${pname(p)} opted out of his deal with the ${org.affiliates.MLB.name}, walking away from ${fmtMoney(owed)} to test free agency.`, [p.id]);
+    } else {
+      p.contract = { ...c, optOuts: c.optOuts.filter((s) => s !== league.season) };
+      if (mv > 15e6 || p.orgId === league.userOrgId) addNews(league, p.orgId === league.userOrgId ? p.orgId : null, `${pname(p)} will not opt out; he stays with the ${org.affiliates.MLB.name} (${fmtMoney(owed)} left).`, [p.id]);
+    }
+  }
+}
+
 function runOptions(league: League): void {
   const qo = qoAmount(league);
+  runOptOuts(league);
   for (const org of league.orgs) {
     const auto = delegated(league, org, 'options');
     for (const p of pendingOptions(league, org.id)) {
       const opt = p.contract.option!;
+      const club = () => (auto ? aiExercise(league, org, p) : (org.optionPlan[p.id] ?? aiExercise(league, org, p)));
+      // The player picks up his side when it beats what he'd get on the market.
+      const playerYes = () => opt.salary >= marketValue(p, league.settings, marketOvr(league, p, ovr(p), 0.5)) * 0.95;
       let exercise: boolean;
-      if (opt.type === 'club') exercise = auto ? aiExercise(league, org, p) : (org.optionPlan[p.id] ?? aiExercise(league, org, p));
-      else exercise = opt.salary >= marketValue(p, league.settings) * 0.95; // the player decides
+      let how: string;
+      if (opt.type === 'vesting' && vested(league, p)) { exercise = true; how = 'Vesting option vested for'; }
+      else if (opt.type === 'club' || opt.type === 'vesting') { exercise = club(); how = exercise ? 'Exercised the club option on' : 'Declined the club option on'; }
+      else if (opt.type === 'mutual') { exercise = club() && playerYes(); how = exercise ? 'Both sides exercised the mutual option on' : 'Mutual option declined (buyout paid):'; }
+      else { exercise = playerYes(); how = exercise ? 'Player option exercised by' : 'Player declined his option:'; }
       if (exercise) {
-        p.contract = { ...p.contract, salary: opt.salary, exp: opt.season, option: undefined };
-        addTransaction(league, org.id, 'Option', `${opt.type === 'club' ? 'Exercised the club option on' : 'Player option exercised by'} ${posLabel(p)} ${pname(p)} ($${(opt.salary / 1e6).toFixed(2)}M)`, [p.id]);
+        const c = p.contract;
+        p.contract = { ...c, salary: opt.salary, exp: opt.season, option: undefined, sched: c.sched ? [...c.sched, opt.salary] : undefined };
+        addTransaction(league, org.id, 'Option', `${how} ${posLabel(p)} ${pname(p)} (${fmtMoney(opt.salary)})`, [p.id]);
       } else {
-        if (opt.type === 'club' && opt.buyout > 0) org.deadMoney.push({ pid: p.id, name: pname(p), amount: opt.buyout, season: league.season });
+        if (opt.type !== 'player' && opt.buyout > 0) org.deadMoney.push({ pid: p.id, name: pname(p), amount: opt.buyout, season: league.season });
         p.contract = { ...p.contract, option: undefined };
-        addTransaction(league, org.id, 'Option', `${opt.type === 'club' ? 'Declined the club option on' : 'Player declined his option:'} ${posLabel(p)} ${pname(p)}`, [p.id]);
+        addTransaction(league, org.id, 'Option', `${how} ${posLabel(p)} ${pname(p)}`, [p.id]);
       }
     }
     for (const p of qoEligible(league, org.id)) {
@@ -505,6 +546,7 @@ function runRollover(league: League): void {
     if (p.rule5 && p.rule5.season < league.season) p.rule5 = null;
     if (p.arb && p.arb.settled === null) p.arb.settled = p.arb.projected;
     if (p.contract.type === 'MiLB' && p.orgId !== null && p.contract.exp < league.season) p.contract.exp = league.season;
+    syncContract(league, p);
     // Winter development: roughly three months' worth.
     if (!p.prospect) {
       yearlyPotentialDrift(league, p);

@@ -69,6 +69,12 @@ function seasonReport(season: number) {
     console.log(`Late-round flyers signed (R11+, $500k+): ${fly.length} | ${fly.slice(0, 4).map((x) => `R${x.round} ${L.orgs[x.orgId].abbrev} $${((L.players[x.pid!].contract.bonus ?? 0) / 1e6).toFixed(2)}M`).join(', ')}`);
     console.log(`Draft signed R1 ${grp(1, 1)} R2-10 ${grp(2, 10)} R11+ ${grp(11, 99)} | over pool: ${taxes.length} teams, >5%: ${taxes.filter((t) => t.penalty.includes('pick')).length}`);
   }
+  {
+    const top = L.orgs.map((o) => ({ o, w: st[o.id].w, pay: orgPayroll(L, o).cbt })).sort((a, b) => b.w - a.w).slice(0, 3);
+    console.log(`Top teams: ${top.map((x) => `${x.o.abbrev} ${x.w}W pay ${(x.pay / 1e6).toFixed(0)}M budget ${(x.o.budget / 1e6).toFixed(0)}M owner ${x.o.owner.type} 60+ players ${Object.values(L.players).filter((p) => p.orgId === x.o.id && p.level === 'MLB' && ovr(p) >= 60).length}`).join(' | ')}`);
+    const over = L.orgs.map((o) => ({ o, pay: orgPayroll(L, o).cbt })).filter((x) => x.pay > x.o.budget * 1.05);
+    console.log(`Over budget >5%: ${over.map((x) => `${x.o.abbrev} ${(x.pay / 1e6).toFixed(0)}/${(x.o.budget / 1e6).toFixed(0)}M`).join(', ')}`);
+  }
   console.log(`Standings: best ${Math.max(...wins)} worst ${Math.min(...wins)} | 95+ wins: ${wins.filter((w) => w >= 95).length}, <=65: ${wins.filter((w) => w <= 65).length} | champion ${L.playoffs?.champion !== undefined && L.playoffs?.champion !== null ? L.orgs[L.playoffs.champion].abbrev : '?'}`);
 }
 
@@ -173,3 +179,14 @@ console.log(`User job security ${u.owner.patience}, goals ${JSON.stringify(u.goa
 const retired = Object.values(L.players).filter((p) => p.retired);
 console.log(`Retired ${retired.length}; retire age avg ${avg(retired.map((p) => (p.retired ?? L.season) - p.born)).toFixed(1)}`);
 console.log(`Save size ~${(JSON.stringify(L).length / 1e6).toFixed(1)} MB, players ${Object.keys(L.players).length}, moves ${L.moves.length}, news ${L.news.length}, transactions ${L.transactions.length}`);
+
+// Contracts: extensions, clauses, opt-outs, vesting, vetoes, deferrals.
+{
+  const tx = L.transactions;
+  const cnt = (re: RegExp) => tx.filter((t) => re.test(t.text)).length;
+  const ext = (L.moves ?? []).filter((m) => m.type === 'Extension');
+  console.log(`Extensions ${ext.length} (biggest: ${[...ext].sort((a, b) => b.cost - a.cost).slice(0, 3).map((m) => m.text).join(' || ')})`);
+  console.log(`Opt-outs exercised ${cnt(/opted out/)} | vesting vested ${cnt(/Vesting option vested/)} | mutual exercised ${cnt(/Both sides exercised/)} declined ${cnt(/Mutual option declined/)} | club options exercised ${cnt(/Exercised the club option/)} declined ${cnt(/Declined the club option/)}`);
+  const ml = Object.values(L.players).filter((p) => p.orgId !== null && p.contract.type === 'ML');
+  console.log(`Active deals with: sched ${ml.filter((p) => p.contract.sched).length}, opt-outs ${ml.filter((p) => p.contract.optOuts?.length).length}, NTC ${ml.filter((p) => p.contract.ntc).length}, deferred ${ml.filter((p) => p.contract.deferPct).length}, options ${ml.filter((p) => p.contract.option).length} | veto news ${L.news.filter((n) => /no-trade clause to veto/.test(n.text)).length}`);
+}

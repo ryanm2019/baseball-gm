@@ -130,9 +130,12 @@ function projectedSplit(league: League, p: Player): number {
 export function orgPayroll(league: League, org: Org): { lines: PayrollLine[]; total: number; cbt: number; dead: number } {
   const lines: PayrollLine[] = [];
   let total = 0;
+  let cbtTotal = 0;
   for (const p of Object.values(league.players)) {
     if (p.orgId !== org.id || p.contract.type !== 'ML') continue;
     const amt = projectedSplit(league, p);
+    const cbtAmt = p.contract.aav !== undefined && p.contract.oneWay ? p.contract.aav : amt;
+    cbtTotal += cbtAmt;
     lines.push({
       pid: p.id,
       name: `${p.first} ${p.last}`,
@@ -148,9 +151,12 @@ export function orgPayroll(league: League, org: Org): { lines: PayrollLine[]; to
   for (const d of org.deadMoney) if (d.season === league.season) dead += d.amount;
   // Cash sent (+) or received (-) in trades counts against this season's payroll.
   for (const c of org.cash ?? []) if (c.season === league.season) dead += c.amount;
+  // Deferred salary from old deals is paid in cash now (its CBT hit was taken up front).
+  let deferred = 0;
+  for (const d of org.deferred ?? []) if (d.season === league.season) deferred += d.amount;
   lines.sort((a, b) => b.salary - a.salary);
-  const cbt = total + dead + league.settings.playerBenefits;
-  return { lines, total: total + dead, cbt, dead };
+  const cbt = cbtTotal + dead + league.settings.playerBenefits;
+  return { lines, total: total + dead + deferred, cbt, dead };
 }
 
 export function cbtTax(cbtPayroll: number, payerYears: number, s: Settings): { over: number; tax: number; tier: number } {
