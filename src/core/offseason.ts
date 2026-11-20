@@ -17,8 +17,8 @@ import { LEVELS } from './types.ts';
 import { dayToDate } from './settings.ts';
 import { cbtTax, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
 import { isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
-import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
-import { agmEvalSd, delegated, staffContractsExpire } from './staff.ts';
+import { addNews, addTransaction, fortyMan, orgPlayers, pname, sumBat, sumPit, touchRosters } from './util.ts';
+import { agmEvalSd, delegated, staffContractsExpire, staffOf } from './staff.ts';
 import { firstContractSeason, isFreeAgent, openFreeAgent } from './freeAgency.ts';
 import { posLabel } from './rules.ts';
 import { clamp, normal, rand } from './random.ts';
@@ -27,8 +27,9 @@ import { buildSchedule } from './schedule.ts';
 import { emptyStanding } from './league.ts';
 import { generateCbPicks, generateDraftClass } from './draft.ts';
 import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
-import { generateIfaClass, isIfa, openIfaPeriod } from './intl.ts';
+import { generateIfaClass, isIfa, negotiationDay, openIfaPeriod, postPlayers, setupIfaPools } from './intl.ts';
 import { logMove, side } from './moves.ts';
+import { marketOvr } from './war.ts';
 import { setDeptBudgets, updateFacilities } from './depts.ts';
 
 export interface CalEvent {
@@ -52,11 +53,13 @@ export function offseasonCalendar(league: League): CalEvent[] {
     { key: 'qo-response', label: 'Players respond to qualifying offers', day: ws + 12 },
     { key: 'r5-protect', label: 'Rule 5 protection deadline', day: dayOfDate(league, 10, 18), decision: { duty: 'rule5protect', page: 'rule5', text: 'Add any prospects you want to protect to the 40-man roster on the Rule 5 page.' } },
     { key: 'tender', label: 'Non-tender deadline', day: dayOfDate(league, 10, 22), decision: { duty: 'tender', page: 'tenders', text: 'Choose who to tender on the Tenders & Arbitration page.' } },
+    { key: 'posting', label: 'International pros posted', day: dayOfDate(league, 10, 25) },
     { key: 'winter-meetings', label: 'Winter Meetings (trade market heats up)', day: dayOfDate(league, 11, 7) },
     { key: 'r5-draft', label: 'Rule 5 draft', day: dayOfDate(league, 11, 10), decision: { duty: 'rule5draft', page: 'rule5', text: 'Pick your Rule 5 targets on the Rule 5 page.' } },
-    { key: 'ifa-class', label: 'International class revealed', day: dayOfDate(league, 11, 15) },
+    { key: 'ifa-class', label: 'International class revealed (negotiations open)', day: dayOfDate(league, 11, 15) },
+    { key: 'ifa-shake', label: 'International negotiation day', day: dayOfDate(league, 0, 1) },
     { key: 'arb-exchange', label: 'Arbitration figures exchanged', day: dayOfDate(league, 0, 9), decision: { duty: 'arbitration', page: 'tenders', text: 'Set your arbitration figures or settle on the Tenders & Arbitration page.' } },
-    { key: 'ifa-open', label: 'International signing period opens', day: dayOfDate(league, 0, 15), decision: { duty: 'ifa', page: 'international', text: 'Sign international amateurs on the International page.' } },
+    { key: 'ifa-open', label: 'International signing day', day: dayOfDate(league, 0, 15) },
     { key: 'arb-hearings', label: 'Arbitration hearings', day: dayOfDate(league, 1, 5), decision: { duty: 'arbitration', page: 'tenders', text: 'Last chance to settle arbitration cases before hearings.' } },
     { key: 'rollover', label: 'Spring training: new season begins', day: dayOfDate(league, 1, 15) },
   ];
@@ -165,7 +168,17 @@ function runOptions(league: League): void {
 function runFaOpen(league: League): void {
   const s = league.settings;
   updateStrategies(league);
-  setBudgets(league);
+  // Owners budget knowing next year's guaranteed money and arbitration raises.
+  const super2 = superTwoSet(league);
+  setBudgets(league, (org) => orgPlayers(league, org.id).reduce((t, p) => {
+    const c = p.contract;
+    if (c.type !== 'ML') return t;
+    if (c.exp > league.season) return t + c.salary;
+    if (!p.on40 || serviceYears(p.mlServiceDays, s) >= 6) return t;
+    const st = arbStatus(league, p, super2);
+    if (!st.eligible) return t + s.minSalary;
+    return ovr(p) >= 44 ? t + arbProjection(league, p, st.year) : t;
+  }, 0));
   let nMl = 0;
   let nMilb = 0;
   for (const p of Object.values(league.players)) {
@@ -324,7 +337,8 @@ export function arbStatus(league: League, p: Player, super2: Set<number>): { eli
 
 export function arbProjection(league: League, p: Player, year: number): number {
   const frac = [0.2, 0.36, 0.52, 0.68][clamp(year - 1, 0, 3)];
-  const v = marketValue(p, league.settings) * frac;
+  // Arbitration is argued with stats: the platform year and career numbers.
+  const v = marketValue(p, league.settings, marketOvr(league, p, ovr(p), 0.6)) * frac;
   const prev = p.contract.salary;
   // Arbitration salaries can't be cut more than 20% and usually rise.
   return roundSalary(Math.max(league.settings.minSalary, prev * 0.8, Math.max(v, prev * (year > 1 ? 1.05 : 1))));
@@ -334,7 +348,9 @@ function aiTender(league: League, org: Org, p: Player, projected: number, arb: b
   const v = perceivedOvr(league, p, agmEvalSd(league, org));
   if (!arb) return v >= 38 || potOvr(p) >= 48;
   const mv = marketValue(p, league.settings);
-  return v >= 43 && projected <= mv * 1.1;
+  // Clubs over budget get pickier about raises.
+  const tight = orgPayroll(league, org).cbt + projected > org.budget;
+  return v >= (tight ? 46 : 43) && projected <= mv * (tight ? 0.95 : 1.1);
 }
 
 function runTenders(league: League): void {
@@ -515,7 +531,7 @@ function runRollover(league: League): void {
   staffContractsExpire(league);
   ownerSales(league);
   updateStrategies(league);
-  setBudgets(league);
+  setBudgets(league, (org) => orgPayroll(league, org).cbt);
   setDeptBudgets(league);
   setOwnerGoals(league);
   generateDraftClass(league, league.season);
@@ -557,6 +573,8 @@ export function runOffseasonEvents(league: League): string | null {
       return `${ev.label} today. ${ev.decision.text} Press Play again when you're ready.`;
     }
     league.events.push(ev.key);
+    const txBefore = league.nextId.tx;
+    const byAgm = !!ev.decision && delegated(league, user, ev.decision.duty) && !!staffOf(league, user, 'AGM');
     switch (ev.key) {
       case 'options': runOptions(league); break;
       case 'fa-open': runFaOpen(league); break;
@@ -565,17 +583,33 @@ export function runOffseasonEvents(league: League): string | null {
       case 'tender': runTenders(league); break;
       case 'winter-meetings': addNews(league, null, 'The Winter Meetings are underway. Expect the trade market to heat up.'); break;
       case 'r5-draft': runRule5Draft(league); break;
+      case 'posting': postPlayers(league); break;
       case 'ifa-class':
-        for (const p of Object.values(league.players)) if (isIfa(p)) delete league.players[p.id];
+        for (const p of Object.values(league.players)) if (isIfa(p) && p.ifa!.year !== league.season + 1) delete league.players[p.id];
         generateIfaClass(league, league.season + 1);
+        setupIfaPools(league);
+        if (!delegated(league, user, 'ifa')) return 'The international class is out and negotiations are open. Check asking ranges and make offers on the International page before signing day (January 15). Press Play again when you\'re ready.';
         break;
+      case 'ifa-shake': negotiationDay(league); break;
       case 'arb-exchange': runArbExchange(league); break;
       case 'ifa-open': openIfaPeriod(league); break;
       case 'arb-hearings': runArbHearings(league); break;
       case 'rollover': runRollover(league); return null;
     }
+    if (byAgm) agmReport(league, ev.label, txBefore);
   }
   return null;
+}
+
+// Your assistant GM tells you what he did with a job you gave him.
+function agmReport(league: League, label: string, txBefore: number): void {
+  const user = league.orgs[league.userOrgId];
+  const agm = staffOf(league, user, 'AGM')!;
+  const mine = league.transactions.filter((t) => t.id >= txBefore && t.orgId === user.id);
+  const text = mine.length
+    ? `AGM ${agm.first} ${agm.last} (${label.toLowerCase()}): ${mine.map((t) => t.text).join('; ')}.`
+    : `AGM ${agm.first} ${agm.last} (${label.toLowerCase()}): no moves needed.`;
+  addNews(league, user.id, text, mine.flatMap((t) => t.pids));
 }
 
 function userHasDecision(league: League, key: string): boolean {
@@ -587,7 +621,6 @@ function userHasDecision(league: League, key: string): boolean {
     case 'r5-draft': return fortyMan(league, id).length < league.settings.fortyMax;
     case 'arb-exchange':
     case 'arb-hearings': return orgPlayers(league, id).some((p) => p.arb && p.arb.settled === null);
-    case 'ifa-open': return true;
   }
   return false;
 }
@@ -609,6 +642,18 @@ export function pruneLeague(league: League): void {
     const mlb = p.stats.some((s) => s.level === 'MLB');
     if (p.retired && !mlb) delete league.players[p.id];
     else if (!p.retired && p.orgId === null && !p.prospect && !p.ifa && !mlb && league.season - p.born >= 26 && ovr(p) < 42) delete league.players[p.id];
+    else {
+      // Minor league lines older than three seasons collapse to one line per season.
+      const old = p.stats.filter((s) => s.level !== 'MLB' && s.season < league.season - 2);
+      const seasons = new Set(old.map((s) => s.season));
+      if (old.length <= seasons.size) continue;
+      const merged = [...seasons].map((season) => {
+        const es = old.filter((s) => s.season === season);
+        const top = es.reduce((a, b) => (LEVELS.indexOf(b.level) < LEVELS.indexOf(a.level) ? b : a));
+        return { season, level: top.level, orgId: top.orgId, bat: sumBat(es), pit: sumPit(es) };
+      });
+      p.stats = [...merged, ...p.stats.filter((s) => !old.includes(s))].sort((a, b) => a.season - b.season);
+    }
   }
   touchRosters();
 }

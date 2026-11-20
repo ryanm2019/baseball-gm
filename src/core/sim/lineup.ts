@@ -90,10 +90,29 @@ function autoLineup(hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: P
     used.add(dh.id);
     chosen.push({ p: dh, pos: 'DH' });
   }
-  const o = chosen.sort((a, b) => offVs(b.p, oppHand) - offVs(a.p, oppHand));
-  // Best hitters at 1-4; table setter with OBP/speed leads off.
-  const order = [o[2], o[0], o[1], o[3], ...o.slice(4)].filter(Boolean);
-  return order;
+  return battingOrder(chosen, oppHand);
+}
+
+// Batting order the way modern clubs build it: a high-OBP table setter leads
+// off, the best hitter bats second, the best remaining power bat cleans up,
+// and the rest follow in order of quality.
+export function battingOrder<T extends { p: Player }>(slots: T[], hand: 'L' | 'R'): T[] {
+  const o = [...slots].sort((a, b) => offVs(b.p, hand) - offVs(a.p, hand));
+  const sp = (x: T) => (hand === 'L' ? x.p.ratings.vL : x.p.ratings.vR);
+  const obp = (x: T) => sp(x).eye + 0.7 * sp(x).babip + 0.3 * x.p.ratings.run.speed - 0.3 * sp(x).power + 0.5 * offVs(x.p, hand);
+  const take = (list: T[], f: (x: T) => number) => {
+    const best = list.reduce((a, b) => (f(b) > f(a) ? b : a));
+    list.splice(list.indexOf(best), 1);
+    return best;
+  };
+  if (o.length < 5) return o;
+  const top = o.slice(0, 5);
+  const rest = o.slice(5);
+  const lead = take(top, obp);
+  const second = take(top, (x) => offVs(x.p, hand));
+  const cleanup = take(top, (x) => sp(x).power + 0.5 * offVs(x.p, hand));
+  const third = take(top, (x) => offVs(x.p, hand));
+  return [lead, second, third, cleanup, ...top, ...rest];
 }
 
 export function postseasonEligible(league: League, p: Player): boolean {

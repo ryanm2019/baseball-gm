@@ -20,10 +20,21 @@ export function baseBudget(org: Org): number {
   return 40e6 + Math.pow(org.market, 1.5) * 170e6;
 }
 
-export function computeBudget(org: Org): number {
+// How far past the base budget an owner will stretch to cover raises the club
+// is already committed to (arbitration, escalators).
+const FLEX_CAP: Record<OwnerType, number> = { Cheap: 1.04, Moderate: 1.1, 'Big spender': 1.18, 'Win-now': 1.15 };
+
+// Owners budget from market size and spending habits, adjusted for last
+// season's success (attendance, playoff revenue). They understand that
+// arbitration raises are coming: committed payroll (including projected arb
+// salaries) raises the budget up to the owner's flex cap.
+export function computeBudget(org: Org, league?: League, committed?: number): number {
   let b = baseBudget(org) * OWNER_MULT[org.owner.type];
   if (org.owner.type === 'Win-now' && org.strategy === 'Contend') b *= 1.08;
   if (org.strategy === 'Rebuild') b *= 0.85;
+  const wins = league?.lastWins?.[org.id];
+  if (wins !== undefined) b *= 1 + clamp((wins - 81) * 0.004, -0.06, 0.08);
+  if (committed !== undefined) b = Math.max(b, Math.min(committed * 1.03, b * FLEX_CAP[org.owner.type]));
   return Math.round(b / 1e6) * 1e6;
 }
 
@@ -74,8 +85,24 @@ export function updateStrategies(league: League, midseason = false): void {
   updateStances(league);
 }
 
-export function setBudgets(league: League): void {
-  for (const o of league.orgs) o.budget = computeBudget(o);
+export function setBudgets(league: League, committed?: (org: Org) => number): void {
+  for (const o of league.orgs) o.budget = computeBudget(o, league, committed?.(o));
+}
+
+// At the deadline, owners of contenders loosen the purse strings a little.
+export function deadlineFlex(league: League): void {
+  for (const o of league.orgs) {
+    if (o.strategy !== 'Contend' || o.owner.type === 'Cheap') continue;
+    const bump = o.owner.type === 'Moderate' ? 0.04 : 0.07;
+    const add = Math.round((o.budget * bump) / 1e6) * 1e6;
+    o.budget += add;
+    const g = o.goals?.season === league.season ? o.goals.items.find((x) => x.type === 'budget') : undefined;
+    if (g && o.owner.type !== 'Big spender') {
+      g.target += add;
+      g.text = `Keep the CBT payroll under ${fmtMoney(g.target)} (raised for the deadline)`;
+    }
+    if (o.id === league.userOrgId) addNews(league, o.id, `${o.owner.first} ${o.owner.last} approved an extra ${fmtMoney(add)} of payroll for a deadline push. Your budget is now ${fmtMoney(o.budget)}.`);
+  }
 }
 
 // Each winter a few clubs are sold; new owners bring new spending habits.
@@ -209,12 +236,12 @@ export function reviewGm(league: League): void {
       case 'wins': delta += met ? 6 : -Math.min(20, (g.target - r.w) * 1.2) * resultsW; break;
       case 'playoffs': delta += met ? 10 : -10 * resultsW; break;
       case 'series': delta += met ? 8 : -5 * resultsW; break;
-      case 'budget': delta += met ? 4 : -((pay.cbt - g.target) / Math.max(1, g.target)) * 70 * moneyW; break;
+      case 'budget': delta += met ? 4 : -Math.max(0, (pay.cbt - g.target * 1.02) / Math.max(1, g.target)) * 70 * moneyW; break;
       case 'cbt': delta += met ? 3 : -8 * moneyW; break;
     }
   }
   if (!goals.length) {
-    const over = pay.cbt - org.budget;
+    const over = pay.cbt - org.budget * 1.02;
     if (over > 0) delta -= (over / org.budget) * 70 * moneyW;
   }
   const tax = cbtTax(pay.cbt, org.cbtPayerYears, league.settings).tax;

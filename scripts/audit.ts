@@ -65,6 +65,8 @@ function seasonReport(season: number) {
   if (d) {
     const grp = (lo: number, hi: number) => { const ps = d.picks.filter((x) => x.round >= lo && x.round <= hi && x.pid !== null); return `${ps.filter((x) => x.signed).length}/${ps.length}`; };
     const taxes = (L.draftTax ?? []).filter((t) => t.season === season);
+    const fly = d.picks.filter((x) => x.round >= 11 && x.signed && x.pid !== null && (L.players[x.pid]?.contract.bonus ?? 0) >= 500_000);
+    console.log(`Late-round flyers signed (R11+, $500k+): ${fly.length} | ${fly.slice(0, 4).map((x) => `R${x.round} ${L.orgs[x.orgId].abbrev} $${((L.players[x.pid!].contract.bonus ?? 0) / 1e6).toFixed(2)}M`).join(', ')}`);
     console.log(`Draft signed R1 ${grp(1, 1)} R2-10 ${grp(2, 10)} R11+ ${grp(11, 99)} | over pool: ${taxes.length} teams, >5%: ${taxes.filter((t) => t.penalty.includes('pick')).length}`);
   }
   console.log(`Standings: best ${Math.max(...wins)} worst ${Math.min(...wins)} | 95+ wins: ${wins.filter((w) => w >= 95).length}, <=65: ${wins.filter((w) => w <= 65).length} | champion ${L.playoffs?.champion !== undefined && L.playoffs?.champion !== null ? L.orgs[L.playoffs.champion].abbrev : '?'}`);

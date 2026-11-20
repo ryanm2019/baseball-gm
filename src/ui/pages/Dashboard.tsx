@@ -276,6 +276,15 @@ export default function Dashboard() {
             </div>
           )}
           {hitters.length === 0 && <p className="muted">Season hasn't started.</p>}
+          <h3>Insider</h3>
+          {!(league.scoops ?? []).length && <p className="muted small">Free agent meetings, finalists, agreements, trades and players being shopped show up here.</p>}
+          <div style={{ maxWidth: 420 }}>
+            {(league.scoops ?? []).slice(-8).reverse().map((n) => (
+              <div key={n.id} className="news-item small">
+                <span className="muted">{dayShort(n.season, n.day)}</span> <LinkedText league={league} text={n.text} pids={n.pids} />
+              </div>
+            ))}
+          </div>
           <h3>News</h3>
           {news.length === 0 && <p className="muted">Nothing yet.</p>}
           <div style={{ maxWidth: 420 }}>

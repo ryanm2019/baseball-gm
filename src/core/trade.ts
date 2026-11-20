@@ -2,7 +2,7 @@
 import type { League, Org, Player, Pos, TradeAssets, TradeOffer, TradeProposal } from './types.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { orgPayroll, roundSalary, serviceYears } from './contracts.ts';
-import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
+import { addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { posLabel } from './rules.ts';
 import { CB_VALUE, POOL_VALUE, projectValue, seasonFraction, tradeValue } from './value.ts';
 import { delegated } from './staff.ts';
@@ -124,6 +124,8 @@ export function evaluate(league: League, org: Org, prop: TradeProposal): Evaluat
   const salaryOut = remainingSalary(league, give.pids) - give.cash;
   const payroll = orgPayroll(league, org).cbt;
   if (salaryIn > salaryOut && payroll + salaryIn - salaryOut > org.budget) received -= (salaryIn - salaryOut) * 0.5;
+  // ...and value getting under it.
+  if (salaryOut > salaryIn && payroll > org.budget) received += Math.min(salaryOut - salaryIn, payroll - org.budget) * 0.6;
   const human = prop.orgs.includes(league.userOrgId) && org.id !== league.userOrgId;
   const pct = human ? MARGIN[league.settings.tradeDifficulty] : 0.03;
   const need = Math.max(human ? 0.5e6 : 0, Math.abs(sent) * pct + (human ? 0.5e6 : 0));
@@ -210,6 +212,7 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
   addTransaction(league, a, 'Trade', `Traded ${desc[0]} to the ${league.orgs[b].affiliates.MLB.name} for ${desc[1]}`, pids);
   addTransaction(league, b, 'Trade', `Traded ${desc[1]} to the ${league.orgs[a].affiliates.MLB.name} for ${desc[0]}`, pids);
   addNews(league, a, `Trade: the ${league.orgs[a].affiliates.MLB.name} sent ${desc[0]} to the ${league.orgs[b].affiliates.MLB.name} for ${desc[1]}.`, pids);
+  if (pids.some((id) => league.players[id]?.level === 'MLB' || ovr(league.players[id]) >= 52)) addScoop(league, `Trade: the ${league.orgs[a].affiliates.MLB.name} are sending ${desc[0]} to the ${league.orgs[b].affiliates.MLB.name} for ${desc[1]}.`, pids);
   const pickNames = (g: TradeAssets) => g.cbPicks.map((cid) => {
     const c = league.cbPicks.find((x) => x.id === cid);
     return c ? `${c.season} CB-${c.round} pick` : 'CB pick';
@@ -324,6 +327,48 @@ function tryAiTrade(league: League): void {
   executeTrade(league, prop);
 }
 
+// Over-budget AI clubs dump salary on teams with room, eating some money if
+// needed. Mostly in the offseason and before the deadline.
+function trySalaryDump(league: League): void {
+  const pay = new Map(league.orgs.map((o) => [o.id, orgPayroll(league, o).cbt]));
+  const dumpers = shuffle(league.orgs.filter((o) => o.id !== league.userOrgId && pay.get(o.id)! > o.budget * 1.02));
+  const org = dumpers[0];
+  if (!org) return;
+  const over = pay.get(org.id)! - org.budget;
+  const cands = tradable(league, org.id)
+    .filter((p) => p.contract.type === 'ML' && p.contract.salary >= 4e6 && league.season - p.born >= 27)
+    .sort((a, b) => Math.abs(a.contract.salary - over) - Math.abs(b.contract.salary - over));
+  const p = cands[Math.floor(rand() * Math.min(3, cands.length))];
+  if (!p) return;
+  const takers = shuffle(league.orgs.filter((o) => o.id !== org.id && o.id !== league.userOrgId && pay.get(o.id)! + p.contract.salary < o.budget * 0.98));
+  for (const t of takers.slice(0, 6)) {
+    const prop: TradeProposal = { orgs: [org.id, t.id], give: [{ ...emptyAssets(), pids: [p.id] }, emptyAssets()] };
+    // The taker sends back a low-level piece if it has one; the dumper adds cash if needed.
+    const filler = tradable(league, t.id).filter((q) => !q.on40 && q.level && ['A', 'CPX', 'DSL', 'A+'].includes(q.level)).map((q) => ({ q, v: tradeValue(league, t, q, false) })).sort((a, b) => a.v - b.v)[0];
+    if (filler) prop.give[1].pids.push(filler.q.id);
+    for (let step = 0; step <= 4 && !aiAccepts(league, t, prop); step++) {
+      prop.give[0].cash = roundSalary(Math.min(p.contract.salary * seasonFraction(league) * 0.5, step * 0.12 * p.contract.salary));
+    }
+    if (!aiAccepts(league, t, prop) || !aiAccepts(league, org, prop) || validateTrade(league, prop)) continue;
+    executeTrade(league, prop);
+    return;
+  }
+}
+
+// Insider: a club is shopping someone off its block, and who has called.
+function shoppingRumor(league: League): void {
+  const cands = league.orgs
+    .filter((o) => o.id !== league.userOrgId)
+    .flatMap((o) => o.block.map((id) => ({ o, p: league.players[id] })))
+    .filter((x) => x.p && x.p.orgId === x.o.id && (x.p.level === 'MLB' || ovr(x.p) >= 50));
+  if (!cands.length) return;
+  const { o, p } = cands[Math.floor(rand() * cands.length)];
+  const callers = shuffle(league.orgs.filter((x) => x.id !== o.id && x.stance === (o.stance === 'Buying' ? 'Selling' : 'Buying'))).slice(0, 1 + Math.floor(rand() * 3));
+  const verb = o.stance === 'Selling' ? 'are shopping' : 'are listening on';
+  const who = callers.length ? ` The ${callers.map((x) => x.affiliates.MLB.name).join(', the ')} ${callers.length === 1 ? 'has' : 'have'} checked in.` : '';
+  addScoop(league, `Sources: the ${o.affiliates.MLB.name} ${verb} ${posLabel(p)} ${pname(p)}.${who}`, [p.id]);
+}
+
 // ---------- AI offers to the user ----------
 
 function pushOffer(league: League, ai: Org, prop: TradeProposal, note: string, pids: number[]): void {
@@ -415,6 +460,8 @@ export function tradeDay(league: League): void {
   const rate = intensity * f * 2;
   const tries = Math.ceil(rate);
   for (let k = 0; k < tries; k++) if (rand() < rate / tries) tryAiTrade(league);
+  if (rand() < 0.12 + 0.08 * Math.min(3, intensity)) trySalaryDump(league);
+  if (rand() < 0.05 + 0.1 * Math.min(3, intensity)) shoppingRumor(league);
   // AI clubs reach out to the user, more often during flurries.
   const user = league.orgs[league.userOrgId];
   let offerRate = (0.04 + 0.1 * intensity) * Math.min(1.5, f);

@@ -2,6 +2,9 @@ import { useStore, changed, askConfirm } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { Staff, StaffRole } from '../../core/types.ts';
 import { AGM_DUTIES, STAFF_NAMES, STAFF_ROLES } from '../../core/types.ts';
+import type { AgmDuty } from '../../core/types.ts';
+
+const OFFSEASON_DUTIES: AgmDuty[] = ['options', 'tender', 'arbitration', 'rule5protect', 'rule5draft', 'milbfa'];
 import { extendStaff, fireStaff, hireStaff, keyRating, staffOf } from '../../core/staff.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { scoutFactor } from '../../core/ratings.ts';
@@ -134,6 +137,18 @@ export default function StaffPage() {
       <h2>Assistant GM duties</h2>
       {!staffOf(league, org, 'AGM') && <div className="alert alert-warn">You have no assistant GM, so you handle every job yourself.</div>}
       <p className="muted small">Checked jobs are handled by your assistant GM using his judgment. Unchecked jobs are yours: the sim stops when one needs a decision.</p>
+      <p>
+        <button
+          className="btn btn-sm"
+          onClick={() => {
+            for (const k of OFFSEASON_DUTIES) org.agm[k] = true;
+            changed();
+          }}
+        >
+          Give all offseason decisions to the AGM
+        </button>{' '}
+        <span className="muted small">Options and qualifying offers, tenders, arbitration, Rule 5 protection and the Rule 5 draft. He reports each decision in your news.</span>
+      </p>
       {AGM_DUTIES.map((d) => (
         <div key={d.key} className="form-row" style={{ margin: '2px 0' }}>
           <label>

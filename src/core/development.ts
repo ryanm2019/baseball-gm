@@ -14,8 +14,13 @@ function ageRate(a: number): number {
   return 0;
 }
 
-function decline(a: number): number {
-  return a >= 31 ? (a - 30) * 0.11 : 0;
+// Decline starts at 32 and accelerates gently; elite players (and hard
+// workers) hold their skills longer.
+function decline(a: number, p: Player): number {
+  if (a < 32) return 0;
+  const elite = ovr(p) >= 60 ? 0.75 : 1;
+  const work = 1.1 - (0.2 * (p.personality.workEthic - 20)) / 60;
+  return (a - 31) * 0.085 * elite * work;
 }
 
 export function developPlayer(league: League, p: Player): void {
@@ -25,7 +30,7 @@ export function developPlayer(league: League, p: Player): void {
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
   const rate = ageRate(a) * we * fdm * playing;
-  const dec = decline(a);
+  const dec = decline(a, p);
   const tcr = 0.45;
 
   const move = (cur: number, pot: number) => clamp(cur + Math.max(0, pot - cur) * rate + normal(0, tcr) - dec, 15, 85);

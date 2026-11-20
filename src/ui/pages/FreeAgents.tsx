@@ -86,6 +86,7 @@ export default function FreeAgents() {
     { key: 'ask', label: 'Asking', value: (p) => p.fa!.asking.aav, render: (p) => `${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)}` },
     { key: 'offers', label: 'Offers', value: (p) => p.fa!.offers.length },
     { key: 'dec', label: 'Decides', value: (p) => p.fa!.decideDay, render: (p) => dayShort(league.season, p.fa!.decideDay) },
+    { key: 'posted', label: 'Posted', title: 'Posted by an Asian club: must sign by the deadline or he goes back. The signing club pays his old club a posting fee (20% of the first $25M, 17.5% of the next $25M, 15% beyond).', value: (p) => p.fa!.posted?.deadline ?? 0, render: (p) => (p.fa!.posted ? `${p.fa!.posted.from}, sign by ${dayShort(league.season, p.fa!.posted.deadline)}` : '') },
     { key: 'qo', label: 'QO', title: 'Declined a qualifying offer: signing him costs your second-round pick', value: (p) => (p.fa!.qo ? 1 : 0), render: (p) => (p.fa!.qo ? 'Yes' : '') },
     { key: 'offer', label: 'Your offer', noSort: true, render: (p) => <OfferCell p={p} /> },
   ];

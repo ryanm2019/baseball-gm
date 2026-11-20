@@ -69,6 +69,13 @@ export function addNews(league: League, orgId: number | null, text: string, pids
   if (league.news.length > 600) league.news.splice(0, league.news.length - 600);
 }
 
+// Insider feed (kept short; the dashboard shows the latest).
+export function addScoop(league: League, text: string, pids: number[] = []): void {
+  league.scoops ??= [];
+  league.scoops.push({ id: league.nextId.news++, season: league.season, day: league.day, text, pids });
+  if (league.scoops.length > 80) league.scoops.splice(0, league.scoops.length - 80);
+}
+
 export const emptyBat = (): BatStats => ({
   g: 0, gs: 0, pa: 0, ab: 0, h: 0, d: 0, t: 0, hr: 0, r: 0, rbi: 0, bb: 0, k: 0, hbp: 0, sb: 0, cs: 0, sf: 0, gidp: 0, e: 0,
 });

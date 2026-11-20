@@ -111,6 +111,18 @@ export interface FaStatus {
   offers: FaOffer[];
   formerOrg: number | null;
   qo: boolean; // declined a qualifying offer (signing team forfeits a pick)
+  posted?: { from: string; deadline: number }; // posted by his Asian club: sign by the deadline or he goes back
+  scooped?: number; // how far the insider feed has followed him (1 = meetings reported, 2 = finalists)
+}
+
+export interface IfaInfo {
+  year: number;
+  asking: number; // what he really wants (moves on negotiation day and after signing day)
+  verbal?: { orgId: number; amount: number; day: number } | null; // agreed, not yet signed (breakable)
+  bids?: Record<number, number>; // clubs in on him -> their latest offer
+  lastOffer?: Record<number, number>; // org -> league day of its last offer
+  stiff?: number; // lowballs make him dig in
+  posted?: string; // a young pro posted from NPB/KBO/CPBL, signed with pool money
 }
 
 export interface ArbCase {
@@ -232,7 +244,7 @@ export interface Player {
   outrightedBefore: boolean;
   draft: { year: number; round: number; pick: number; orgId: number } | null;
   prospect?: DraftInfo; // in the upcoming/active amateur draft class
-  ifa?: { year: number; asking: number }; // international amateur, unsigned
+  ifa?: IfaInfo; // international amateur, unsigned
   fa?: FaStatus | null;
   arb?: ArbCase | null;
   rule5?: { fromOrg: number; season: number } | null;
@@ -510,6 +522,15 @@ export interface Transaction {
   pids: number[];
 }
 
+// Insider feed: free agent meetings, finalists, agreements, trades, teams shopping players.
+export interface Scoop {
+  id: number;
+  season: number;
+  day: number;
+  text: string;
+  pids: number[];
+}
+
 export interface NewsItem {
   id: number;
   season: number;
@@ -688,7 +709,7 @@ export interface League {
   lastDevDay: number;
   events: string[]; // offseason / calendar events already processed or prompted this cycle
   draft: DraftState | null;
-  intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean; acquired?: Record<number, number>; base?: Record<number, number> };
+  intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean; acquired?: Record<number, number>; base?: Record<number, number>; year?: number };
   cbtHistory: CbtRecord[];
   wsEndDay: number | null;
   lastStandings?: number[]; // org ids, worst record first
@@ -703,6 +724,7 @@ export interface League {
   farmSnap?: { season: number; totals: Record<number, number[]> };
   devSnap?: { season: number; ratings: Record<number, number[]> };
   lastWins?: Record<number, number>; // last season's MLB wins by org
+  scoops?: Scoop[];
   futureForfeits?: { season: number; orgId: number; round: number }[]; // draft-pool penalties two years out
   draftTax?: { season: number; orgId: number; over: number; tax: number; penalty: string }[];
   preview?: SeasonPreview;

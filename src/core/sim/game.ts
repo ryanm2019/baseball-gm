@@ -41,6 +41,11 @@ const log5 = (b: number, p: number, l: number): number => {
 
 const sc = (r: number, coef: number) => Math.exp((coef * (r - 50)) / 10);
 
+// Diminishing returns at the top of the scale: elite ratings still help, but a
+// single star can't carry a lineup or staff to absurd lines (think Trout).
+const SOFT_AT = 57;
+const soft = (r: number): number => (r <= SOFT_AT ? r : SOFT_AT + (r - SOFT_AT) * 0.4);
+
 const oddsAdj = (p: number, mult: number): number => {
   const o = (p / (1 - p)) * mult;
   return o / (1 + o);
@@ -662,10 +667,11 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     if (app.coldPAs > 0) app.coldPAs--;
     if (app.boost > 0) app.boost--;
 
-    const stuff = pr.stuff - fatigue - tto + sameHand - cold;
-    const control = pr.control - fatigue * 0.8 - tto * 0.5 - cold + settle;
-    const movement = pr.movement - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5;
-    const split = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
+    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold;
+    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle;
+    const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5;
+    const raw = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
+    const split = { ...raw, avoidK: soft(raw.avoidK), eye: soft(raw.eye), power: soft(raw.power), babip: soft(raw.babip), gap: soft(raw.gap) };
     const speed = batter.ratings.run.speed;
 
     be.line.pa++;

@@ -12,9 +12,9 @@ import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay } from '../freeAgency.ts';
-import { ifaDay } from '../intl.ts';
+import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
-import { ownerCheckin, updateStrategies } from '../owners.ts';
+import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
@@ -337,6 +337,7 @@ function beginRegularDay(league: League): string | null {
   else if (league.draft && league.draft.season === league.season && league.draft.done) draftSigningDay(league);
   // Clubs decide whether to buy or sell as the deadline approaches.
   if ([95, 110, 120].includes(league.day)) updateStrategies(league, true);
+  if (league.day === league.settings.tradeDeadlineDay - 10) deadlineFlex(league);
   // Clubs fix their rosters (including moves the user just made) before first pitch.
   for (const org of league.orgs) manageOrg(league, org);
   const issues = userRosterIssues(league);
@@ -426,6 +427,7 @@ export function simOneDay(league: League): DayResult {
     if (stop) return { stop };
     if (league.phase === 'offseason') {
       faDay(league);
+      postingDeadlines(league);
       ifaDay(league);
       tradeDay(league);
       offseasonUpkeep(league);

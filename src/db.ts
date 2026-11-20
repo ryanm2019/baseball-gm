@@ -41,12 +41,26 @@ export async function saveLeague(league: League): Promise<void> {
     team: `${org.region} ${org.name}`,
     updated: Date.now(),
   };
+  const packed = await pack(league);
   const tx = d.transaction(['meta', 'leagues'], 'readwrite');
-  await Promise.all([tx.objectStore('meta').put(meta), tx.objectStore('leagues').put(league, league.id), tx.done]);
+  await Promise.all([tx.objectStore('meta').put(meta), tx.objectStore('leagues').put(packed, league.id), tx.done]);
+}
+
+// Saves are stored as gzipped JSON (about a tenth of the size of the raw
+// object). Older saves stored the object directly and still load.
+async function pack(league: League): Promise<Blob | League> {
+  if (typeof CompressionStream === 'undefined') return league;
+  const stream = new Blob([JSON.stringify(league)]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Response(stream).blob();
 }
 
 export async function loadLeague(id: string): Promise<League | undefined> {
-  return (await (await db()).get('leagues', id)) as League | undefined;
+  const raw = await (await db()).get('leagues', id);
+  if (raw instanceof Blob) {
+    const text = await new Response(raw.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    return JSON.parse(text) as League;
+  }
+  return raw as League | undefined;
 }
 
 export async function deleteLeague(id: string): Promise<void> {

@@ -10,6 +10,7 @@ import { agmEvalSd, delegated, staffOf } from './staff.ts';
 import { cbtOverLastSeason } from './owners.ts';
 import type { CbPick, DraftAdjust } from './types.ts';
 import { logMove, side } from './moves.ts';
+import { posLabel } from './rules.ts';
 
 export function normalizeAdjust(a: unknown): DraftAdjust {
   const x = (a ?? { comp: [], forfeit: [] }) as { comp: unknown[]; forfeit: unknown[] };
@@ -183,6 +184,7 @@ export function offerPick(league: League, pk: DraftPick, amount: number): { sign
   info.lastAmount = amount;
   if (rand() < acceptChance(info, amount, d)) {
     signPick(league, pk, p, true, amount);
+    if (pk.round > POOL_ROUNDS && amount >= 750_000) addNews(league, null, `Day 3 steal? The ${league.orgs[pk.orgId].affiliates.MLB.name} signed round ${pk.round} pick ${posLabel(p)} ${pname(p)} for ${(amount / 1e6).toFixed(2)}M, buying him out of his college commitment.`, [p.id]);
     return { signed: true, text: `${pname(p)} signed for ${(amount / 1e6).toFixed(2)}M.` };
   }
   if (amount < d * 0.8) {
@@ -224,9 +226,12 @@ export function draftSigningDay(league: League): void {
       // Top-10-round picks get signed: an unsigned pick's slot leaves the pool.
       offer = Math.min(offer, room);
     } else {
-      // Late rounds: $150k, plus only real savings.
+      // Late rounds: $150k, plus only real savings. A Day 3 flyer on a
+      // committed high schooler gets most of the savings (and the 5% cushion).
       const savings = poolTotal(league, pk.orgId) - poolSpent(league, pk.orgId) - others.reduce((t, x) => t + x.slot, 0);
-      offer = Math.min(offer, LATE_ROUND_FREE + Math.max(0, savings * 0.3));
+      const flyer = info.cls === 'HS' && (info.commit ?? 0) > 0.7 && prospectValue(p) >= 44;
+      const share = flyer ? Math.max(0, room - Math.max(0, savings)) + Math.max(0, savings) * 0.9 : Math.max(0, savings) * 0.3;
+      offer = Math.min(offer, LATE_ROUND_FREE + share);
     }
     if (offer < want * 0.75) continue; // can't afford him
     offerPick(league, pk, offer);
@@ -246,10 +251,18 @@ function draftValue(league: League, orgId: number, p: Player): number {
   const cur = league.draft ? league.draft.picks[league.draft.index] : undefined;
   const round = cur?.round ?? 1;
   let tough = 0;
-  if (!p.prospect?.college && (p.prospect?.commit ?? 0) > 0.75) {
-    tough = round >= 3 ? 2.5 : 1.5;
-    const pool = league.draft?.pools[orgId] ?? 0;
-    if (cur && pool > 0 && cur.slot * 0.4 > pool * 0.08) tough += 3; // a big overslot would eat the pool
+  const commit = p.prospect?.commit ?? 0;
+  if (!p.prospect?.college && commit > 0.75) {
+    if (round > POOL_ROUNDS) {
+      // Day 3: an unsigned late pick costs nothing, so clubs take flyers on
+      // talented kids headed to school and hope to buy them out with savings.
+      tough = 0.5 - seededNormal(p.scoutSeed, orgId, 777) * 0.8;
+    } else {
+      // Rounds 1-10: the stronger the commitment, the further he falls.
+      tough = (round >= 3 ? 2.5 : 1.5) + (round >= 3 ? 16 * (commit - 0.75) : 0);
+      const pool = league.draft?.pools[orgId] ?? 0;
+      if (cur && pool > 0 && cur.slot * 0.4 > pool * 0.08) tough += 3; // a big overslot would eat the pool
+    }
   }
   return 0.72 * potOvr(p) + 0.28 * ovr(p) + noise - (p.prospect?.college ? 0 : 0.5) - tough;
 }

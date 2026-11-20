@@ -97,6 +97,11 @@ export function randomOrigin(international: boolean): { country: string; first: 
   return { country: c.name, first, last };
 }
 
+export function originFrom(code: string): { country: string; first: string; last: string } {
+  const c = COUNTRIES[code];
+  return { country: c.name, first: c.first[Math.floor(Math.random() * c.first.length)], last: c.last[Math.floor(Math.random() * c.last.length)] };
+}
+
 export function randomStaffName(): { first: string; last: string } {
   const intl = Math.random() < 0.2;
   const { first, last } = randomOrigin(intl);

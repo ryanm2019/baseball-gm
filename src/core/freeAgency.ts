@@ -5,12 +5,14 @@ import type { FaOffer, League, Org, Player } from './types.ts';
 import { clamp, rand, randInt } from './random.ts';
 import { isPitcher, ovr, potOvr } from './ratings.ts';
 import { fmtMoney, marketValue, roundSalary } from './contracts.ts';
-import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
+import { addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { designate, posLabel } from './rules.ts';
 import { revenueStatus } from './owners.ts';
 import { normalizeAdjust } from './draft.ts';
 import { logMove, side } from './moves.ts';
 import { deptEffect } from './depts.ts';
+import { marketOvr } from './war.ts';
+import { postingFee } from './intl.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -39,7 +41,7 @@ export const firstContractSeason = (league: League) => (league.phase === 'offsea
 
 export function askingFor(league: League, p: Player): { years: number; aav: number } {
   const s = league.settings;
-  const mv = marketValue(p, s);
+  const mv = marketValue(p, s, marketOvr(league, p, ovr(p), 0.4));
   const age = firstContractSeason(league) - p.born;
   const greed = 1 + ((p.personality.greed - 50) / 30) * 0.08;
   const aav = roundSalary(Math.max(s.minSalary, mv * greed * (0.97 + rand() * 0.1)));
@@ -171,8 +173,14 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   p.faSigned = start;
   p.joined = { season: league.season, day: league.day };
   if (fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId) applyQoPenalty(league, o.orgId, fa.formerOrg, o.aav * o.years);
+  if (fa.posted) {
+    const fee = postingFee(o.aav * o.years);
+    addTransaction(league, o.orgId, 'Posting fee', `Paid a ${fmtMoney(fee)} posting fee to ${pname(p)}'s ${fa.posted.from} club`, [p.id]);
+    addNews(league, o.orgId, `${pname(p)}, posted by his ${fa.posted.from} club, signed with the ${league.orgs[o.orgId].affiliates.MLB.name}. Posting fee: ${fmtMoney(fee)}.`, [p.id]);
+  }
   const org = league.orgs[o.orgId];
   const yrs = o.years === 1 ? '1 year' : `${o.years} years`;
+  if (ovr(p) >= 55 || o.aav >= 8e6) addScoop(league, `Agreed: ${posLabel(p)} ${pname(p)} to the ${org.affiliates.MLB.name}, ${o.years} year${o.years === 1 ? '' : 's'}, ${fmtMoney(o.aav * o.years)} total (pending a physical).`, [p.id]);
   addTransaction(league, o.orgId, 'Sign', `Signed free agent ${posLabel(p)} ${pname(p)}: ${yrs}, $${(o.aav / 1e6).toFixed(2)}M per year`, [p.id]);
   const sides = [side(o.orgId, [p.id])];
   if (fa.formerOrg !== null && fa.formerOrg !== o.orgId) sides.push(side(fa.formerOrg, []));
@@ -183,6 +191,9 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
 }
 
 // One day of the market.
+// Big enough that the insiders cover him.
+const notableFa = (p: Player) => ovr(p) >= 55 || p.fa!.asking.aav >= 8e6;
+
 export function faDay(league: League): void {
   const offseasonPhase = league.phase === 'offseason' || league.phase === 'preseason';
   // In season the market is thin; check it every few days.
@@ -226,6 +237,10 @@ export function faDay(league: League): void {
       if (aav > budget) continue;
       const years = clamp(p.fa!.asking.years + (rand() < 0.3 ? -1 : 0) + (rand() < 0.15 ? 1 : 0), 1, 8);
       p.fa!.offers.push({ orgId: org.id, years, aav, day: league.day });
+      if (notableFa(p) && rand() < 0.4) {
+        const how = rand() < 0.5 ? 'met with' : rand() < 0.5 ? 'made an offer to' : 'have checked in on';
+        addScoop(league, `Sources: the ${org.affiliates.MLB.name} ${how} free agent ${posLabel(p)} ${pname(p)}.`, [p.id]);
+      }
       budget -= aav;
       made++;
     }
@@ -239,6 +254,12 @@ export function faDay(league: League): void {
     const best = scored[0];
     const due = league.day >= fa.decideDay;
     const early = best && best.s >= 1.12 && rand() < 0.25;
+    // The insider names the finalists a few days before a big free agent decides.
+    if (notableFa(p) && (fa.scooped ?? 0) < 2 && fa.decideDay - league.day <= 3 && scored.length >= 2) {
+      fa.scooped = 2;
+      const names = scored.slice(0, 3).map((x) => league.orgs[x.o.orgId].affiliates.MLB.name);
+      addScoop(league, `${pname(p)} is nearing a decision. Finalists: the ${names.join(', the ')}.`, [p.id]);
+    }
     if (!due && !early) continue;
     if (best && best.s >= 0.85) {
       // AI club with a full 40-man: designate its least valuable player off the 40-man first.

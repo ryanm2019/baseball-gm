@@ -6,7 +6,7 @@ import type { DepthChart, Level, PenRole, Player, Pos } from '../../core/types.t
 import { PEN_ROLES } from '../../core/types.ts';
 import { activeAt, playersAt } from '../../core/util.ts';
 import { isPitcher, posRating, scoutedOvr } from '../../core/ratings.ts';
-import { buildLineup } from '../../core/sim/lineup.ts';
+import { battingOrder, buildLineup } from '../../core/sim/lineup.ts';
 import { LevelTabs } from '../components.tsx';
 import { PlayerCard } from '../PlayerCard.tsx';
 import { posLabel } from '../../core/rules.ts';
@@ -171,7 +171,19 @@ export default function Depth() {
           <div className="btn-group tabs">
             <button className={`btn btn-sm${vs === 'R' ? ' active' : ''}`} onClick={() => setVs('R')}>vs RHP</button>
             <button className={`btn btn-sm${vs === 'L' ? ' active' : ''}`} onClick={() => setVs('L')}>vs LHP</button>
-          </div>
+          </div>{' '}
+          <button
+            className="btn btn-sm"
+            title="Keep these nine players and positions; reorder them into the best batting order"
+            onClick={() => update((x) => {
+              const c = cardOf(x);
+              const slots = c.map((s) => ({ s, p: league.players[s.pid] })).filter((y) => y.p);
+              if (slots.length !== c.length) return;
+              c.splice(0, c.length, ...battingOrder(slots, vs).map((y) => y.s));
+            })}
+          >
+            Auto-sort order
+          </button>
           <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
           <table className="data compact">
             <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th></tr></thead>

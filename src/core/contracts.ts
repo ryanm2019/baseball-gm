@@ -25,8 +25,9 @@ export function serviceLabel(days: number, s: Settings): string {
 }
 
 // Rough free-agent market value per year, by overall.
-export function marketValue(p: Player, s: Settings): number {
-  const o = ovr(p);
+// o: the overall the market uses (defaults to true ratings; arbitration and
+// free agency pass one blended with recent stats).
+export function marketValue(p: Player, s: Settings, o = ovr(p)): number {
   const sig = 1 / (1 + Math.exp(-(o - 58) / 6));
   let v = 0.78e6 + 45e6 * sig;
   if (p.pos === 'RP') v *= 0.55;

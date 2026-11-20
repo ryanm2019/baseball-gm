@@ -2,8 +2,9 @@ import { useStore } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { BatStats, Level, PitStats, Player } from '../../core/types.ts';
 import { isPitcher } from '../../core/ratings.ts';
-import { avg, era, fip, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
+import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
 import { DataTable, LevelTabs, OrgLink, type Column } from '../components.tsx';
+import { batAdvanced, entryWar, pitAdvanced, seasonCtx } from '../../core/war.ts';
 import { emptyBat, emptyPit } from '../../core/util.ts';
 import { LEVEL_NAMES } from '../../core/settings.ts';
 import { nameCol } from '../fmt.tsx';
@@ -44,6 +45,8 @@ export default function Stats() {
     return r.s.outs >= minOuts || (r.s.gs === 0 && r.s.g >= games * 0.3);
   });
   const nc = nameCol(league);
+  const ctx = seasonCtx(league, season, level);
+  const war = (r: Row) => (level === 'MLB' ? entryWar(league, r.p, { season, level, orgId: r.orgId, bat: r.b, pit: r.s }) : 0);
   const base: Column<Row>[] = [
     { key: 'name', label: 'Name', left: true, value: (r) => `${r.p.last} ${r.p.first}`, render: (r) => nc.render!(r.p) },
     { key: 'team', label: 'Team', left: true, value: (r) => league.orgs[r.orgId].abbrev, render: (r) => <OrgLink league={league} orgId={r.orgId} level={level} abbrev /> },
@@ -70,6 +73,11 @@ export default function Stats() {
     { key: 'ops', label: 'OPS', value: (r) => obp(r.b) + slg(r.b), render: (r) => fmt3(obp(r.b) + slg(r.b)) },
     { key: 'kp', label: 'K%', value: (r) => (r.b.pa ? r.b.k / r.b.pa : 0), render: (r) => (r.b.pa ? ((r.b.k / r.b.pa) * 100).toFixed(1) : '-') },
     { key: 'bbp', label: 'BB%', value: (r) => (r.b.pa ? r.b.bb / r.b.pa : 0), render: (r) => (r.b.pa ? ((r.b.bb / r.b.pa) * 100).toFixed(1) : '-') },
+    { key: 'iso', label: 'ISO', value: (r) => batAdvanced(r.b, ctx).iso, render: (r) => fmt3(batAdvanced(r.b, ctx).iso) },
+    { key: 'woba', label: 'wOBA', value: (r) => batAdvanced(r.b, ctx).woba, render: (r) => fmt3(batAdvanced(r.b, ctx).woba) },
+    { key: 'opsp', label: 'OPS+', value: (r) => batAdvanced(r.b, ctx).opsPlus },
+    { key: 'wrcp', label: 'wRC+', value: (r) => batAdvanced(r.b, ctx).wrcPlus },
+    ...(level === 'MLB' ? [{ key: 'war', label: 'WAR', value: war, render: (r: Row) => war(r).toFixed(1) }] : []),
   ];
   const pitCols: Column<Row>[] = [
     ...base,
@@ -88,9 +96,13 @@ export default function Stats() {
     { key: 'bb', label: 'BB', value: (r) => r.s.bb },
     { key: 'k', label: 'K', value: (r) => r.s.k },
     { key: 'whip', label: 'WHIP', value: (r) => whip(r.s), sortDesc: false, render: (r) => whip(r.s).toFixed(2) },
-    { key: 'fip', label: 'FIP', value: (r) => fip(r.s), sortDesc: false, render: (r) => fip(r.s).toFixed(2) },
+    { key: 'fip', label: 'FIP', value: (r) => pitAdvanced(r.s, ctx).fip, sortDesc: false, render: (r) => pitAdvanced(r.s, ctx).fip.toFixed(2) },
     { key: 'k9', label: 'K/9', value: (r) => (r.s.outs ? (r.s.k * 27) / r.s.outs : 0), render: (r) => (r.s.outs ? ((r.s.k * 27) / r.s.outs).toFixed(1) : '-') },
     { key: 'pit', label: 'Pit', value: (r) => r.s.pitches },
+    { key: 'erap', label: 'ERA+', value: (r) => pitAdvanced(r.s, ctx).eraPlus },
+    { key: 'fipm', label: 'FIP-', value: (r) => pitAdvanced(r.s, ctx).fipMinus, sortDesc: false },
+    { key: 'kbb', label: 'K-BB%', value: (r) => pitAdvanced(r.s, ctx).kbb, render: (r) => (pitAdvanced(r.s, ctx).kbb * 100).toFixed(1) },
+    ...(level === 'MLB' ? [{ key: 'war', label: 'WAR', value: war, render: (r: Row) => war(r).toFixed(1) }] : []),
   ];
   const setQ = (q: Record<string, string>) => go('stats', [], { level, type, scope, q: qualified ? '1' : '0', season, ...q });
   const seasons = [...new Set(Object.values(league.players).flatMap((p) => p.stats.map((s) => s.season)))].sort();

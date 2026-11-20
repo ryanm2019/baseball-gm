@@ -8,8 +8,8 @@ import { posLabel, optionYearAvailable } from '../../core/rules.ts';
 import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
 import { ActionSelect, LinkedText, OrgLink, Rating, StatusTags } from '../components.tsx';
-import { avg, era, fip, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
-import { entryWar } from '../../core/war.ts';
+import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
+import { batAdvanced, entryWar, pitAdvanced, seasonCtx } from '../../core/war.ts';
 import { scoutArea } from '../../core/ratings.ts';
 import { playerTradeBlock } from '../../core/trade.ts';
 
@@ -113,17 +113,72 @@ function BatStatsTable({ league, p, entries }: { league: League; p: Player; entr
     <div className="table-wrap">
       <table className="data compact">
         <thead>
-          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>G</th><th>PA</th><th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>R</th><th>RBI</th><th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>G</th><th>PA</th><th>AB</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>R</th><th>RBI</th><th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th title="OPS relative to the league at that level (100 = average)">OPS+</th><th title="Weighted runs created relative to the league at that level (100 = average)">wRC+</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
         </thead>
         <tbody>
           {rows.map((e, i) => {
             const b = e.bat;
+            const x = batAdvanced(b, seasonCtx(league, e.season, e.level));
             return (
               <tr key={i}>
                 <td className="l">{e.season}</td>
                 <td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td>
                 <td>{e.level}</td><td>{b.g}</td><td>{b.pa}</td><td>{b.ab}</td><td>{b.h}</td><td>{b.d}</td><td>{b.t}</td><td>{b.hr}</td><td>{b.r}</td><td>{b.rbi}</td><td>{b.bb}</td><td>{b.k}</td><td>{b.sb}</td><td>{b.cs}</td>
-                <td>{fmt3(avg(b))}</td><td>{fmt3(obp(b))}</td><td>{fmt3(slg(b))}</td><td>{fmt3(obp(b) + slg(b))}</td>
+                <td>{fmt3(avg(b))}</td><td>{fmt3(obp(b))}</td><td>{fmt3(slg(b))}</td><td>{fmt3(obp(b) + slg(b))}</td><td>{x.opsPlus}</td><td>{x.wrcPlus}</td>
+                <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const pct = (x: number) => (x * 100).toFixed(1);
+
+function BatAdvancedTable({ league, p, entries }: { league: League; p: Player; entries: StatEntry[] }) {
+  const rows = entries.filter((e) => e.bat.pa > 0);
+  if (!rows.length) return null;
+  return (
+    <div className="table-wrap">
+      <table className="data compact">
+        <thead>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>PA</th><th title="Weighted on-base average">wOBA</th><th>wRC+</th><th>OPS+</th><th title="Isolated power (SLG - AVG)">ISO</th><th title="Batting average on balls in play">BABIP</th><th>BB%</th><th>K%</th><th>WAR</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((e, i) => {
+            const x = batAdvanced(e.bat, seasonCtx(league, e.season, e.level));
+            return (
+              <tr key={i}>
+                <td className="l">{e.season}</td><td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td><td>{e.level}</td><td>{e.bat.pa}</td>
+                <td>{fmt3(x.woba)}</td><td>{x.wrcPlus}</td><td>{x.opsPlus}</td><td>{fmt3(x.iso)}</td><td>{fmt3(x.babip)}</td><td>{pct(x.bbPct)}</td><td>{pct(x.kPct)}</td>
+                <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PitAdvancedTable({ league, p, entries }: { league: League; p: Player; entries: StatEntry[] }) {
+  const rows = entries.filter((e) => e.pit.bf > 0);
+  if (!rows.length) return null;
+  return (
+    <div className="table-wrap">
+      <table className="data compact">
+        <thead>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>IP</th><th>ERA+</th><th>FIP</th><th>FIP-</th><th>K%</th><th>BB%</th><th>K-BB%</th><th title="Batting average on balls in play allowed">BABIP</th><th>HR/9</th><th>WAR</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((e, i) => {
+            const x = pitAdvanced(e.pit, seasonCtx(league, e.season, e.level));
+            return (
+              <tr key={i}>
+                <td className="l">{e.season}</td><td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td><td>{e.level}</td><td>{ipStr(e.pit.outs)}</td>
+                <td>{x.eraPlus}</td><td>{x.fip.toFixed(2)}</td><td>{x.fipMinus}</td><td>{pct(x.kPct)}</td><td>{pct(x.bbPct)}</td><td>{pct(x.kbb)}</td><td>{fmt3(x.babip)}</td><td>{x.hr9.toFixed(2)}</td>
                 <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
               </tr>
             );
@@ -141,17 +196,18 @@ function PitStatsTable({ league, p, entries }: { league: League; p: Player; entr
     <div className="table-wrap">
       <table className="data compact">
         <thead>
-          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>W</th><th>L</th><th>ERA</th><th>G</th><th>GS</th><th>SV</th><th>HLD</th><th>IP</th><th>H</th><th>R</th><th>ER</th><th>HR</th><th>BB</th><th>K</th><th>WHIP</th><th>FIP</th><th>K/9</th><th>P/GS</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
+          <tr><th className="l">Year</th><th className="l">Team</th><th>Lvl</th><th>W</th><th>L</th><th>ERA</th><th title="ERA relative to the league at that level (100 = average, higher is better)">ERA+</th><th>G</th><th>GS</th><th>SV</th><th>HLD</th><th>IP</th><th>H</th><th>R</th><th>ER</th><th>HR</th><th>BB</th><th>K</th><th>WHIP</th><th title="Fielding-independent pitching, on the ERA scale">FIP</th><th title="FIP relative to the league (100 = average, lower is better)">FIP-</th><th>K/9</th><th>P/GS</th><th title="Wins above replacement (MLB only)">WAR</th></tr>
         </thead>
         <tbody>
           {rows.map((e, i) => {
             const s = e.pit;
+            const x = pitAdvanced(s, seasonCtx(league, e.season, e.level));
             return (
               <tr key={i}>
                 <td className="l">{e.season}</td>
                 <td className="l"><OrgLink league={league} orgId={e.orgId} level={e.level} /></td>
-                <td>{e.level}</td><td>{s.w}</td><td>{s.l}</td><td>{era(s).toFixed(2)}</td><td>{s.g}</td><td>{s.gs}</td><td>{s.sv}</td><td>{s.hld}</td><td>{ipStr(s.outs)}</td><td>{s.h}</td><td>{s.r}</td><td>{s.er}</td><td>{s.hr}</td><td>{s.bb}</td><td>{s.k}</td>
-                <td>{whip(s).toFixed(2)}</td><td>{fip(s).toFixed(2)}</td><td>{s.outs ? ((s.k * 27) / s.outs).toFixed(1) : '-'}</td><td>{s.gs ? Math.round(s.pitches / Math.max(1, s.gs)) : '-'}</td>
+                <td>{e.level}</td><td>{s.w}</td><td>{s.l}</td><td>{era(s).toFixed(2)}</td><td>{x.eraPlus}</td><td>{s.g}</td><td>{s.gs}</td><td>{s.sv}</td><td>{s.hld}</td><td>{ipStr(s.outs)}</td><td>{s.h}</td><td>{s.r}</td><td>{s.er}</td><td>{s.hr}</td><td>{s.bb}</td><td>{s.k}</td>
+                <td>{whip(s).toFixed(2)}</td><td>{x.fip.toFixed(2)}</td><td>{x.fipMinus}</td><td>{s.outs ? ((s.k * 27) / s.outs).toFixed(1) : '-'}</td><td>{s.gs ? Math.round(s.pitches / Math.max(1, s.gs)) : '-'}</td>
                 <td>{e.level === 'MLB' ? entryWar(league, p, e).toFixed(1) : ''}</td>
               </tr>
             );
@@ -296,6 +352,9 @@ export default function PlayerPage() {
 
       <h2>{isPitcher(p) ? 'Pitching' : 'Batting'} stats</h2>
       {isPitcher(p) ? <PitStatsTable league={league} p={p} entries={p.stats} /> : <BatStatsTable league={league} p={p} entries={p.stats} />}
+      <h3>Advanced</h3>
+      <p className="muted small">Plus/minus stats are relative to that level's league that season (100 = average). wRC+, OPS+ and ERA+: higher is better; FIP-: lower is better.</p>
+      {isPitcher(p) ? <PitAdvancedTable league={league} p={p} entries={p.stats} /> : <BatAdvancedTable league={league} p={p} entries={p.stats} />}
 
       <h2>Transactions</h2>
       {txs.length === 0 && <p className="muted">None.</p>}
