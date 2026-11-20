@@ -173,3 +173,15 @@ tr.selected td { background: #fff7d6; }
 .tag-block { background: #fff3cd; color: #7a5b00; }
 .meter { display: inline-block; width: 90px; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; vertical-align: middle; }
 .meter-fill { display: block; height: 100%; }
+
+/* roster moves board */
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1100px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.board-box { border: 1px solid var(--border); border-radius: 6px; background: #fff; display: flex; flex-direction: column; min-height: 220px; }
+.board-box.over, .board-release.over { outline: 2px dashed #2e6bd1; background: #eef4ff; }
+.board-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--border); background: var(--nav); }
+.board-head select { max-width: 70%; font-weight: 600; }
+.board-list { max-height: 340px; overflow-y: auto; }
+.board-list table { width: 100%; }
+.board-list tr.sel td { background: var(--yellow); }
+.board-release { margin-top: 10px; padding: 10px; text-align: center; border: 2px dashed #c0392b; color: #c0392b; border-radius: 6px; }

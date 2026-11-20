@@ -12,6 +12,7 @@ import Standings from './ui/pages/Standings.tsx';
 import Stats from './ui/pages/Stats.tsx';
 import Transactions from './ui/pages/Transactions.tsx';
 import Depth from './ui/pages/Depth.tsx';
+import RosterBoard from './ui/pages/RosterBoard.tsx';
 import Farm from './ui/pages/Farm.tsx';
 import Staff from './ui/pages/Staff.tsx';
 import Schedule from './ui/pages/Schedule.tsx';
@@ -45,7 +46,7 @@ import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
-  { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
@@ -161,6 +162,7 @@ export default function App() {
     case 'stats': page = <Stats />; break;
     case 'transactions': page = <Transactions />; break;
     case 'depth': page = <Depth />; break;
+    case 'roster-moves': page = <RosterBoard />; break;
     case 'farm': page = <Farm />; break;
     case 'staff': page = <Staff />; break;
     case 'schedule': page = <Schedule />; break;

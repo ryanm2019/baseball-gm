@@ -185,15 +185,37 @@ export function assignPlayer(league: League, p: Player, level: Level, by?: strin
   }
 }
 
-export function placeIL(league: League, p: Player): void {
+// long: true forces the 60-day list, false the short list; default picks by injury length.
+export function placeIL(league: League, p: Player, long?: boolean): void {
   const level = p.level ?? 'AAA';
   const days = p.injury?.daysLeft ?? 10;
+  const sixty = long ?? days > 55;
   let type: IlStatus['type'];
-  if (level === 'MLB') type = days > 55 ? 'IL60' : isPitcher(p) ? 'IL15' : 'IL10';
-  else type = days > 55 ? 'MiLB60' : 'MiLB7';
+  if (level === 'MLB') type = sixty ? 'IL60' : isPitcher(p) ? 'IL15' : 'IL10';
+  else type = sixty ? 'MiLB60' : 'MiLB7';
   p.il = { type, since: league.day, returnLevel: level };
   const label = type === 'IL60' ? '60-day IL' : type === 'IL15' ? '15-day IL' : type === 'IL10' ? '10-day IL' : type === 'MiLB60' ? 'minor league 60-day IL' : 'minor league 7-day IL';
   addTransaction(league, p.orgId, 'IL', `Placed ${posLabel(p)} ${pname(p)} on the ${label} (${p.injury?.name ?? 'injury'})`, [p.id]);
+}
+
+// Move a player from the short IL to the 60-day IL (frees his 40-man spot; the clock keeps running).
+export function canTransferIL60(_league: League, p: Player): string | null {
+  if (!p.il) return 'Not on the IL';
+  if (p.il.type === 'IL60' || p.il.type === 'MiLB60') return 'Already on the 60-day IL';
+  return null;
+}
+
+export function transferIL60(league: League, p: Player): void {
+  const il = p.il!;
+  il.type = il.type === 'MiLB7' ? 'MiLB60' : 'IL60';
+  addTransaction(league, p.orgId, 'IL', `Transferred ${posLabel(p)} ${pname(p)} to the 60-day IL`, [p.id]);
+}
+
+// Option years left (including a fourth option if he qualifies).
+export function optionsLeft(league: League, p: Player): number {
+  const s = league.settings;
+  const fourth = p.optionsUsed >= s.optionYears && p.proSeasons < 5 ? 1 : 0;
+  return Math.max(0, s.optionYears + fourth - p.optionsUsed);
 }
 
 export function activateFromIL(league: League, p: Player): void {
