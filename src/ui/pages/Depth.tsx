@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type React from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { DepthChart, Level, Player, Pos } from '../../core/types.ts';
@@ -6,6 +7,7 @@ import { activeAt, playersAt } from '../../core/util.ts';
 import { isPitcher, posRating, scoutedOvr } from '../../core/ratings.ts';
 import { buildLineup } from '../../core/sim/lineup.ts';
 import { LevelTabs } from '../components.tsx';
+import { PlayerCard } from '../PlayerCard.tsx';
 import { posLabel } from '../../core/rules.ts';
 
 const POSITIONS: Pos[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
@@ -21,6 +23,12 @@ export default function Depth() {
   const [draft, setDraft] = useState<{ key: string; d: DepthChart } | null>(null);
   const [drag, setDrag] = useState<{ from: 'lineup' | 'bench'; i: number; pid: number } | null>(null);
   const [over, setOver] = useState<number | null>(null);
+  const [sel, setSel] = useState<number | null>(null);
+  // Clicking a row shows the player's ratings; clicks on the dropdowns don't count.
+  const pick = (pid: number) => (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('select, option, a, button')) return;
+    setSel(pid);
+  };
   if (!league) return null;
   const org = league.orgs[league.userOrgId];
   const roster = activeAt(league, org.id, level).filter((p) => !p.injury);
@@ -93,6 +101,7 @@ export default function Depth() {
   const missingPos = POSITIONS.filter((p) => !posList.includes(p));
   const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id));
   const dirty = draft?.key === key;
+  const shown = league.players[sel ?? d.lineup[0]?.pid ?? -1] ?? null;
 
   const save = (auto: boolean) => {
     org.depth[level] = { ...d, auto };
@@ -120,7 +129,7 @@ export default function Depth() {
       <div className="cards">
         <div className="box">
           <h3>Lineup</h3>
-          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there.</p>
+          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. Click a player to see his ratings.</p>
           <table className="data compact">
             <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th></tr></thead>
             <tbody>
@@ -137,7 +146,8 @@ export default function Depth() {
                     onDragOver={(e) => { e.preventDefault(); if (over !== i) setOver(i); }}
                     onDragLeave={() => setOver((o) => (o === i ? null : o))}
                     onDrop={(e) => { e.preventDefault(); drop(i); }}
-                    className={`draggable${over === i ? ' drop-target' : ''}${drag?.from === 'lineup' && drag.i === i ? ' dragging' : ''}`}
+                    onClick={pick(s.pid)}
+                    className={`draggable${over === i ? ' drop-target' : ''}${drag?.from === 'lineup' && drag.i === i ? ' dragging' : ''}${shown?.id === s.pid ? ' selected' : ''}`}
                   >
                     <td>{i + 1}</td>
                     <td className="grip" title="Drag">⋮⋮</td>
@@ -168,7 +178,8 @@ export default function Depth() {
                     draggable
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(h.id)); setDrag({ from: 'bench', i: -1, pid: h.id }); }}
                     onDragEnd={() => { setDrag(null); setOver(null); }}
-                    className={`draggable${drag?.pid === h.id ? ' dragging' : ''}`}
+                    onClick={pick(h.id)}
+                    className={`draggable${drag?.pid === h.id ? ' dragging' : ''}${shown?.id === h.id ? ' selected' : ''}`}
                   >
                     <td className="grip" title="Drag onto a lineup spot">⋮⋮</td>
                     <td className="l">{name(h)} {outReason(h) && <span className="tag tag-il">{outReason(h)}</span>}</td>
@@ -187,7 +198,8 @@ export default function Depth() {
               {i + 1}.{' '}
               <select value={pid} onChange={(e) => update((x) => { x.rotation[i] = Number(e.target.value); })}>
                 {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-              </select>
+              </select>{' '}
+              <button className="btn btn-sm" onClick={() => setSel(pid)}>Ratings</button>
             </div>
           ))}
           <h3>Bullpen roles</h3>
@@ -195,7 +207,8 @@ export default function Depth() {
             Closer{' '}
             <select value={d.closer ?? ''} onChange={(e) => update((x) => { x.closer = Number(e.target.value); })}>
               {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-            </select>
+            </select>{' '}
+            {d.closer !== null && <button className="btn btn-sm" onClick={() => setSel(d.closer)}>Ratings</button>}
           </div>
           {[0, 1].map((i) => (
             <div key={i} className="form-row">
@@ -203,9 +216,11 @@ export default function Depth() {
               <select value={d.setup[i] ?? ''} onChange={(e) => update((x) => { x.setup[i] = Number(e.target.value); })}>
                 <option value="">(auto)</option>
                 {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-              </select>
+              </select>{' '}
+              {d.setup[i] !== undefined && <button className="btn btn-sm" onClick={() => setSel(d.setup[i])}>Ratings</button>}
             </div>
           ))}
+          {shown && <div style={{ marginTop: 16 }}><PlayerCard league={league} p={shown} level={level} /></div>}
         </div>
       </div>
       <button className="btn btn-primary" disabled={!valid} onClick={() => save(false)}>

@@ -75,6 +75,7 @@ export function manageOrg(league: League, org: Org): void {
   const s = league.settings;
   const players = orgPlayers(league, org.id);
   const isUser = org.id === league.userOrgId;
+  const tx0 = league.transactions.length;
 
   // 1. Injured list placement.
   for (const p of players) {
@@ -123,6 +124,18 @@ export function manageOrg(league: League, org: Org): void {
   // 5. Affiliate rosters.
   for (const level of MINOR_LEVELS) {
     if (isManaged(league, org, level)) balanceAffiliate(league, org, level);
+  }
+
+  // Tell the user about MLB injury moves the assistant GM made on his behalf,
+  // including the corresponding roster move.
+  if (isUser) {
+    const MLB_TYPES = ['IL', 'Activate', 'Recall', 'Select', 'Option', 'DFA'];
+    const tx = league.transactions.slice(tx0).filter((t) => t.orgId === org.id && MLB_TYPES.includes(t.type) && !t.text.includes('minor league'));
+    if (tx.some((t) => t.type === 'IL' || t.type === 'Activate')) {
+      const agm = staffOf(league, org, 'AGM');
+      const who = agm ? `Assistant GM ${agm.first} ${agm.last}` : 'Your staff';
+      addNews(league, org.id, `${who}: ${tx.map((t) => t.text).join('; ')}.`, [...new Set(tx.flatMap((t) => t.pids))]);
+    }
   }
 }
 
@@ -306,6 +319,7 @@ export function farmDirectorReview(league: League, org: Org): void {
   const phil = PHIL[fd?.philosophy ?? 'Balanced'];
   const isUser = org.id === league.userOrgId;
   const promos: string[] = [];
+  const promoIds: number[] = [];
 
   for (let i = CHAIN.length - 2; i >= 0; i--) {
     const lower = CHAIN[i];
@@ -350,7 +364,10 @@ export function farmDirectorReview(league: League, org: Org): void {
       }
       assignPlayer(league, p, upper, 'Farm Director');
       moves++;
-      if (isUser) promos.push(`${pname(p)} (${lower} → ${upper})`);
+      if (isUser) {
+        promos.push(`${pname(p)} (${lower} → ${upper})`);
+        promoIds.push(p.id);
+      }
     }
   }
 
@@ -367,13 +384,16 @@ export function farmDirectorReview(league: League, org: Org): void {
       const struggling = isPitcher(p) ? smp.outs >= 90 && smp.era > 6.5 : smp.pa >= 150 && smp.ops < 0.56;
       if (struggling && v < LEVEL_TALENT[level] - 3 && activeAt(league, org.id, lower).length < league.settings.milbActiveMax[lower]) {
         assignPlayer(league, p, lower, 'Farm Director');
-        if (isUser) promos.push(`${pname(p)} (${level} → ${lower})`);
+        if (isUser) {
+          promos.push(`${pname(p)} (${level} → ${lower})`);
+          promoIds.push(p.id);
+        }
       }
     }
   }
 
   if (isUser && promos.length && fd) {
-    addNews(league, org.id, `Farm director ${fd.first} ${fd.last} moved: ${promos.join(', ')}.`);
+    addNews(league, org.id, `Farm director ${fd.first} ${fd.last} moved: ${promos.join(', ')}.`, promoIds);
   }
 
   if (delegated(league, org, 'roster')) aiMlbReview(league, org);

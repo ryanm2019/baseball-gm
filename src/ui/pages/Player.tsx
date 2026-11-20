@@ -7,7 +7,7 @@ import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
 import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
-import { ActionSelect, OrgLink, Rating, StatusTags } from '../components.tsx';
+import { ActionSelect, LinkedText, OrgLink, Rating, StatusTags } from '../components.tsx';
 import { avg, era, fip, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
 import { entryWar } from '../../core/war.ts';
 import { scoutArea } from '../../core/ratings.ts';
@@ -19,10 +19,10 @@ function R({ league, p, k, v, pot }: { league: League; p: Player; k: string; v: 
 
 function BatRatings({ league, p }: { league: League; p: Player }) {
   const rows: [string, keyof BatSplit | 'contact'][] = [
-    ['Contact', 'contact'],
-    ['BABIP', 'babip'],
-    ['Avoid K', 'avoidK'],
-    ['Gap', 'gap'],
+    ['Hit tool', 'contact'],
+    ['Hit quality', 'babip'],
+    ['Bat-to-ball', 'avoidK'],
+    ['Gap power', 'gap'],
     ['Power', 'power'],
     ['Eye', 'eye'],
   ];
@@ -254,7 +254,9 @@ export default function PlayerPage() {
             <div>MLB service</div><div>{serviceLabel(p.mlServiceDays, s)} ({serviceClass(p, s)}), {p.serviceThisSeason} days this season</div>
             <div>Option years</div>
             <div>
-              {p.optionsUsed} used, {optLeft} left{!optionYearAvailable(league, p) ? ' (out of options)' : ''}; {p.optionDaysThisSeason} days optioned this season{p.optionDaysThisSeason >= s.optionDaysToUseYear ? ' (year charged)' : ''}; optioned {p.optionsThisSeason}x
+              {p.mlServiceDays >= s.optionConsentServiceYears * s.serviceDaysPerYear
+                ? `${optLeft === 0 ? 'Out of options; ' : `${optLeft} left, but `}${s.optionConsentServiceYears}+ years of service: can't be sent down without his consent`
+                : <>{p.optionsUsed} used, {optLeft} left{!optionYearAvailable(league, p) ? ' (out of options)' : ''}; {p.optionDaysThisSeason} days optioned this season{p.optionDaysThisSeason >= s.optionDaysToUseYear ? ' (year charged)' : ''}; optioned {p.optionsThisSeason}x</>}
             </div>
             <div>Pro seasons</div><div>{p.proSeasons}</div>
             <div>Outrighted before</div><div>{p.outrightedBefore ? 'Yes' : 'No'}</div>
@@ -299,7 +301,7 @@ export default function PlayerPage() {
       {txs.length === 0 && <p className="muted">None.</p>}
       {txs.map((t) => (
         <div key={t.id} className="news-item small">
-          <span className="muted">{dayShort(t.season, t.day)}</span> {t.text}{' '}
+          <span className="muted">{dayShort(t.season, t.day)}</span> <LinkedText league={league} text={t.text} pids={t.pids.filter((id) => id !== p.id)} />{' '}
           {t.orgId !== null && <a href={href('roster', [], { org: t.orgId })} className="muted">({orgById(league, t.orgId)?.abbrev})</a>}
         </div>
       ))}

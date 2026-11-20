@@ -12,7 +12,7 @@ import { farmDirectorOf } from '../../core/farmDirector.ts';
 import { nextEvent } from '../../core/offseason.ts';
 import { useState } from 'react';
 import { changed } from '../../store.ts';
-import { OrgSelect } from '../components.tsx';
+import { LinkedText, OrgSelect } from '../components.tsx';
 import { expectedWins, setOwnerGoals } from '../../core/owners.ts';
 
 function Goals({ league, org }: { league: League; org: Org }) {
@@ -278,7 +278,7 @@ export default function Dashboard() {
           <div style={{ maxWidth: 420 }}>
             {news.map((n) => (
               <div key={n.id} className="news-item small">
-                <span className="muted">{dayShort(n.season, n.day)}</span> {n.text}
+                <span className="muted">{dayShort(n.season, n.day)}</span> <LinkedText league={league} text={n.text} pids={n.pids} />
               </div>
             ))}
           </div>

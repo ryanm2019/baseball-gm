@@ -150,3 +150,4 @@ tr.draggable { cursor: grab; }
 tr.draggable.dragging { opacity: 0.4; }
 tr.drop-target td { border-top: 2px solid #2f6fd6; background: #eef4ff; }
 td.grip { color: #aaa; cursor: grab; user-select: none; width: 14px; }
+tr.selected td { background: #fff7d6; }

@@ -19,9 +19,11 @@ function parse(): Route {
 let current = parse();
 const subs = new Set<() => void>();
 window.addEventListener('hashchange', () => {
+  const prev = current;
   current = parse();
   for (const s of subs) s();
-  window.scrollTo(0, 0);
+  // New page: start at the top. Same page with a different tab/filter: stay put.
+  if (prev.page !== current.page || prev.args.join('/') !== current.args.join('/')) window.scrollTo(0, 0);
 });
 
 export function useRoute(): Route {

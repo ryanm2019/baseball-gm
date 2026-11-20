@@ -8,7 +8,7 @@ import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts
 import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { updateStances } from './market.ts';
 
-export const CURRENT_VERSION = 4;
+export const CURRENT_VERSION = 5;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -100,6 +100,13 @@ export function migrate(league: League): League {
     updateStances(l);
     if (l.phase !== 'offseason') setOwnerGoals(l);
     l.version = 4;
+  }
+  if (l.version < 5) {
+    // Veterans with 5+ years of service start out of options.
+    for (const p of Object.values(l.players)) {
+      if (p.mlServiceDays >= 5 * l.settings.serviceDaysPerYear && p.optionsUsed < l.settings.optionYears) p.optionsUsed = l.settings.optionYears;
+    }
+    l.version = 5;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

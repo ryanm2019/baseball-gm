@@ -173,3 +173,31 @@ export function StatusTags({ league, p }: { league: League; p: Player }) {
     </>
   );
 }
+
+// Text with the named players turned into links to their pages.
+export function LinkedText({ league, text, pids }: { league: League; text: string; pids: number[] }) {
+  const names = pids
+    .map((id) => league.players[id])
+    .filter(Boolean)
+    .map((p) => ({ id: p.id, name: `${p.first} ${p.last}` }))
+    .sort((a, b) => b.name.length - a.name.length);
+  if (!names.length) return <>{text}</>;
+  const out: ReactNode[] = [];
+  let rest = text;
+  let k = 0;
+  while (rest) {
+    let hit: { i: number; id: number; name: string } | null = null;
+    for (const n of names) {
+      const i = rest.indexOf(n.name);
+      if (i >= 0 && (!hit || i < hit.i)) hit = { i, ...n };
+    }
+    if (!hit) {
+      out.push(rest);
+      break;
+    }
+    if (hit.i > 0) out.push(rest.slice(0, hit.i));
+    out.push(<a key={k++} href={href('player', [hit.id])}>{hit.name}</a>);
+    rest = rest.slice(hit.i + hit.name.length);
+  }
+  return <>{out}</>;
+}

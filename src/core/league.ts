@@ -106,7 +106,8 @@ export function createLeague(opts: NewLeagueOptions): League {
         p.mlServiceDays = yrs * s.serviceDaysPerYear + randInt(0, s.serviceDaysPerYear - 1);
         if (a <= 23) p.mlServiceDays = randInt(0, 300);
         p.on40 = true;
-        p.optionsUsed = clamp(Math.round(rand() * 3 * Math.min(1, yrs / 4)), 0, 3);
+        // Established veterans have almost always burned their option years.
+        p.optionsUsed = yrs >= 5 ? s.optionYears : clamp(Math.round(rand() * 3 * Math.min(1, yrs / 4)), 0, 3);
       }
     }
     // Fill the rest of the 40-man with the best upper-minors prospects and depth.
@@ -162,7 +163,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 4,
+    version: 5,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),

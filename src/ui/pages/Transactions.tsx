@@ -1,7 +1,7 @@
 import { useStore } from '../../store.ts';
-import { go, href, useRoute } from '../../router.ts';
+import { go, useRoute } from '../../router.ts';
 import { dayShort } from '../../core/settings.ts';
-import { OrgSelect } from '../components.tsx';
+import { LinkedText, OrgSelect } from '../components.tsx';
 
 const TYPES = ['All', 'Trade', 'QO', 'Draft', 'Rule 5', 'Arbitration', 'Non-tender', 'Option', 'Recall', 'Select', 'Assign', 'IL', 'Activate', 'DFA', 'Waivers', 'Claim', 'Outright', 'Release', 'Sign', '40-man'];
 
@@ -34,12 +34,7 @@ export default function Transactions() {
       {list.map((t) => (
         <div key={t.id} className="news-item">
           <span className="muted small">{dayShort(t.season, t.day)}</span>{' '}
-          {t.orgId !== null && <b>{league.orgs[t.orgId].abbrev}</b>} {t.text}{' '}
-          {t.pids.map((id) => (
-            <a key={id} href={href('player', [id])} className="small">
-              (player)
-            </a>
-          ))}
+          {t.orgId !== null && <b>{league.orgs[t.orgId].abbrev}</b>} <LinkedText league={league} text={t.text} pids={t.pids} />
         </div>
       ))}
     </>
