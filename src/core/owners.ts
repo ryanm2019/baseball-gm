@@ -6,6 +6,7 @@ import { isPitcher, ovr } from './ratings.ts';
 import { addNews, orgPlayers } from './util.ts';
 import { cbtTax, fmtMoney, orgPayroll } from './contracts.ts';
 import { updateStances } from './market.ts';
+import { deptSpend } from './depts.ts';
 
 const OWNER_MULT: Record<OwnerType, number> = { Cheap: 0.75, Moderate: 1, 'Big spender': 1.3, 'Win-now': 1.12 };
 
@@ -174,6 +175,11 @@ export function ownerCheckin(league: League): string | null {
       if (pay > goal.target) { lines.push(`Payroll is ${fmtMoney(pay - goal.target)} over the ${goal.type === 'cbt' ? 'tax threshold' : 'limit'} I set.`); delta -= 3 * moneyW; }
     }
   }
+  const opsOver = deptSpend(org) - org.opBudget;
+  if (opsOver > 0) {
+    lines.push(`Department spending is ${fmtMoney(opsOver)} over the operating budget.`);
+    delta -= 2 * moneyW;
+  }
   org.owner.patience = clamp(Math.round(org.owner.patience + delta), league.settings.allowFiring ? 1 : 5, 100);
   const msg = `Owner check-in from ${org.owner.first} ${org.owner.last}: ${lines.join(' ')} (Job security ${org.owner.patience}/100.)`;
   addNews(league, org.id, msg);
@@ -213,6 +219,12 @@ export function reviewGm(league: League): void {
   }
   const tax = cbtTax(pay.cbt, org.cbtPayerYears, league.settings).tax;
   if (tax > 0 && org.owner.type !== 'Big spender') delta -= (tax / 1e6) * 0.4 * moneyW;
+  // Department spending over the operating budget.
+  const opsOver = deptSpend(org) - org.opBudget;
+  if (opsOver > 0) {
+    delta -= (opsOver / org.opBudget) * 40 * moneyW;
+    results.push(`Department spending ${fmtMoney(opsOver)} over the operating budget`);
+  }
   const before = org.owner.patience;
   const floor = league.settings.allowFiring ? 0 : 5;
   org.owner.patience = clamp(Math.round(before + delta), floor, 100);

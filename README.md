@@ -90,6 +90,14 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
 - **Bullpen roles** on the Depth Chart: closer, two setup men, middle relief, long relief and mop-up. The manager uses them by inning and score.
 - Simulated games run through the same engine, so live and simmed games play the same.
 
+## Departments, stars, farm reports, season preview
+
+- **Departments**: scouting, player development, medical/training and facilities, funded from an operating budget the owner sets apart from payroll. Twice the normal spend gets the full benefit; half or less hurts. Facilities build or decay slowly over seasons. Overspending the operating budget costs job security.
+- **Talent**: a fatter top end, so each league has a handful of 70-80 stars and a couple of 60+ players per team. Relievers' displayed overall is scaled to their value. Most draft classes have one or two generational prospects.
+- **Farm Reports**: weekly notes from the farm director (players of the week, top prospects, who's struggling, who's ready to move up, and rating changes since Opening Day).
+- **Promotions**: no age limits, but the younger a player is for a level, the better he has to be and the longer he has to do it before moving up.
+- **Season Preview**: projected wins, rising and falling teams, top players and prospects, rising and declining players over the past year, last summer's first round one year later, and the winter's biggest signings and trades.
+
 ## Next milestones
 
 1. Contract extensions, rehab assignments, full finances.

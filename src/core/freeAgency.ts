@@ -10,6 +10,7 @@ import { posLabel } from './rules.ts';
 import { revenueStatus } from './owners.ts';
 import { normalizeAdjust } from './draft.ts';
 import { logMove, side } from './moves.ts';
+import { deptEffect } from './depts.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -131,6 +132,7 @@ export function offerScore(league: League, p: Player, o: FaOffer): number {
   const win = (p.personality.winning - 50) / 30;
   score *= 1 + win * 0.1 * (teamWinPct(league, o.orgId) - 0.5) * 4;
   if (fa.formerOrg === o.orgId) score *= 1 + 0.02 + ((p.personality.loyalty - 50) / 30) * 0.05;
+  score *= 1 + 0.06 * deptEffect(league.orgs[o.orgId], 'facilities');
   return score;
 }
 

@@ -6,6 +6,7 @@ import { clamp, choice, normal, rand, randInt } from './random.ts';
 import { randomStaffName } from './names.ts';
 import { roundSalary } from './contracts.ts';
 import { addNews } from './util.ts';
+import { deptEffect } from './depts.ts';
 
 const r = () => clamp(Math.round(normal(50, 10)), 25, 80);
 const isScout = (role: StaffRole) => role === 'SD' || role === 'PRO' || role === 'AMA' || role === 'INT';
@@ -145,12 +146,13 @@ const scale = (v: number, lo: number, hi: number) => lo + ((clamp(v, 20, 80) - 2
 export function devMultiplier(league: League, p: Player): number {
   if (p.orgId === null) return 0.9;
   const org = league.orgs[p.orgId];
+  const budget = 1 + 0.08 * deptEffect(org, 'development');
   if (p.level === 'MLB') {
     const coach = staffOf(league, org, p.pos === 'SP' || p.pos === 'RP' ? 'PC' : 'HC');
-    return coach ? scale(coach.development, 0.85, 1.15) : 0.85;
+    return (coach ? scale(coach.development, 0.85, 1.15) : 0.85) * budget;
   }
   const fd = staffOf(league, org, 'FD');
-  return fd ? scale(fd.development, 0.85, 1.15) : 0.85;
+  return (fd ? scale(fd.development, 0.85, 1.15) : 0.85) * budget;
 }
 
 // Pitcher injury risk for MLB pitchers depends on the pitching coach.

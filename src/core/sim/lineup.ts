@@ -4,6 +4,7 @@ import { blendSplits, isPitcher, offense, ovr, posRating } from '../ratings.ts';
 import { activeAt } from '../util.ts';
 import { rand } from '../random.ts';
 import { delegated, managerMods, pitcherInjuryMult, type ManagerMods } from '../staff.ts';
+import { deptEffect } from '../depts.ts';
 
 export interface GameLineup {
   orgId: number;
@@ -14,6 +15,7 @@ export interface GameLineup {
   closer: Player | null;
   setup: Player[];
   roles: Map<number, PenRole>; // every bullpen arm's role
+  medical: number; // injury multiplier from the medical department
   bench: Player[];
   mgr: ManagerMods;
   pInjury: number;
@@ -175,7 +177,8 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   if (setup.length < 2) setup = setup.concat(rps.filter((p) => p !== closer && !setup.includes(p)).slice(0, 2 - setup.length));
   const roles = penRoles(bullpen, closer, setup, manual ? depth.pen : undefined);
 
-  return { orgId, level, batters, sp: starter, bullpen, closer, setup, roles, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) };
+  const medical = 1 - 0.18 * deptEffect(org, 'medical');
+  return { orgId, level, batters, sp: starter, bullpen, closer, setup, roles, medical, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) * medical };
 }
 
 export function blendedOffense(p: Player): number {

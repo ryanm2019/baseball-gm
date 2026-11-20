@@ -940,7 +940,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     }
 
     // position player injury
-    if (!injured.has(batter.id) && rand() < 0.00065 * opts.injuryRate * injLevel * batter.injuryProne) {
+    if (!injured.has(batter.id) && rand() < 0.00065 * opts.injuryRate * injLevel * batter.injuryProne * bs.lu.medical) {
       const inj = rollInjury(false);
       injured.add(batter.id);
       injuries.push({ p: batter, ...inj });

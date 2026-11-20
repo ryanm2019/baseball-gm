@@ -295,6 +295,7 @@ export interface Staff {
 export type FarmDirector = Staff;
 
 export type OwnerType = 'Cheap' | 'Moderate' | 'Big spender' | 'Win-now';
+export type Dept = 'scouting' | 'development' | 'medical' | 'facilities';
 export type Strategy = 'Contend' | 'Retool' | 'Rebuild';
 
 export interface Owner {
@@ -459,6 +460,9 @@ export interface Org {
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
   goals?: OwnerGoals; // user only
+  depts: Record<Dept, number>; // annual department budgets
+  opBudget: number; // owner's operating budget for departments
+  facilities: number; // -1 (poor) .. +1 (excellent), moves slowly with spending
 }
 
 export interface GameResult {
@@ -690,6 +694,9 @@ export interface League {
   farmReports?: FarmReport[];
   farmSnap?: { season: number; totals: Record<number, number[]> };
   devSnap?: { season: number; ratings: Record<number, number[]> };
+  lastWins?: Record<number, number>; // last season's MLB wins by org
+  preview?: SeasonPreview;
+  ovrBaseline?: { season: number; ovr: Record<number, number> }; // true overall at the start of the season
 }
 
 export interface FarmReport {
@@ -697,4 +704,12 @@ export interface FarmReport {
   day: number;
   by: string;
   sections: { title: string; lines: { text: string; pids: number[] }[] }[];
+}
+
+export interface SeasonPreview {
+  season: number;
+  risers: { pid: number; from: number; to: number }[];
+  decliners: { pid: number; from: number; to: number }[];
+  draft: { pick: number; orgId: number; pid: number; label?: string }[];
+  draftSeason: number;
 }

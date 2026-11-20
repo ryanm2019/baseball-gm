@@ -58,6 +58,33 @@ export function generateDraftClass(league: League, season: number): void {
     milbContract(p, season, 'A');
     league.players[p.id] = p;
   }
+  // Most classes have one or two generational talents; some have none.
+  const r = rand();
+  const stars = r < 0.25 ? 0 : r < 0.75 ? 1 : 2;
+  for (let k = 0; k < stars; k++) {
+    let best: Player | null = null;
+    for (let t = 0; t < 12; t++) {
+      const college = rand() < 0.45;
+      const p = generatePlayer({
+        id: league.nextId.player,
+        season,
+        level: college ? 'A' : 'CPX',
+        orgId: null,
+        age: college ? 21 : rand() < 0.75 ? 18 : 17,
+        international: false,
+        talentShift: normal(college ? 9 : 7, 2),
+      });
+      if (!best || potOvr(p) > potOvr(best)) best = p;
+      if (potOvr(p) >= 72) break;
+    }
+    if (!best) continue;
+    league.nextId.player++;
+    best.level = null;
+    best.proSeasons = 0;
+    best.prospect = { year: season, college: season - best.born >= 20 };
+    milbContract(best, season, 'A');
+    league.players[best.id] = best;
+  }
 }
 
 export const isProspect = (p: Player, season?: number) => !!p.prospect && p.orgId === null && (season === undefined || p.prospect.year === season);

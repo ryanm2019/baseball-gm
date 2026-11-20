@@ -12,6 +12,8 @@ import { generateCbPicks, generateDraftClass } from './draft.ts';
 import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { ovr, potOvr } from './ratings.ts';
 import { buildSchedule } from './schedule.ts';
+import { aiDepts, setDeptBudgets } from './depts.ts';
+import { setOvrBaseline } from './offseason.ts';
 
 const MLB_HITTERS: Pos[] = ['C', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SS', 'CF', '3B'];
 const MINOR_HITTERS: Pos[] = ['C', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', '1B', 'SS', '2B', 'CF', 'RF'];
@@ -65,6 +67,9 @@ export function createLeague(opts: NewLeagueOptions): League {
     stance: 'Listening',
     block: [],
     interest: { pids: [], pos: [] },
+    depts: { scouting: 12e6, development: 18e6, medical: 12e6, facilities: 25e6 },
+    opBudget: 0,
+    facilities: 0,
   }));
 
   const players: Record<number, Player> = {};
@@ -163,7 +168,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 5,
+    version: 6,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),
@@ -222,7 +227,13 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
   generateDraftClass(league, season);
   generateCbPicks(league, season);
+  setDeptBudgets(league);
+  for (const org of orgs) {
+    org.depts = aiDepts(org);
+    org.facilities = (rand() - 0.5) * 0.6 + (org.depts.facilities / 25e6 - 1) * 0.5;
+  }
   setOwnerGoals(league);
+  setOvrBaseline(league);
   return league;
 }
 

@@ -7,8 +7,10 @@ import { onSeasonEnd } from './offseason.ts';
 import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts';
 import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { updateStances } from './market.ts';
+import { aiDepts, opBudgetFor } from './depts.ts';
+import { setOvrBaseline } from './offseason.ts';
 
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -107,6 +109,16 @@ export function migrate(league: League): League {
       if (p.mlServiceDays >= 5 * l.settings.serviceDaysPerYear && p.optionsUsed < l.settings.optionYears) p.optionsUsed = l.settings.optionYears;
     }
     l.version = 5;
+  }
+  if (l.version < 6) {
+    // Department budgets.
+    for (const org of l.orgs) {
+      org.facilities ??= 0;
+      org.opBudget = opBudgetFor(org);
+      org.depts = aiDepts(org);
+    }
+    if (l.phase !== 'offseason') setOvrBaseline(l);
+    l.version = 6;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

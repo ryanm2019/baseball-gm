@@ -1,0 +1,25 @@
+import { createLeague } from '../src/core/league.ts';
+import { simOneDay } from '../src/core/sim/day.ts';
+import { advanceDraft } from '../src/core/draft.ts';
+import { ovr } from '../src/core/ratings.ts';
+import { deptSpend } from '../src/core/depts.ts';
+import { sumBat } from '../src/core/util.ts';
+const L = createLeague({ name: 't', userOrgIndex: 3, season: 2027 });
+const u = L.orgs[3];
+for (const k of Object.keys(u.agm)) (u.agm as any)[k] = true;
+for (const s of L.staff) if (s.orgId === 3) s.exp = 2040;
+console.log('depts user', JSON.stringify(u.depts), 'ops', u.opBudget, 'spend', deptSpend(u));
+const t0 = Date.now();
+let g = 0;
+while (!(L.season === 2028 && L.phase === 'preseason') && g++ < 900) { const r = simOneDay(L); if (r.stop?.includes('clock')) advanceDraft(L, true); }
+console.log('time', ((Date.now() - t0) / 1000).toFixed(1), 's', L.season, L.phase);
+const ents = Object.values(L.players).flatMap((p) => p.stats.filter((s) => s.season === 2027 && s.level === 'MLB'));
+const b = sumBat(ents);
+console.log('2027 MLB OPS', ((b.h + b.bb + b.hbp) / (b.ab + b.bb + b.hbp + b.sf) + (b.h + b.d + 2 * b.t + 3 * b.hr) / b.ab).toFixed(3));
+const pv = L.preview!;
+console.log('preview season', pv.season, 'risers', pv.risers.slice(0, 4).map((r) => `${L.players[r.pid].last} ${r.from.toFixed(0)}→${r.to.toFixed(0)} age ${L.season - L.players[r.pid].born}`).join(', '));
+console.log('decliners', pv.decliners.slice(0, 4).map((r) => `${L.players[r.pid].last} ${r.from.toFixed(0)}→${r.to.toFixed(0)} age ${L.season - L.players[r.pid].born}`).join(', '));
+console.log('draft recap', pv.draft.length, 'lastWins', Object.keys(L.lastWins ?? {}).length);
+const mlb = Object.values(L.players).filter((p) => p.level === 'MLB');
+console.log('after a year: MLB 70+', mlb.filter((p) => ovr(p) >= 70).length, '65+', mlb.filter((p) => ovr(p) >= 65).length);
+console.log('AI dept spend sample', L.orgs.slice(0, 4).map((o) => `${o.abbrev} ${(deptSpend(o) / 1e6).toFixed(0)}/${(o.opBudget / 1e6).toFixed(0)} fac ${o.facilities.toFixed(2)}`).join(' | '));

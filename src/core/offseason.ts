@@ -29,6 +29,7 @@ import { generateCbPicks, generateDraftClass } from './draft.ts';
 import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { generateIfaClass, isIfa, openIfaPeriod } from './intl.ts';
 import { logMove, side } from './moves.ts';
+import { setDeptBudgets, updateFacilities } from './depts.ts';
 
 export interface CalEvent {
   key: string;
@@ -69,6 +70,7 @@ export function onSeasonEnd(league: League): void {
   league.phase = 'offseason';
   const st = league.standings.MLB;
   league.lastStandings = league.orgs.map((o) => o.id).sort((a, b) => st[a].w - st[a].l - (st[b].w - st[b].l));
+  league.lastWins = Object.fromEntries(league.orgs.map((o) => [o.id, st[o.id].w]));
   league.lastPlayoffTeams = league.playoffs ? [...league.playoffs.seeds.AL, ...league.playoffs.seeds.NL] : [];
   for (const org of league.orgs) {
     const pay = orgPayroll(league, org);
@@ -80,6 +82,7 @@ export function onSeasonEnd(league: League): void {
     org.rule5Targets = [];
   }
   reviewGm(league);
+  updateFacilities(league);
   const user = league.orgs[league.userOrgId];
   const expiring = league.staff.filter((s) => s.orgId === user.id && s.exp <= league.season);
   if (expiring.length) {
@@ -456,6 +459,13 @@ function runRollover(league: League): void {
     org.deadMoney = org.deadMoney.filter((d) => d.season > prevSeason);
   }
 
+  // For the season preview: ratings before winter development, and last summer's first round.
+  // Compare against the start of last season (a full year of change).
+  const preOvr = new Map<number, number>();
+  if (league.ovrBaseline) for (const [id, v] of Object.entries(league.ovrBaseline.ovr)) preOvr.set(Number(id), v);
+  else for (const p of Object.values(league.players)) if (!p.retired && p.orgId !== null && !p.prospect && !p.ifa) preOvr.set(p.id, ovr(p));
+  const draftRecap = (league.draft?.picks ?? []).filter((pk) => pk.round === 1 && pk.pid !== null).map((pk) => ({ pick: pk.pick, orgId: pk.orgId, pid: pk.pid!, label: pk.label }));
+
   // New season.
   league.season = prevSeason + 1;
   const open = dayToDate(league.season, 0).getTime();
@@ -500,10 +510,26 @@ function runRollover(league: League): void {
   ownerSales(league);
   updateStrategies(league);
   setBudgets(league);
+  setDeptBudgets(league);
   setOwnerGoals(league);
   generateDraftClass(league, league.season);
   generateCbPicks(league, league.season);
-  addNews(league, null, `Spring training has opened for the ${league.season} season. ${retired} players retired this winter.`);
+  // Who got better and who got worse over the winter (relative to everyone else).
+  const changes = [...preOvr.entries()]
+    .map(([pid, from]) => ({ pid, from, to: league.players[pid] && !league.players[pid].retired ? ovr(league.players[pid]) : NaN }))
+    .filter((c) => !Number.isNaN(c.to));
+  const deltas = changes.map((c) => c.to - c.from).sort((a, b) => a - b);
+  const mid = deltas[Math.floor(deltas.length / 2)] ?? 0;
+  const rel = (c: { from: number; to: number }) => c.to - c.from - mid;
+  league.preview = {
+    season: league.season,
+    risers: changes.filter((c) => c.to >= 50).sort((a, b) => rel(b) - rel(a)).slice(0, 12),
+    decliners: changes.filter((c) => c.from >= 50).sort((a, b) => rel(a) - rel(b)).slice(0, 12),
+    draft: draftRecap,
+    draftSeason: prevSeason,
+  };
+  setOvrBaseline(league);
+  addNews(league, null, `Spring training has opened for the ${league.season} season. ${retired} players retired this winter. The season preview is out.`);
 }
 
 // ---------- daily driver ----------
@@ -562,3 +588,10 @@ function userHasDecision(league: League, key: string): boolean {
 
 export const isFa = isFreeAgent;
 export { firstContractSeason };
+
+// Snapshot of true overall for every organizational player, for next year's preview.
+export function setOvrBaseline(league: League): void {
+  const o: Record<number, number> = {};
+  for (const p of Object.values(league.players)) if (!p.retired && p.orgId !== null && !p.prospect && !p.ifa) o[p.id] = Math.round(ovr(p) * 10) / 10;
+  league.ovrBaseline = { season: league.season, ovr: o };
+}

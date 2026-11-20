@@ -17,6 +17,8 @@ import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
 import { ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
+import { deptEffect } from '../depts.ts';
+import { rand } from '../random.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
 let indexedFor: Game[] | null = null;
@@ -147,7 +149,7 @@ function dailyUpkeep(league: League): void {
   for (const p of Object.values(league.players)) {
     if (p.retired) continue;
     if (p.injury) {
-      p.injury.daysLeft--;
+      p.injury.daysLeft -= healDays(league, p);
       if (p.injury.daysLeft <= 0) {
         p.injury = null;
         if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} is healthy and can be activated from the IL.`, [p.id]);
@@ -310,6 +312,14 @@ function playoffDay(league: League): void {
   }
 }
 
+// A good medical staff gets players back sooner; a poor one, later.
+function healDays(league: League, p: { orgId: number | null }): number {
+  const e = p.orgId === null ? 0 : deptEffect(league.orgs[p.orgId], 'medical');
+  if (e > 0) return rand() < 0.25 * e ? 2 : 1;
+  if (e < 0) return rand() < 0.25 * -e ? 0 : 1;
+  return 1;
+}
+
 export interface DayResult {
   stop: string | null;
 }
@@ -449,7 +459,7 @@ export function simOneDay(league: League): DayResult {
 function offseasonUpkeep(league: League): void {
   for (const p of Object.values(league.players)) {
     if (p.injury) {
-      p.injury.daysLeft--;
+      p.injury.daysLeft -= healDays(league, p);
       if (p.injury.daysLeft <= 0) p.injury = null;
     }
   }

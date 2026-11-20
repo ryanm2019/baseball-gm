@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { changed } from '../../store.ts';
 import { LinkedText, OrgSelect } from '../components.tsx';
 import { expectedWins, setOwnerGoals } from '../../core/owners.ts';
+import { deptSpend } from '../../core/depts.ts';
 
 function Goals({ league, org }: { league: League; org: Org }) {
   const g = org.goals;
@@ -138,7 +139,7 @@ export default function Dashboard() {
       })()}
       {league.phase === 'preseason' && (
         <div className="alert alert-info">
-          Spring training. Get the MLB roster to {league.settings.activeMax} by Opening Day ({activeAt(league, org.id, 'MLB').length} now). <a href={href('roster')}>Roster</a>
+          Spring training. Get the MLB roster to {league.settings.activeMax} by Opening Day ({activeAt(league, org.id, 'MLB').length} now). <a href={href('roster')}>Roster</a> · <a href={href('preview')}><b>{league.season} Season Preview</b></a>
         </div>
       )}
       {league.tradeOffers.length > 0 && (
@@ -172,6 +173,8 @@ export default function Dashboard() {
             <div>{org.owner.first} {org.owner.last} ({org.owner.type.toLowerCase()})</div>
             <div>Budget</div>
             <div>{fmtMoney(org.budget)}</div>
+            <div>Departments</div>
+            <div className={deptSpend(org) > org.opBudget ? 'neg' : ''}><a href={href('departments')}>{fmtMoney(deptSpend(org))}</a> of {fmtMoney(org.opBudget)}</div>
             <div>Job security</div>
             <div>
               <span className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</span>

@@ -2,6 +2,7 @@
 // scouted (noisy) values the user actually sees.
 import type { BatSplit, DefRatings, FieldPos, League, Level, Org, Player, Pos, StaffRole } from './types.ts';
 import { clamp, seededNormal } from './random.ts';
+import { deptEffect } from './depts.ts';
 
 export const contact = (s: BatSplit): number => (s.babip + s.avoidK) / 2;
 
@@ -130,9 +131,10 @@ function staffEval(league: League, org: Org, role: StaffRole): number | null {
 export function scoutFactor(league: League, org: Org, area: ScoutArea): number {
   const dir = staffEval(league, org, 'SD');
   const d = dir === null ? 1.25 : evalScale(dir, 1.2, 0.8);
-  if (area === 'own') return 0.7 * d; // coaches and the farm staff see your own players every day
+  const budget = 1 - 0.2 * deptEffect(org, 'scouting'); // scouting department spending
+  if (area === 'own') return 0.7 * d * budget; // coaches and the farm staff see your own players every day
   const sc = staffEval(league, org, AREA_ROLE[area]);
-  return (sc === null ? 1.7 : evalScale(sc, 1.45, 0.55)) * d;
+  return (sc === null ? 1.7 : evalScale(sc, 1.45, 0.55)) * d * budget;
 }
 
 export function scoutArea(league: League, p: Player): ScoutArea {
@@ -164,14 +166,18 @@ export function scout(league: League, p: Player, key: string, value: number, isP
   return grade(league, scoutRaw(league, p, key, value, isPot));
 }
 
+// Relievers throw a fraction of a starter's innings, so the overall you see is
+// scaled to their value: an elite closer reads about 60-65, not 70.
+export const displayOvr = (p: Player, x: number): number => (p.pos === 'RP' ? 50 + 0.65 * (x - 50) : x);
+
 export function scoutedOvr(league: League, p: Player): number {
-  return scout(league, p, 'ovr', ovr(p));
+  return grade(league, displayOvr(p, scoutRaw(league, p, 'ovr', ovr(p))));
 }
 
 export function scoutedPot(league: League, p: Player): number {
   const cur = scoutRaw(league, p, 'ovr', ovr(p));
   const pot = scoutRaw(league, p, 'pot', potOvr(p), true);
-  return grade(league, Math.max(cur, pot));
+  return grade(league, displayOvr(p, Math.max(cur, pot)));
 }
 
 // Exact (unrounded, still noisy) values used by AI decision making for the user's org,

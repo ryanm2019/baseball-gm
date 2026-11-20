@@ -145,7 +145,10 @@ export function generatePlayer(o: GenOptions): Player {
   const intl = o.international ?? (level === 'DSL' ? true : rand() < 0.28);
   const origin = randomOrigin(intl);
 
-  const talent = LEVEL_TALENT[level] + (o.talentShift ?? 0) + normal(0, level === 'MLB' ? 6.5 : 5.5);
+  // A bell curve with a fatter top end: a few players are simply better than
+  // everyone else (the league's stars).
+  const starTail = rand() < (level === 'MLB' ? 0.1 : 0.03) ? Math.abs(normal(0, 10)) : 0;
+  const talent = Math.min(80, LEVEL_TALENT[level] + (o.talentShift ?? 0) + normal(0, level === 'MLB' ? 7 : 5.5) + starTail);
   const growth = level === 'MLB' && age >= 27 ? Math.max(0, normal(0.3, 0.8)) : growthFor(age, level);
 
   const pitcher = pos === 'SP' || pos === 'RP';
