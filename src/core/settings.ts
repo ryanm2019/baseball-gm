@@ -45,6 +45,10 @@ export function defaultSettings(): Settings {
     draftDay: 108,
     draftSigningDays: 22,
     draftRounds: 20,
+    tradeDeadlineDay: 127,
+    postseasonEligibilityDay: 158,
+    tradeDifficulty: 'Normal',
+    aiTradeFactor: 1,
     extraInningRunner: true,
   };
 }

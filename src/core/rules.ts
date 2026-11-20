@@ -262,6 +262,8 @@ export function signFreeAgent(league: League, p: Player, orgId: number, level: L
   if (activeAt(league, orgId, level).length >= s.milbActiveMax[level]) return `${level} roster is full`;
   p.orgId = orgId;
   touchRosters();
+  p.teamSince = league.season;
+  p.joined = { season: league.season, day: league.day };
   p.on40 = false;
   p.level = level;
   p.contract = { type: 'MiLB', salary: MILB_SALARY[level], minorSalary: MILB_SALARY[level], exp: league.season, oneWay: false, signed: league.season };
@@ -320,6 +322,8 @@ export function resolveWaivers(league: League, p: Player): void {
     const fromName = orgById(league, from)?.affiliates.MLB.name ?? '';
     p.orgId = claimer;
     touchRosters();
+    p.teamSince = league.season;
+    p.joined = { season: league.season, day: league.day };
     p.on40 = true;
     p.waivers = null;
     p.dfa = null;

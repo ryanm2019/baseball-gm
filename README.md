@@ -57,7 +57,22 @@ node --experimental-strip-types scripts/check-rules.ts    # exercises option / D
 - **International amateurs**: bonus pools by market size, a class of 16-17 year olds and AI signings.
 - **Winter**: aging, development, potential that drifts (breakouts and busts), retirements, the 4th option year, luxury tax payer streaks, and rating re-centering so 50 stays MLB average.
 
+## Milestone 3: owners, MLB penalties, trades
+
+- **Owners**: each club has an owner type (cheap, moderate, big spender, win-now) that changes when a team is sold. Owner type plus market size set the payroll budget. AI clubs pick a strategy (contend, retool, rebuild) each winter and again before the deadline. Strategy drives free-agent spending and how they value players.
+- **Your owner**: a soft budget. Going over, missing expectations and paying tax cost job security; winning raises it. At 0 you're fired and can take another job.
+- **MLB penalties**:
+  - Tax rates rise with repeat-payer status, with a higher third-tier surcharge for repeat payers.
+  - Clubs $40M+ over the threshold have their top first-round pick moved back 10 spots.
+  - Signing a free agent who declined a qualifying offer costs, by the signing club's status: tax payors lose their 2nd and 5th-round picks plus $1M of international pool money; revenue-sharing recipients lose their 3rd-round pick; everyone else loses their 2nd-round pick plus $500k. Compensation picks for the club that lost the player come after round 1, after Competitive Balance B, or after round 4, depending on its status.
+- **Competitive Balance Rounds A and B** for the smallest markets. These are the only tradable picks.
+- **Trades**: players, cash and international pool money ($250k increments; a club can add up to 60% of its pool), plus CB picks.
+  - Rules: trade deadline Jul 31; no trades in the playoffs; offseason free agents can't be traded until June 15; draftees can't be traded until after the World Series.
+  - Cash is limited to the remaining salary sent plus $1M, and both clubs need 40-man room. 10-and-5 players can veto. Players acquired after Aug 31 can't play in the postseason.
+- **Trade AI**: values players by surplus value: projected WAR over the years of control (contract, arbitration, pre-arb) at $8M/WAR, minus salary, discounted. That gets adjusted for strategy (contenders weight this year, rebuilders the future), prospect risk by level, position need, and budget. Small pieces are discounted, so you can't win a deal with a pile of filler.
+- Includes "What would make this work?", a trading block, a difficulty setting (Easy to Insane), AI-to-AI trades with an adjustable frequency (busiest before the deadline), and AI offers to you that the assistant GM can answer.
+- **More "sim to" options**: All-Star break / draft, trade deadline, Aug 31, September, end of regular season, playoffs, and each offseason event.
+
 ## Next milestones
 
-1. Trades, with AI built on surplus value, plus trade offers in the assistant GM's duties.
-2. Contract extensions, rehab assignments, scouting director, full finances.
+1. Contract extensions, rehab assignments, scouting director, full finances.

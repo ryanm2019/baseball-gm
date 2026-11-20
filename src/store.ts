@@ -75,12 +75,21 @@ export async function sim(days: number | ((l: League) => boolean), label: string
   emit();
   const startDay = league.day;
   let n = 0;
+  let stuck = 0;
   try {
     for (;;) {
       if (typeof days === 'number' ? n >= days : days(league)) break;
       if (stopRequested) break;
+      const before = `${league.season}|${league.day}|${league.phase}|${league.events.length}`;
       const r = simOneDay(league);
       n++;
+      if (!r.stop && `${league.season}|${league.day}|${league.phase}|${league.events.length}` === before) {
+        stuck++;
+        if (stuck >= 3) {
+          state.message = 'The simulation could not advance. Check your roster and the Dashboard for problems.';
+          break;
+        }
+      } else stuck = 0;
       if (r.stop) {
         state.message = r.stop;
         break;

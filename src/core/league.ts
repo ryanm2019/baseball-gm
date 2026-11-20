@@ -7,8 +7,9 @@ import { defaultSettings } from './settings.ts';
 import { generatePlayer } from './playerGen.ts';
 import { clamp, normal, rand, randInt, choice } from './random.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
-import { initialMLContract, milbContract, roundSalary } from './contracts.ts';
-import { generateDraftClass } from './draft.ts';
+import { initialMLContract, milbContract, orgPayroll, roundSalary } from './contracts.ts';
+import { generateCbPicks, generateDraftClass } from './draft.ts';
+import { makeOwner, setBudgets, updateStrategies } from './owners.ts';
 import { ovr, potOvr } from './ratings.ts';
 import { buildSchedule } from './schedule.ts';
 
@@ -52,6 +53,10 @@ export function createLeague(opts: NewLeagueOptions): League {
     optionPlan: {},
     qoPlan: {},
     rule5Targets: [],
+    owner: makeOwner(season),
+    strategy: 'Retool',
+    budget: 0,
+    cash: [],
     control: { MLB: 'Manual', AAA: 'FD', AA: 'FD', 'A+': 'FD', A: 'FD', CPX: 'FD', DSL: 'FD' },
     depth: {},
     rotationIndex: {},
@@ -154,7 +159,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 2,
+    version: 3,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),
@@ -183,6 +188,9 @@ export function createLeague(opts: NewLeagueOptions): League {
     intl: { pools: {}, spent: {}, open: false },
     cbtHistory: [],
     wsEndDay: null,
+    cbPicks: [],
+    tradeOffers: [],
+    ifaPenalty: {},
   };
   refreshStaffPool(league);
   // Some veteran deals carry a club or player option on the year after they end.
@@ -194,7 +202,21 @@ export function createLeague(opts: NewLeagueOptions): League {
       c.option = { type: club ? 'club' : 'player', season: c.exp + 1, salary: roundSalary(c.salary * (0.9 + rand() * 0.3)), buyout: club ? roundSalary(c.salary * 0.08) : 0 };
     }
   }
+  for (const p of Object.values(players)) p.teamSince = p.orgId === null ? undefined : season - Math.min(p.proSeasons, Math.floor(Math.random() * 6));
+  updateStrategies(league);
+  setBudgets(league);
+  // Starting payrolls follow each owner's budget: scale guaranteed salaries to fit.
+  for (const org of orgs) {
+    const pay = orgPayroll(league, org).cbt;
+    const target = org.budget * (0.85 + rand() * 0.2);
+    if (pay <= target) continue;
+    const mine = Object.values(players).filter((p) => p.orgId === org.id && p.contract.type === 'ML' && p.contract.oneWay);
+    const guaranteed = mine.reduce((t, p) => t + p.contract.salary, 0);
+    const factor = clamp((guaranteed - (pay - target)) / Math.max(1, guaranteed), 0.25, 1);
+    for (const p of mine) p.contract.salary = roundSalary(Math.max(settings.minSalary, p.contract.salary * factor));
+  }
   generateDraftClass(league, season);
+  generateCbPicks(league, season);
   return league;
 }
 

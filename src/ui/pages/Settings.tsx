@@ -17,6 +17,9 @@ const GROUPS: { title: string; fields: [NumKey, string, string?][] }[] = [
       ['pitcherMaxSept', 'Pitcher limit (September)'],
       ['fortyMax', '40-man roster size'],
       ['septemberDay', 'Roster expansion day', 'Days after Opening Day'],
+      ['tradeDeadlineDay', 'Trade deadline', 'Days after Opening Day'],
+      ['postseasonEligibilityDay', 'Postseason roster eligibility cutoff', 'Days after Opening Day'],
+      ['draftDay', 'Amateur draft', 'Days after Opening Day'],
     ],
   },
   {
@@ -82,6 +85,15 @@ export default function SettingsPage() {
         <label>
           <input type="checkbox" checked={s.extraInningRunner} onChange={(e) => { s.extraInningRunner = e.target.checked; changed(); }} /> Automatic runner on second in extra innings
         </label>
+      </div>
+      <div className="form-row">
+        Trade AI difficulty{' '}
+        <select value={s.tradeDifficulty} onChange={(e) => { s.tradeDifficulty = e.target.value as Settings['tradeDifficulty']; changed(); }}>
+          {['Easy', 'Normal', 'Hard', 'Insane'].map((x) => <option key={x}>{x}</option>)}
+        </select>
+        AI-to-AI trade frequency{' '}
+        <input type="number" step="0.25" min={0} max={3} value={s.aiTradeFactor} onChange={(e) => { s.aiTradeFactor = Math.max(0, Number(e.target.value)); changed(); }} />
+        <span className="muted small">0 = off, 1 = realistic</span>
       </div>
       <div className="form-row">
         Scouting accuracy{' '}

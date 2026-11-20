@@ -233,6 +233,9 @@ export interface Player {
   rule5?: { fromOrg: number; season: number } | null;
   qoReceived?: boolean;
   qoPending?: number;
+  faSigned?: number; // first season of a free-agent contract (can't be traded until June 15)
+  teamSince?: number; // season he joined his current organization (10-and-5 rights)
+  joined?: { season: number; day: number }; // when he joined (postseason eligibility, trade restrictions)
   signAge?: number;
   retired?: number;
 
@@ -284,6 +287,46 @@ export interface Staff {
 
 export type FarmDirector = Staff;
 
+export type OwnerType = 'Cheap' | 'Moderate' | 'Big spender' | 'Win-now';
+export type Strategy = 'Contend' | 'Retool' | 'Rebuild';
+
+export interface Owner {
+  first: string;
+  last: string;
+  type: OwnerType;
+  since: number;
+  patience: number; // 0-100; the user is fired at 0
+}
+
+export interface TradeAssets {
+  pids: number[];
+  cash: number; // dollars of this season's salary paid to the other team
+  pool: number; // international bonus pool dollars
+  cbPicks: string[]; // competitive balance pick ids
+}
+
+export interface TradeProposal {
+  orgs: [number, number];
+  give: [TradeAssets, TradeAssets]; // give[i] = what orgs[i] sends
+}
+
+export interface TradeOffer {
+  id: number;
+  day: number;
+  season: number;
+  fromOrg: number;
+  proposal: TradeProposal; // orgs[0] = AI team, orgs[1] = user
+  expires: number;
+}
+
+export interface CbPick {
+  id: string;
+  season: number;
+  round: 'A' | 'B';
+  originalOrg: number;
+  orgId: number;
+}
+
 export type AgmDuty =
   | 'injuries'
   | 'roster'
@@ -295,7 +338,8 @@ export type AgmDuty =
   | 'rule5draft'
   | 'milbfa'
   | 'draft'
-  | 'ifa';
+  | 'ifa'
+  | 'trades';
 
 export const AGM_DUTIES: { key: AgmDuty; label: string; def: boolean }[] = [
   { key: 'injuries', label: 'Injuries: IL placements, activations and injury call-ups', def: true },
@@ -309,6 +353,7 @@ export const AGM_DUTIES: { key: AgmDuty; label: string; def: boolean }[] = [
   { key: 'milbfa', label: 'Minor league free agent signings', def: true },
   { key: 'draft', label: 'Amateur draft picks and signings', def: false },
   { key: 'ifa', label: 'International amateur signings', def: false },
+  { key: 'trades', label: 'Answer trade offers from other teams', def: false },
 ];
 
 export interface Affiliate {
@@ -341,6 +386,10 @@ export interface Org {
   optionPlan: Record<number, boolean>; // pid -> exercise club option
   qoPlan: Record<number, boolean>; // pid -> extend a qualifying offer
   rule5Targets: number[];
+  owner: Owner;
+  strategy: Strategy;
+  budget: number; // owner's payroll budget for the coming season
+  cash: { season: number; amount: number; note: string }[]; // cash sent (+) or received (-) in trades
   control: Record<Level, Control>;
   depth: Partial<Record<Level, DepthChart>>;
   rotationIndex: Partial<Record<Level, number>>;
@@ -496,7 +545,16 @@ export interface Settings {
   draftDay: number; // regular-season day of the amateur draft (All-Star break)
   draftSigningDays: number;
   draftRounds: number;
+  tradeDeadlineDay: number;
+  postseasonEligibilityDay: number;
+  tradeDifficulty: 'Easy' | 'Normal' | 'Hard' | 'Insane';
+  aiTradeFactor: number;
   extraInningRunner: boolean;
+}
+
+export interface DraftAdjust {
+  comp: { orgId: number; after: 'R1' | 'CBB' | 'R4' }[];
+  forfeit: { orgId: number; round: number }[];
 }
 
 export interface DraftPick {
@@ -504,6 +562,7 @@ export interface DraftPick {
   pick: number; // overall
   orgId: number;
   slot: number;
+  label?: string; // e.g. 'CB-A', 'Comp'
   pid: number | null;
   signed: boolean | null;
 }
@@ -552,10 +611,14 @@ export interface League {
   lastDevDay: number;
   events: string[]; // offseason / calendar events already processed or prompted this cycle
   draft: DraftState | null;
-  intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean };
+  intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean; acquired?: Record<number, number>; base?: Record<number, number> };
   cbtHistory: CbtRecord[];
   wsEndDay: number | null;
   lastStandings?: number[]; // org ids, worst record first
   lastPlayoffTeams?: number[];
-  draftAdjust?: { comp: number[]; forfeit: number[] };
+  draftAdjust?: DraftAdjust;
+  cbPicks: CbPick[];
+  tradeOffers: TradeOffer[];
+  ifaPenalty: Record<number, number>; // pool reductions for the next signing period
+  fired?: boolean;
 }

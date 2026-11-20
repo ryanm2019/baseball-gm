@@ -145,6 +145,8 @@ export function orgPayroll(league: League, org: Org): { lines: PayrollLine[]; to
   }
   let dead = 0;
   for (const d of org.deadMoney) if (d.season === league.season) dead += d.amount;
+  // Cash sent (+) or received (-) in trades counts against this season's payroll.
+  for (const c of org.cash ?? []) if (c.season === league.season) dead += c.amount;
   lines.sort((a, b) => b.salary - a.salary);
   const cbt = total + dead + league.settings.playerBenefits;
   return { lines, total: total + dead, cbt, dead };
@@ -161,7 +163,9 @@ export function cbtTax(cbtPayroll: number, payerYears: number, s: Settings): { o
     if (over > lo) {
       tier = i + 2;
       const hi = i + 1 < s.cbtSurcharges.length ? s.cbtTierStep * (i + 2) : Infinity;
-      tax += (Math.min(over, hi) - lo) * s.cbtSurcharges[i];
+      // Repeat payors pay a higher third-tier surcharge (45% vs 42.5%).
+      const rate = s.cbtSurcharges[i] + (i === 1 && payerYears > 0 ? 0.025 : 0);
+      tax += (Math.min(over, hi) - lo) * rate;
     }
   }
   return { over, tax, tier };

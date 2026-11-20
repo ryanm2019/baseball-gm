@@ -5,7 +5,7 @@ import { generatePlayer } from './playerGen.ts';
 import { normal, rand, seededNormal } from './random.ts';
 import { ovr, potOvr } from './ratings.ts';
 import { milbContract, roundSalary } from './contracts.ts';
-import { addTransaction, pname, touchRosters } from './util.ts';
+import { addNews, addTransaction, pname, touchRosters } from './util.ts';
 import { delegated, staffOf } from './staff.ts';
 
 export function poolFor(market: number): number {
@@ -43,11 +43,17 @@ export function generateIfaClass(league: League, year: number): void {
 }
 
 export function openIfaPeriod(league: League): void {
-  league.intl = { pools: {}, spent: {}, open: true };
+  league.intl = { pools: {}, spent: {}, open: true, acquired: {}, base: {} };
   for (const o of league.orgs) {
-    league.intl.pools[o.id] = poolFor(o.market);
+    const base = poolFor(o.market);
+    const pen = league.ifaPenalty[o.id] ?? 0;
+    league.intl.base![o.id] = base;
+    league.intl.pools[o.id] = Math.max(0, base - pen);
     league.intl.spent[o.id] = 0;
+    league.intl.acquired![o.id] = 0;
+    if (pen && o.id === league.userOrgId) addNews(league, o.id, `Your international bonus pool is reduced by $${(pen / 1e6).toFixed(2)}M (qualifying-offer penalty).`);
   }
+  league.ifaPenalty = {};
 }
 
 export function canSignIfa(league: League, orgId: number, p: Player): string | null {
@@ -65,6 +71,7 @@ export function signIfa(league: League, orgId: number, p: Player): string | null
   league.intl.spent[orgId] = (league.intl.spent[orgId] ?? 0) + bonus;
   p.orgId = orgId;
   touchRosters();
+  p.teamSince = league.season;
   p.level = 'DSL';
   p.signAge = league.season - p.born + (league.phase === 'offseason' ? 1 : 0);
   // Signed in the winter: his first pro season is next season.

@@ -10,6 +10,30 @@ import { era, fmt3, obp, ops, seasonBat, seasonPit, slg, avg } from '../fmt.tsx'
 import { isPitcher } from '../../core/ratings.ts';
 import { farmDirectorOf } from '../../core/farmDirector.ts';
 import { nextEvent } from '../../core/offseason.ts';
+import { useState } from 'react';
+import { changed } from '../../store.ts';
+import { OrgSelect } from '../components.tsx';
+
+function Fired({ league }: { league: League }) {
+  const [pick, setPick] = useState(league.orgs.find((o) => o.id !== league.userOrgId)!.id);
+  return (
+    <div className="alert alert-err">
+      <b>You've been fired.</b> Another club is willing to hire you:{' '}
+      <OrgSelect league={league} value={pick} onChange={setPick} />{' '}
+      <button
+        className="btn btn-sm"
+        onClick={() => {
+          league.userOrgId = pick;
+          league.orgs[pick].owner.patience = 50;
+          league.fired = false;
+          changed();
+        }}
+      >
+        Take the job
+      </button>
+    </div>
+  );
+}
 
 export function divStandings(league: League, org: Org) {
   const st = league.standings.MLB;
@@ -49,6 +73,7 @@ export default function Dashboard() {
   return (
     <>
       <h1>{org.region} {org.name} Dashboard</h1>
+      {league.fired && <Fired league={league} />}
       {league.phase === 'offseason' && (() => {
         const ev = nextEvent(league);
         return (
@@ -84,6 +109,14 @@ export default function Dashboard() {
             <div>{mlb.length} / {fortyMan(league, org.id).length}</div>
             <div>CBT payroll</div>
             <div>{fmtMoney(pay.cbt)}{tax.tax > 0 ? ` (tax ${fmtMoney(tax.tax)})` : ''}</div>
+            <div>Owner</div>
+            <div>{org.owner.first} {org.owner.last} ({org.owner.type.toLowerCase()})</div>
+            <div>Budget</div>
+            <div>{fmtMoney(org.budget)}</div>
+            <div>Job security</div>
+            <div>
+              <span className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</span>
+            </div>
             <div>Farm director</div>
             <div>{fd ? `${fd.first} ${fd.last} (${fd.philosophy})` : <a href={href('staff')}>None, hire one</a>}</div>
           </div>

@@ -24,6 +24,9 @@ export default function LeaguePayrolls() {
   const cols: Column<Row>[] = [
     { key: 'team', label: 'Team', left: true, value: (r) => r.o.region, render: (r) => <a href={href('payroll', [], { org: r.o.id })}>{r.o.region} {r.o.name}</a> },
     { key: 'wl', label: 'W-L', value: (r) => st[r.o.id].w, render: (r) => `${st[r.o.id].w}-${st[r.o.id].l}` },
+    { key: 'strat', label: 'Strategy', left: true, value: (r) => r.o.strategy },
+    { key: 'owner', label: 'Owner', left: true, value: (r) => r.o.owner.type },
+    { key: 'budget', label: 'Budget', value: (r) => r.o.budget, render: (r) => fmtMoney(r.o.budget) },
     { key: 'total', label: 'Payroll', value: (r) => r.total, render: (r) => fmtMoney(r.total) },
     { key: 'cbt', label: 'CBT payroll', value: (r) => r.cbt, render: (r) => fmtMoney(r.cbt) },
     { key: 'over', label: 'vs threshold', value: (r) => r.over, render: (r) => <span className={r.over > 0 ? 'neg' : ''}>{r.over > 0 ? '+' : ''}{fmtMoney(r.over)}</span> },

@@ -32,10 +32,14 @@ import Rule5 from './ui/pages/Rule5.tsx';
 import International from './ui/pages/International.tsx';
 import Draft from './ui/pages/Draft.tsx';
 import { nextEvent } from './core/offseason.ts';
+import Trade from './ui/pages/Trade.tsx';
+import TradingBlock from './ui/pages/TradingBlock.tsx';
+import TradeOffers from './ui/pages/TradeOffers.tsx';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Trades', links: [['trade', 'Trade'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
@@ -65,8 +69,11 @@ function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
     items.push({ label: 'One day', run: () => sim(1, 'Playing') });
     items.push({ label: 'One week', run: () => sim(7, 'Playing') });
     items.push({ label: 'One month', run: () => sim(30, 'Playing') });
-    if (league.day < league.settings.draftDay) items.push({ label: 'Until the draft', run: () => sim((l) => l.day >= l.settings.draftDay, 'Playing') });
-    if (league.day < league.settings.septemberDay) items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
+    const s = league.settings;
+    if (league.day < s.draftDay) items.push({ label: 'Until All-Star break (draft)', run: () => sim((l) => l.day >= l.settings.draftDay, 'Playing') });
+    if (league.day <= s.tradeDeadlineDay) items.push({ label: 'Until trade deadline (Jul 31)', run: () => sim((l) => l.day >= l.settings.tradeDeadlineDay || l.phase !== 'regular', 'Playing') });
+    if (league.day <= s.postseasonEligibilityDay) items.push({ label: 'Until Aug 31 (postseason rosters)', run: () => sim((l) => l.day >= l.settings.postseasonEligibilityDay || l.phase !== 'regular', 'Playing') });
+    if (league.day < s.septemberDay) items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
     items.push({ label: 'Until end of regular season', run: () => sim((l) => l.phase !== 'regular', 'Playing') });
   } else if (league.phase === 'playoffs') {
     items.push({ label: 'One day', run: () => sim(1, 'Playoffs') });
@@ -161,6 +168,9 @@ export default function App() {
     case 'rule5': page = <Rule5 />; break;
     case 'international': page = <International />; break;
     case 'draft': page = <Draft />; break;
+    case 'trade': page = <Trade />; break;
+    case 'trading-block': page = <TradingBlock />; break;
+    case 'trade-offers': page = <TradeOffers />; break;
     default: page = <Dashboard />;
   }
 
@@ -192,6 +202,7 @@ export default function App() {
               {g.links.map(([page, label]) => (
                 <a key={label} href={href(page)} className={route.page === page ? 'active' : ''}>
                   {label}
+                  {page === 'trade-offers' && league.tradeOffers.length > 0 && <span className="tag">{league.tradeOffers.length}</span>}
                 </a>
               ))}
             </div>

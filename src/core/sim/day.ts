@@ -3,7 +3,7 @@
 // organizational AI.
 import type { Game, League, Level, PlayoffSeries } from '../types.ts';
 import { LEVELS } from '../types.ts';
-import { buildLineup, pickStarter } from './lineup.ts';
+import { buildLineup, pickStarter, postseasonEligible } from './lineup.ts';
 import { simGame } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
@@ -13,6 +13,8 @@ import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay } from '../freeAgency.ts';
 import { ifaDay } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
+import { updateStrategies } from '../owners.ts';
+import { tradeDay } from '../trade.ts';
 import { isPitcher } from '../ratings.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
@@ -51,6 +53,7 @@ export function userRosterIssues(league: League): string[] {
   if (f > league.settings.fortyMax) issues.push(`40-man roster has ${f} players (max ${league.settings.fortyMax}).`);
   // Day-to-day injuries (3 days or fewer) can stay on the active roster.
   for (const p of active) if (p.injury && p.injury.daysLeft >= 4) issues.push(`${pname(p)} is injured (${p.injury.daysLeft} days) and still on the active roster.`);
+  if (league.orgs[org].staff.FD === undefined) issues.push('You have no farm director, so nobody is managing your affiliates. Hire one on the Staff page (or set each level to manual and manage it yourself).');
   for (const level of LEVELS) {
     if (level === 'MLB' || isManaged(league, league.orgs[org], level)) continue;
     const n = activeAt(league, org, level).length;
@@ -71,8 +74,8 @@ function updateStanding(league: League, level: Level, orgId: number, won: boolea
 }
 
 function playGame(league: League, g: Game, recordStats: boolean): void {
-  const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury), league.orgs[g.home].depth[g.level]);
-  const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury), league.orgs[g.away].depth[g.level]);
+  const spHome = pickStarter(league, g.home, g.level, activeAt(league, g.home, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.home].depth[g.level]);
+  const spAway = pickStarter(league, g.away, g.level, activeAt(league, g.away, g.level).filter((p) => isPitcher(p) && !p.injury && postseasonEligible(league, p)), league.orgs[g.away].depth[g.level]);
   const home = buildLineup(league, g.home, g.level, spAway?.throws ?? 'R', spHome ?? undefined);
   const away = buildLineup(league, g.away, g.level, spHome?.throws ?? 'R', spAway ?? undefined);
   if (!home || !away || home.batters.length < 9 || away.batters.length < 9) {
@@ -277,6 +280,7 @@ export function simOneDay(league: League): DayResult {
     if (league.phase === 'offseason') {
       faDay(league);
       ifaDay(league);
+      tradeDay(league);
       offseasonUpkeep(league);
       league.day++;
     }
@@ -285,6 +289,7 @@ export function simOneDay(league: League): DayResult {
   if (league.phase === 'preseason') {
     faDay(league);
     ifaDay(league);
+    tradeDay(league);
     dailyUpkeep(league);
     league.day++;
     if (league.day >= 0) {
@@ -303,6 +308,8 @@ export function simOneDay(league: League): DayResult {
       }
     }
     if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
+    // Clubs decide whether to buy or sell as the deadline approaches.
+    if ([95, 110, 120].includes(league.day)) updateStrategies(league, true);
     // Clubs fix their rosters (including moves the user just made) before first pitch.
     for (const org of league.orgs) manageOrg(league, org);
     const issues = userRosterIssues(league);
@@ -311,6 +318,7 @@ export function simOneDay(league: League): DayResult {
     for (const g of games) if (!g.result) playGame(league, g, true);
     faDay(league);
     ifaDay(league);
+    tradeDay(league);
     dailyUpkeep(league);
     league.day++;
     const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);

@@ -3,7 +3,7 @@ import { go, href, useRoute } from '../../router.ts';
 import { dayShort } from '../../core/settings.ts';
 import { OrgSelect } from '../components.tsx';
 
-const TYPES = ['All', 'Option', 'Recall', 'Select', 'Assign', 'IL', 'Activate', 'DFA', 'Waivers', 'Claim', 'Outright', 'Release', 'Sign', '40-man'];
+const TYPES = ['All', 'Trade', 'QO', 'Draft', 'Rule 5', 'Arbitration', 'Non-tender', 'Option', 'Recall', 'Select', 'Assign', 'IL', 'Activate', 'DFA', 'Waivers', 'Claim', 'Outright', 'Release', 'Sign', '40-man'];
 
 export default function Transactions() {
   const { league } = useStore();

@@ -93,8 +93,16 @@ function autoLineup(hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: P
   return order;
 }
 
+export function postseasonEligible(league: League, p: Player): boolean {
+  return !(league.phase === 'playoffs' && p.joined && p.joined.season === league.season && p.joined.day > league.settings.postseasonEligibilityDay);
+}
+
 export function buildLineup(league: League, orgId: number, level: Level, oppHand: 'L' | 'R' = 'R', sp?: Player): GameLineup | null {
-  const roster = activeAt(league, orgId, level).filter((p) => !p.injury);
+  // Players acquired after August 31 aren't eligible for the postseason.
+  const cutoff = league.settings.postseasonEligibilityDay;
+  const roster = activeAt(league, orgId, level).filter(
+    (p) => !p.injury && !(league.phase === 'playoffs' && p.joined && p.joined.season === league.season && p.joined.day > cutoff),
+  );
   const pitchers = roster.filter(isPitcher);
   const hitters = roster.filter((p) => !isPitcher(p));
   const org = league.orgs[orgId];

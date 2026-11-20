@@ -7,6 +7,28 @@ import { isPitcher, ovr } from './ratings.ts';
 import { marketValue, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { posLabel } from './rules.ts';
+import { revenueStatus } from './owners.ts';
+import { normalizeAdjust } from './draft.ts';
+
+// Signing a player who declined a qualifying offer costs picks (and pool money)
+// based on the signing club's status; his old club gets a compensation pick.
+export function applyQoPenalty(league: League, signer: number, former: number, total: number): void {
+  const adj = normalizeAdjust(league.draftAdjust);
+  const status = revenueStatus(league, signer);
+  const rounds = status === 'payor' ? [2, 5] : status === 'recipient' ? [3] : [2];
+  for (let r of rounds) {
+    while (adj.forfeit.some((f) => f.orgId === signer && f.round === r)) r++;
+    adj.forfeit.push({ orgId: signer, round: r });
+  }
+  const pool = status === 'payor' ? 1_000_000 : status === 'neutral' ? 500_000 : 0;
+  if (pool) league.ifaPenalty[signer] = (league.ifaPenalty[signer] ?? 0) + pool;
+  const fStatus = revenueStatus(league, former);
+  const after = fStatus === 'payor' ? 'R4' : fStatus === 'recipient' && total >= 50e6 ? 'R1' : 'CBB';
+  adj.comp.push({ orgId: former, after });
+  league.draftAdjust = adj;
+  const lost = rounds.map((r) => `round ${r}`).join(' and ');
+  addNews(league, signer, `The ${league.orgs[signer].affiliates.MLB.name} forfeit their ${lost} pick${pool ? ` and $${pool / 1e6}M of international pool money` : ''} for signing a qualifying-offer free agent. The ${league.orgs[former].affiliates.MLB.name} get a compensation pick.`);
+}
 
 export const isFreeAgent = (p: Player) => p.orgId === null && !p.retired && !p.prospect && !p.ifa;
 
@@ -48,7 +70,7 @@ export function openFreeAgent(league: League, p: Player, formerOrg: number | nul
 }
 
 export function payrollTarget(org: Org): number {
-  return 40e6 + Math.pow(org.market, 1.5) * 170e6;
+  return org.budget || 40e6 + Math.pow(org.market, 1.5) * 170e6;
 }
 
 // Salary already committed for a season (guaranteed contracts plus arbitration cases).
@@ -142,11 +164,10 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   p.level = league.phase === 'regular' && active >= league.settings.activeMax ? 'AAA' : 'MLB';
   p.contract = { type: 'ML', salary: o.aav, minorSalary: 0, exp: start + o.years - 1, oneWay: true, signed: start };
   p.fa = null;
-  if (fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId) {
-    league.draftAdjust ??= { comp: [], forfeit: [] };
-    league.draftAdjust.forfeit.push(o.orgId);
-    league.draftAdjust.comp.push(fa.formerOrg);
-  }
+  p.teamSince = start;
+  p.faSigned = start;
+  p.joined = { season: league.season, day: league.day };
+  if (fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId) applyQoPenalty(league, o.orgId, fa.formerOrg, o.aav * o.years);
   const org = league.orgs[o.orgId];
   const yrs = o.years === 1 ? '1 year' : `${o.years} years`;
   addTransaction(league, o.orgId, 'Sign', `Signed free agent ${posLabel(p)} ${pname(p)}: ${yrs}, $${(o.aav / 1e6).toFixed(2)}M per year`, [p.id]);
@@ -183,11 +204,14 @@ export function faDay(league: League): void {
     for (const p of ranked) {
       if (made >= 3 || budget <= 0) break;
       if (p.fa!.offers.some((o) => o.orgId === org.id)) continue;
+      const ageNext = nextSeason - p.born;
+      if (org.strategy === 'Rebuild' && (ageNext >= 30 || p.fa!.asking.years > 2) && p.fa!.asking.aav > 5e6) continue;
       const cheap = p.fa!.asking.aav <= 4e6;
       const need = ovr(p) - incumbent(depth, org.id, p, cheap);
       if (need < (cheap ? 0.5 : 1.5)) continue;
       const mv = marketValue(p, league.settings);
-      const aav = roundSalary(Math.min(mv * 1.15, p.fa!.asking.aav * (0.86 + rand() * 0.22)));
+      const eager = org.strategy === 'Contend' ? 1.08 : org.strategy === 'Rebuild' ? 0.95 : 1;
+      const aav = roundSalary(Math.min(mv * 1.15 * eager, p.fa!.asking.aav * (0.86 + rand() * 0.22) * eager));
       if (aav > budget) continue;
       const years = clamp(p.fa!.asking.years + (rand() < 0.3 ? -1 : 0) + (rand() < 0.15 ? 1 : 0), 1, 8);
       p.fa!.offers.push({ orgId: org.id, years, aav, day: league.day });

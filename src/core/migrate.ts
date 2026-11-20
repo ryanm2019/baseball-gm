@@ -3,13 +3,15 @@ import type { League, Staff } from './types.ts';
 import { STAFF_ROLES } from './types.ts';
 import { ORG_DEFS } from './teams.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
-import { generateDraftClass } from './draft.ts';
 import { onSeasonEnd } from './offseason.ts';
+import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts';
+import { makeOwner, setBudgets, updateStrategies } from './owners.ts';
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
+  let needsSeasonEnd = false;
   if ((l.version ?? 1) < 2) {
     const auto = l.settings.autoMlbMoves ?? true;
     delete l.settings.autoMlbMoves;
@@ -48,9 +50,30 @@ export function migrate(league: League): League {
     for (const p of Object.values(l.players)) p.signAge ??= Math.max(16, l.season - p.proSeasons - p.born);
     refreshStaffPool(l);
     if (l.phase === 'regular' && l.day <= l.settings.draftDay) generateDraftClass(l, l.season);
-    // Old leagues stopped at the end of the World Series with no offseason; start it now.
-    if (l.phase === 'offseason') onSeasonEnd(l);
+    // Old leagues stopped at the end of the World Series with no offseason; start it after the v3 upgrade.
+    needsSeasonEnd = l.phase === 'offseason';
     l.version = 2;
   }
+  if (l.version < 3) {
+    for (const org of l.orgs) {
+      org.owner = makeOwner(l.season);
+      org.strategy = 'Retool';
+      org.budget = 0;
+      org.cash = [];
+      org.agm.trades = false;
+    }
+    l.cbPicks = [];
+    l.tradeOffers = [];
+    l.ifaPenalty = {};
+    l.draftAdjust = normalizeAdjust(l.draftAdjust);
+    Object.assign(l.settings, { tradeDeadlineDay: 127, postseasonEligibilityDay: 158, tradeDifficulty: 'Normal', aiTradeFactor: 1 });
+    for (const p of Object.values(l.players)) if (p.orgId !== null) p.teamSince ??= l.season - Math.min(p.proSeasons, 3);
+    updateStrategies(l);
+    setBudgets(l);
+    const draftSeason = l.phase === 'offseason' ? l.season + 1 : l.season;
+    if (!(l.phase === 'regular' && l.day > l.settings.draftDay)) generateCbPicks(l, draftSeason);
+    l.version = 3;
+  }
+  if (needsSeasonEnd) onSeasonEnd(l);
   return l;
 }

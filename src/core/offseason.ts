@@ -25,7 +25,8 @@ import { clamp, normal, rand } from './random.ts';
 import { developPlayer, recenterRatings, yearlyPotentialDrift } from './development.ts';
 import { buildSchedule } from './schedule.ts';
 import { emptyStanding } from './league.ts';
-import { generateDraftClass } from './draft.ts';
+import { generateCbPicks, generateDraftClass } from './draft.ts';
+import { ownerSales, reviewGm, setBudgets, updateStrategies } from './owners.ts';
 import { generateIfaClass, isIfa, openIfaPeriod } from './intl.ts';
 
 export interface CalEvent {
@@ -76,6 +77,7 @@ export function onSeasonEnd(league: League): void {
     org.qoPlan = {};
     org.rule5Targets = [];
   }
+  reviewGm(league);
   const user = league.orgs[league.userOrgId];
   const expiring = league.staff.filter((s) => s.orgId === user.id && s.exp <= league.season);
   if (expiring.length) {
@@ -157,6 +159,8 @@ function runOptions(league: League): void {
 
 function runFaOpen(league: League): void {
   const s = league.settings;
+  updateStrategies(league);
+  setBudgets(league);
   let nMl = 0;
   let nMilb = 0;
   for (const p of Object.values(league.players)) {
@@ -272,6 +276,8 @@ function runRule5Draft(league: League): void {
       const from = pick.orgId!;
       pick.orgId = orgId;
       touchRosters();
+      pick.teamSince = league.season + 1;
+      pick.joined = { season: league.season, day: league.day };
       pick.on40 = true;
       pick.level = 'MLB';
       pick.rule5 = { fromOrg: from, season: league.season + 1 };
@@ -488,7 +494,11 @@ function runRollover(league: League): void {
   league.transactions = league.transactions.filter((t) => t.season >= league.season - 2);
   for (const org of league.orgs) org.rotationIndex = {};
   staffContractsExpire(league);
+  ownerSales(league);
+  updateStrategies(league);
+  setBudgets(league);
   generateDraftClass(league, league.season);
+  generateCbPicks(league, league.season);
   addNews(league, null, `Spring training has opened for the ${league.season} season. ${retired} players retired this winter.`);
 }
 

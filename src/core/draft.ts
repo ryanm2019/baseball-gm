@@ -7,6 +7,26 @@ import { ovr, potOvr } from './ratings.ts';
 import { milbContract, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, pname, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffOf } from './staff.ts';
+import { cbtOverLastSeason } from './owners.ts';
+import type { CbPick, DraftAdjust } from './types.ts';
+
+export function normalizeAdjust(a: unknown): DraftAdjust {
+  const x = (a ?? { comp: [], forfeit: [] }) as { comp: unknown[]; forfeit: unknown[] };
+  return {
+    comp: x.comp.map((c) => (typeof c === 'number' ? { orgId: c, after: 'CBB' as const } : (c as DraftAdjust['comp'][0]))),
+    forfeit: x.forfeit.map((f) => (typeof f === 'number' ? { orgId: f, round: 2 } : (f as DraftAdjust['forfeit'][0]))),
+  };
+}
+
+// Competitive Balance Rounds: the smallest markets get extra picks after
+// rounds 1 (A) and 2 (B). These are the only tradable draft picks.
+export function generateCbPicks(league: League, season: number): void {
+  const bySize = [...league.orgs].sort((a, b) => a.market - b.market);
+  const picks: CbPick[] = [];
+  bySize.slice(0, 6).forEach((o) => picks.push({ id: `${season}-A-${o.id}`, season, round: 'A', originalOrg: o.id, orgId: o.id }));
+  bySize.slice(6, 14).forEach((o) => picks.push({ id: `${season}-B-${o.id}`, season, round: 'B', originalOrg: o.id, orgId: o.id }));
+  league.cbPicks = [...(league.cbPicks ?? []).filter((c) => c.season !== season), ...picks];
+}
 
 const LOTTERY_ODDS = [16.5, 16.5, 16.5, 13.25, 10, 7.5, 5.5, 3.9, 2.7, 1.8, 1.4, 1.1, 0.9, 0.7, 0.5, 0.4, 0.3, 0.2];
 export const POOL_ROUNDS = 10;
@@ -81,27 +101,44 @@ export function createDraft(league: League): DraftState {
     winners.push(pick);
     lottery.push({ orgId: pick, pick: k + 1, from: nonPlayoff.indexOf(pick) + 1 });
   }
-  const round1 = [...winners, ...nonPlayoff.filter((t) => !winners.includes(t)), ...order.filter((t) => playoff.has(t))];
+  let round1 = [...winners, ...nonPlayoff.filter((t) => !winners.includes(t)), ...order.filter((t) => playoff.has(t))];
+  // Clubs $40M+ over the tax threshold last season drop their first-round pick 10 spots (top 6 exempt).
+  for (const orgId of [...round1]) {
+    const idx = round1.indexOf(orgId);
+    if (idx < 6 || cbtOverLastSeason(league, orgId) < 40e6) continue;
+    round1.splice(idx, 1);
+    round1.splice(Math.min(round1.length, idx + 10), 0, orgId);
+    addNews(league, orgId, `The ${league.orgs[orgId].affiliates.MLB.name}' first-round pick moved back 10 spots for exceeding the tax threshold by $40M+.`);
+  }
+  round1 = [...round1];
   const picks: DraftPick[] = [];
-  const adj = league.draftAdjust ?? { comp: [], forfeit: [] };
+  const adj = normalizeAdjust(league.draftAdjust);
+  const forfeits = (orgId: number, round: number) => adj.forfeit.some((f) => f.orgId === orgId && f.round === round);
+  const byOrder = (ids: number[]) => [...ids].sort((a, b) => round1.indexOf(a) - round1.indexOf(b));
   let overall = 1;
+  const push = (orgId: number, round: number, label?: string) => {
+    picks.push({ round, pick: overall, orgId, slot: slotValue(overall, round), pid: null, signed: null, label });
+    overall++;
+  };
+  const cb = league.cbPicks.filter((c) => c.season === league.season);
   for (let round = 1; round <= league.settings.draftRounds; round++) {
-    for (const orgId of round1) {
-      if (round === 2 && adj.forfeit.includes(orgId)) continue;
-      picks.push({ round, pick: overall, orgId, slot: slotValue(overall, round), pid: null, signed: null });
-      overall++;
+    for (const orgId of round1) if (!forfeits(orgId, round)) push(orgId, round);
+    if (round === 1) {
+      for (const c of byOrder(adj.comp.filter((c) => c.after === 'R1').map((c) => c.orgId))) push(c, 1, 'Comp');
+      for (const c of [...cb.filter((x) => x.round === 'A')].sort((a, b) => round1.indexOf(a.originalOrg) - round1.indexOf(b.originalOrg))) push(c.orgId, 1, 'CB-A');
     }
     if (round === 2) {
-      for (const orgId of adj.comp) {
-        picks.push({ round: 2, pick: overall, orgId, slot: slotValue(overall, 2), pid: null, signed: null });
-        overall++;
-      }
+      for (const c of [...cb.filter((x) => x.round === 'B')].sort((a, b) => round1.indexOf(a.originalOrg) - round1.indexOf(b.originalOrg))) push(c.orgId, 2, 'CB-B');
+      for (const c of byOrder(adj.comp.filter((c) => c.after === 'CBB').map((c) => c.orgId))) push(c, 2, 'Comp');
     }
+    if (round === 4) for (const c of byOrder(adj.comp.filter((c) => c.after === 'R4').map((c) => c.orgId))) push(c, 4, 'Comp');
   }
   const pools: Record<number, number> = {};
   for (const o of league.orgs) pools[o.id] = 0;
   for (const p of picks) if (p.round <= POOL_ROUNDS) pools[p.orgId] += p.slot;
   league.draftAdjust = { comp: [], forfeit: [] };
+  for (const c of cb) c.orgId = -1; // used
+  league.cbPicks = league.cbPicks.filter((c) => c.season !== league.season);
   const st: DraftState = { season: league.season, picks, index: 0, done: false, deadline: league.day + league.settings.draftSigningDays, pools, lottery };
   const l1 = lottery[0];
   if (l1) addNews(league, null, `Draft lottery: the ${league.orgs[l1.orgId].affiliates.MLB.name} won the #1 pick (from the #${l1.from} spot).`);
@@ -240,6 +277,7 @@ export function signPick(league: League, pk: DraftPick, p: Player, ai = false): 
   pk.signed = true;
   p.orgId = pk.orgId;
   touchRosters();
+  p.teamSince = league.season;
   p.level = info.college ? 'A' : 'CPX';
   p.draft = { year: league.season, round: pk.round, pick: pk.pick, orgId: pk.orgId };
   p.signAge = league.season - p.born;

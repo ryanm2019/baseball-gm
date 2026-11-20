@@ -2,6 +2,7 @@ import { useStore } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
 import { cbtTax, fmtMoney, orgPayroll, serviceClass, serviceLabel, type PayrollLine } from '../../core/contracts.ts';
 import { DataTable, OrgSelect, type Column } from '../components.tsx';
+import { revenueStatus } from '../../core/owners.ts';
 
 export default function Payroll() {
   const { league } = useStore();
@@ -37,8 +38,12 @@ export default function Payroll() {
       </div>
       <div className="cards">
         <div className="kv">
+          <div>Owner</div><div>{org.owner.first} {org.owner.last} ({org.owner.type.toLowerCase()})</div>
+          <div>Payroll budget</div><div>{fmtMoney(org.budget)} <span className={pay.cbt > org.budget ? 'neg' : 'pos'}>({pay.cbt > org.budget ? 'over' : 'under'} by {fmtMoney(Math.abs(pay.cbt - org.budget))})</span></div>
+          <div>Team strategy</div><div>{org.strategy}</div>
+          <div>Revenue / tax status</div><div>{{ payor: 'Tax payor (last season)', recipient: 'Revenue sharing recipient', neutral: 'Neither' }[revenueStatus(league, org.id)]}</div>
           <div>Player payroll ({league.season}, projected)</div><div>{fmtMoney(pay.total)}</div>
-          <div>Dead money</div><div>{fmtMoney(pay.dead)}</div>
+          <div>Dead money and trade cash</div><div>{fmtMoney(pay.dead)}</div>
           <div>Player benefits</div><div>{fmtMoney(s.playerBenefits)}</div>
           <div>CBT payroll</div><div><b>{fmtMoney(pay.cbt)}</b></div>
           <div>CBT threshold</div><div>{fmtMoney(s.cbtThreshold)} (tiers every {fmtMoney(s.cbtTierStep)})</div>
