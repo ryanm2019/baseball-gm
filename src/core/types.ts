@@ -413,12 +413,22 @@ export interface Affiliate {
 
 export type Control = 'FD' | 'Manual';
 
+export type PenRole = 'CL' | 'SU' | 'MR' | 'LR' | 'MU';
+export const PEN_ROLES: { key: PenRole; label: string; help: string }[] = [
+  { key: 'CL', label: 'Closer', help: 'Ninth inning (or later) with a lead of 1-3, or a tie at home' },
+  { key: 'SU', label: 'Setup', help: 'Seventh and eighth innings of close games (two setup men)' },
+  { key: 'MR', label: 'Middle relief', help: 'Sixth and seventh innings, close or trailing' },
+  { key: 'LR', label: 'Long relief', help: 'When the starter leaves early, and extra innings' },
+  { key: 'MU', label: 'Mop-up', help: 'Blowouts, either way' },
+];
+
 export interface DepthChart {
   auto: boolean;
   lineup: { pid: number; pos: Pos }[]; // 9 batters in order, DH included
   rotation: number[];
   closer: number | null;
   setup: number[];
+  pen?: Record<number, PenRole>; // role for every reliever
 }
 
 export interface Org {

@@ -1,5 +1,5 @@
 // Builds a game-day lineup, starting pitcher and bullpen for one team at one level.
-import type { DepthChart, FieldPos, League, Level, Player, Pos } from '../types.ts';
+import type { DepthChart, FieldPos, League, Level, PenRole, Player, Pos } from '../types.ts';
 import { blendSplits, isPitcher, offense, ovr, posRating } from '../ratings.ts';
 import { activeAt } from '../util.ts';
 import { rand } from '../random.ts';
@@ -13,6 +13,7 @@ export interface GameLineup {
   bullpen: Player[];
   closer: Player | null;
   setup: Player[];
+  roles: Map<number, PenRole>; // every bullpen arm's role
   bench: Player[];
   mgr: ManagerMods;
   pInjury: number;
@@ -172,10 +173,36 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
   }
   if (!closer) closer = rps[0] ?? null;
   if (setup.length < 2) setup = setup.concat(rps.filter((p) => p !== closer && !setup.includes(p)).slice(0, 2 - setup.length));
+  const roles = penRoles(bullpen, closer, setup, manual ? depth.pen : undefined);
 
-  return { orgId, level, batters, sp: starter, bullpen, closer, setup, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) };
+  return { orgId, level, batters, sp: starter, bullpen, closer, setup, roles, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) };
 }
 
 export function blendedOffense(p: Player): number {
   return offense(blendSplits(p));
+}
+
+// Roles for every bullpen arm: your choices first, then the manager fills in
+// (two long men with the most stamina, the weakest arm for mop-up, the rest in
+// middle relief).
+export function penRoles(allArms: Player[], closer: Player | null, setup: Player[], manual?: Record<number, PenRole>): Map<number, PenRole> {
+  const roles = new Map<number, PenRole>();
+  // Starters between turns aren't part of the bullpen unless the pen is short.
+  const rps = allArms.filter((p) => p.pos !== 'SP' || manual?.[p.id]);
+  const bullpen = rps.length >= 6 ? rps : allArms;
+  if (closer) roles.set(closer.id, 'CL');
+  for (const p of setup) roles.set(p.id, 'SU');
+  for (const p of bullpen) {
+    const r = manual?.[p.id];
+    if (r && !roles.has(p.id) && r !== 'CL' && r !== 'SU') roles.set(p.id, r);
+  }
+  const rest = bullpen.filter((p) => !roles.has(p.id));
+  const hasRole = (r: PenRole) => [...roles.values()].includes(r);
+  if (!hasRole('LR')) {
+    for (const p of [...rest].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina).slice(0, Math.min(2, Math.max(0, rest.length - 2)))) roles.set(p.id, 'LR');
+  }
+  const rest2 = bullpen.filter((p) => !roles.has(p.id));
+  if (!hasRole('MU') && rest2.length >= 2) roles.set([...rest2].sort((a, b) => ovr(a) - ovr(b))[0].id, 'MU');
+  for (const p of bullpen) if (!roles.has(p.id)) roles.set(p.id, 'MR');
+  return roles;
 }

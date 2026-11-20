@@ -15,7 +15,7 @@ import { ifaDay } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline } from '../draft.ts';
 import { ownerCheckin, updateStrategies } from '../owners.ts';
 import { tradeDay } from '../trade.ts';
-import { isPitcher } from '../ratings.ts';
+import { isPitcher, potOvr } from '../ratings.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
 let indexedFor: Game[] | null = null;
@@ -111,7 +111,9 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
   for (const inj of out.injuries) {
     const p = inj.p;
     if (!p.injury || p.injury.daysLeft < inj.days) p.injury = { name: inj.name, daysLeft: inj.days, totalDays: inj.days };
-    if (p.orgId === league.userOrgId) {
+    // Minor league injuries are only news when they matter: 40-man players,
+    // top prospects, or anything long.
+    if (p.orgId === league.userOrgId && (p.level === 'MLB' || p.on40 || inj.days >= 30 || potOvr(p) >= 55)) {
       addNews(league, p.orgId, `${pname(p)} (${p.level}) was injured: ${inj.name}, out about ${inj.days} days.`, [p.id]);
     }
   }

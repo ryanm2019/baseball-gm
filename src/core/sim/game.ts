@@ -5,7 +5,7 @@
 // into a matchup probability. Ratings move a player's rate up or down from the
 // league average. Pitch counts are simulated per PA to drive fatigue, pitcher
 // hooks and bullpen workload.
-import type { BatStats, BoxBatLine, BoxPitLine, BoxScore, FieldPos, Level, PitStats, Player, Pos } from '../types.ts';
+import type { BatStats, BoxBatLine, BoxPitLine, BoxScore, FieldPos, Level, PenRole, PitStats, Player, Pos } from '../types.ts';
 import { clamp, normal, rand } from '../random.ts';
 import { posRating } from '../ratings.ts';
 import { emptyBat, emptyPit } from '../util.ts';
@@ -174,6 +174,8 @@ function pitchLimit(p: Player, starter: boolean, level: Level): number {
 export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number; day: number; injuryRate: number; ghostRunner: boolean }): GameOutput {
   const level = home.level;
   const env = ENV[level];
+  // Big-league workloads and intensity: a bit more injury risk than the minors.
+  const injLevel = level === 'MLB' ? 1.5 : 1;
   const injuries: InjuryEvent[] = [];
   const injured = new Set<number>();
 
@@ -301,18 +303,32 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
       return any.sort((a, b) => a.lastPitchedDay - b.lastPitchedDay)[0] ?? null;
     }
     const has = (p: Player | null) => p !== null && avail.includes(p);
-    if (inning >= 9 && lead > 0 && lead <= 3 && has(fs.lu.closer)) return fs.lu.closer;
-    if (inning >= 9 && lead === 0 && has(fs.lu.closer) && half === 0) return fs.lu.closer;
-    if (inning >= 7 && lead >= 0 && lead <= 3) {
-      for (const s of fs.lu.setup) if (has(s)) return s;
-    }
-    const others = avail.filter((p) => p !== fs.lu.closer && !fs.lu.setup.includes(p));
-    const pool = others.length ? others : avail;
-    if (inning <= 5) return [...pool].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina)[0];
-    if (Math.abs(lead) >= 5) return [...pool].sort((a, b) => a.ratings.pit.stuff - b.ratings.pit.stuff)[0];
-    // Better managers pick the right arm more often.
-    if (rand() > fs.lu.mgr.bullpenSkill) return pool[Math.floor(rand() * pool.length)];
-    return [...pool].sort((a, b) => b.ratings.pit.stuff + b.ratings.pit.control - (a.ratings.pit.stuff + a.ratings.pit.control))[0];
+    const role = (p: Player) => fs.lu.roles.get(p.id) ?? 'MR';
+    const best = (ps: Player[]) => [...ps].sort((a, b) => b.ratings.pit.stuff + b.ratings.pit.control - (a.ratings.pit.stuff + a.ratings.pit.control))[0];
+    // Pick by role; fall back through the other roles in a sensible order.
+    const byRole = (order: PenRole[]): Player | null => {
+      for (const r of order) {
+        const ps = avail.filter((p) => role(p) === r);
+        if (!ps.length) continue;
+        if (r === 'SU') {
+          // The first setup man (by depth chart order) gets the 8th.
+          for (const s of inning >= 8 ? fs.lu.setup : [...fs.lu.setup].reverse()) if (has(s)) return s;
+        }
+        if (r === 'LR') return [...ps].sort((a, b) => b.ratings.pit.stamina - a.ratings.pit.stamina)[0];
+        if (r === 'MU') return [...ps].sort((a, b) => a.ratings.pit.stuff - b.ratings.pit.stuff)[0];
+        // Better managers pick the right arm more often.
+        if (rand() > fs.lu.mgr.bullpenSkill) return ps[Math.floor(rand() * ps.length)];
+        return best(ps);
+      }
+      return null;
+    };
+    const save = lead > 0 && lead <= 3;
+    if (inning >= 9 && (save || (lead === 0 && half === 0)) && has(fs.lu.closer)) return fs.lu.closer;
+    if (Math.abs(lead) >= 5) return byRole(['MU', 'LR', 'MR', 'SU', 'CL']);
+    if (inning <= 5) return byRole(['LR', 'MR', 'MU', 'SU', 'CL']);
+    if (inning >= 10) return byRole(['LR', 'MR', 'SU', 'MU', 'CL']);
+    if (inning >= 7 && lead >= 0 && lead <= 3) return byRole(inning === 7 ? ['SU', 'MR', 'MU', 'LR', 'CL'] : ['SU', 'MR', 'CL', 'MU', 'LR']);
+    return byRole(['MR', 'MU', 'SU', 'LR', 'CL']);
   };
 
   const changePitcher = (fs: Side, fIdx: number) => {
@@ -364,7 +380,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
     app.line.pitches += n;
     app.box.pitches += n;
     // per-pitch injury risk
-    const pr = 0.00017 * opts.injuryRate * app.p.injuryProne * n * (home.sp === app.p || home.bullpen.includes(app.p) ? home.pInjury : away.pInjury);
+    const pr = 0.00017 * opts.injuryRate * injLevel * app.p.injuryProne * n * (home.sp === app.p || home.bullpen.includes(app.p) ? home.pInjury : away.pInjury);
     if (!injured.has(app.p.id) && rand() < pr) {
       const inj = rollInjury(true);
       injured.add(app.p.id);
@@ -663,7 +679,7 @@ export function simGame(home: GameLineup, away: GameLineup, opts: { gid: number;
     }
 
     // position player injury
-    if (!injured.has(batter.id) && rand() < 0.00065 * opts.injuryRate * batter.injuryProne) {
+    if (!injured.has(batter.id) && rand() < 0.00065 * opts.injuryRate * injLevel * batter.injuryProne) {
       const inj = rollInjury(false);
       injured.add(batter.id);
       injuries.push({ p: batter, ...inj });

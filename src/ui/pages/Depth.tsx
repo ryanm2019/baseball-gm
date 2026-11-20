@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type React from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
-import type { DepthChart, Level, Player, Pos } from '../../core/types.ts';
+import type { DepthChart, Level, PenRole, Player, Pos } from '../../core/types.ts';
+import { PEN_ROLES } from '../../core/types.ts';
 import { activeAt, playersAt } from '../../core/util.ts';
 import { isPitcher, posRating, scoutedOvr } from '../../core/ratings.ts';
 import { buildLineup } from '../../core/sim/lineup.ts';
@@ -45,7 +46,14 @@ export default function Depth() {
 
   const current = (): DepthChart => {
     const saved = org.depth[level];
-    if (saved && !saved.auto) return JSON.parse(JSON.stringify(saved)) as DepthChart;
+    if (saved && !saved.auto) {
+      const c = JSON.parse(JSON.stringify(saved)) as DepthChart;
+      if (!c.pen) {
+        const lu = buildLineup(league, org.id, level);
+        c.pen = lu ? Object.fromEntries([...lu.roles.entries()]) : {};
+      }
+      return c;
+    }
     if (autoCache?.key !== `${league.id}-${key}`) {
       const lu = buildLineup(league, org.id, level);
       autoCache = {
@@ -56,6 +64,7 @@ export default function Depth() {
           rotation: [],
           closer: lu?.closer?.id ?? null,
           setup: lu?.setup.map((p) => p.id) ?? [],
+          pen: lu ? Object.fromEntries([...lu.roles.entries()]) : {},
         },
       };
     }
@@ -99,9 +108,27 @@ export default function Depth() {
   const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
   const posList = d.lineup.map((s) => s.pos);
   const missingPos = POSITIONS.filter((p) => !posList.includes(p));
-  const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id));
+  const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id)) && d.closer !== null;
   const dirty = draft?.key === key;
   const shown = league.players[sel ?? d.lineup[0]?.pid ?? -1] ?? null;
+  const relievers = pitchers.filter((p) => !d.rotation.includes(p.id));
+  const roleOf = (pid: number): PenRole => (d.closer === pid ? 'CL' : d.setup.includes(pid) ? 'SU' : d.pen?.[pid] && d.pen[pid] !== 'CL' && d.pen[pid] !== 'SU' ? d.pen[pid] : 'MR');
+  const setRole = (pid: number, role: PenRole) =>
+    update((x) => {
+      x.pen ??= {};
+      for (const r of relievers) x.pen[r.id] ??= roleOf(r.id);
+      if (x.closer === pid) x.closer = null;
+      x.setup = x.setup.filter((id) => id !== pid);
+      if (role === 'CL') {
+        if (x.closer !== null) x.pen[x.closer] = 'MR';
+        x.closer = pid;
+      } else if (role === 'SU') {
+        // A third setup man bumps the second one to middle relief.
+        if (x.setup.length >= 2) x.pen[x.setup.pop()!] = 'MR';
+        x.setup.push(pid);
+      }
+      x.pen[pid] = role;
+    });
 
   const save = (auto: boolean) => {
     org.depth[level] = { ...d, auto };
@@ -203,23 +230,24 @@ export default function Depth() {
             </div>
           ))}
           <h3>Bullpen roles</h3>
-          <div className="form-row">
-            Closer{' '}
-            <select value={d.closer ?? ''} onChange={(e) => update((x) => { x.closer = Number(e.target.value); })}>
-              {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-            </select>{' '}
-            {d.closer !== null && <button className="btn btn-sm" onClick={() => setSel(d.closer)}>Ratings</button>}
-          </div>
-          {[0, 1].map((i) => (
-            <div key={i} className="form-row">
-              Setup {i + 1}{' '}
-              <select value={d.setup[i] ?? ''} onChange={(e) => update((x) => { x.setup[i] = Number(e.target.value); })}>
-                <option value="">(auto)</option>
-                {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-              </select>{' '}
-              {d.setup[i] !== undefined && <button className="btn btn-sm" onClick={() => setSel(d.setup[i])}>Ratings</button>}
-            </div>
-          ))}
+          <p className="muted small">The manager goes to each role by game situation. One closer, up to two setup men; setup 1 gets the 8th, setup 2 the 7th.</p>
+          <table className="data compact">
+            <thead><tr><th className="l">Reliever</th><th className="l">Role</th><th /></tr></thead>
+            <tbody>
+              {relievers.map((p) => (
+                <tr key={p.id} className={shown?.id === p.id ? 'selected' : ''}>
+                  <td className="l">{name(p)}</td>
+                  <td className="l">
+                    <select value={roleOf(p.id)} onChange={(e) => setRole(p.id, e.target.value as PenRole)} title={PEN_ROLES.find((r) => r.key === roleOf(p.id))?.help}>
+                      {PEN_ROLES.map((r) => <option key={r.key} value={r.key}>{r.key === 'SU' && d.setup.includes(p.id) ? `Setup ${d.setup.indexOf(p.id) + 1}` : r.label}</option>)}
+                    </select>
+                  </td>
+                  <td><button className="btn btn-sm" onClick={() => setSel(p.id)}>Ratings</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {d.closer === null && <div className="alert alert-err">Pick a closer.</div>}
           {shown && <div style={{ marginTop: 16 }}><PlayerCard league={league} p={shown} level={level} /></div>}
         </div>
       </div>
