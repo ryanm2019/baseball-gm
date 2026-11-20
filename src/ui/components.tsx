@@ -1,0 +1,175 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import type { League, Level, Player } from '../core/types.ts';
+import { LEVELS } from '../core/types.ts';
+import { href } from '../router.ts';
+import { askConfirm, changed, setMessage } from '../store.ts';
+import { playerActions } from './actions.ts';
+import { orgById } from '../core/util.ts';
+
+export interface Column<T> {
+  key: string;
+  label: ReactNode;
+  title?: string;
+  left?: boolean;
+  value?: (row: T) => number | string;
+  render?: (row: T) => ReactNode;
+  sortDesc?: boolean; // default sort direction for this column
+  noSort?: boolean;
+}
+
+export function DataTable<T>({
+  cols,
+  rows,
+  defaultSort,
+  rowClass,
+  rowKey,
+  compact,
+  footer,
+}: {
+  cols: Column<T>[];
+  rows: T[];
+  defaultSort?: { key: string; desc: boolean };
+  rowClass?: (row: T) => string | undefined;
+  rowKey: (row: T) => string | number;
+  compact?: boolean;
+  footer?: ReactNode;
+}) {
+  const [sort, setSort] = useState(defaultSort ?? null);
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const col = cols.find((c) => c.key === sort.key);
+    if (!col || !col.value) return rows;
+    const v = col.value;
+    const out = [...rows].sort((a, b) => {
+      const x = v(a);
+      const y = v(b);
+      if (typeof x === 'number' && typeof y === 'number') return x - y;
+      return String(x).localeCompare(String(y));
+    });
+    if (sort.desc) out.reverse();
+    return out;
+  }, [rows, sort, cols]);
+  return (
+    <div className="table-wrap">
+      <table className={`data${compact ? ' compact' : ''}`}>
+        <thead>
+          <tr>
+            {cols.map((c) => {
+              const sortable = !!c.value && !c.noSort;
+              const isSorted = sort?.key === c.key;
+              return (
+                <th
+                  key={c.key}
+                  title={c.title}
+                  className={[c.left ? 'l' : '', sortable ? 'sortable' : '', isSorted ? 'sorted' : '', isSorted && !sort!.desc ? 'asc' : ''].join(' ')}
+                  onClick={() => {
+                    if (!sortable) return;
+                    if (isSorted) setSort({ key: c.key, desc: !sort!.desc });
+                    else setSort({ key: c.key, desc: c.sortDesc ?? !c.left });
+                  }}
+                >
+                  {c.label}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={rowKey(r)} className={rowClass?.(r)}>
+              {cols.map((c) => (
+                <td key={c.key} className={c.left ? 'l' : ''}>
+                  {c.render ? c.render(r) : c.value ? c.value(r) : null}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {footer}
+      </table>
+      {rows.length === 0 && <p className="muted">None.</p>}
+    </div>
+  );
+}
+
+export function PlayerLink({ p }: { p: Player }) {
+  return <a href={href('player', [p.id])}>{p.first} {p.last}</a>;
+}
+
+export function OrgLink({ league, orgId, level = 'MLB', abbrev }: { league: League; orgId: number | null; level?: Level; abbrev?: boolean }) {
+  const o = orgById(league, orgId);
+  if (!o) return <span className="muted">FA</span>;
+  const name = abbrev ? (level === 'MLB' ? o.abbrev : `${o.abbrev} ${level}`) : o.affiliates[level].name;
+  return <a href={href('roster', [], { org: o.id, level })}>{name}</a>;
+}
+
+export function Rating({ v }: { v: number }) {
+  const cls = v >= 70 ? 'r80' : v >= 60 ? 'r60' : v >= 45 ? 'r50' : v >= 35 ? 'r40' : 'r20';
+  return <span className={`rating ${cls}`}>{v}</span>;
+}
+
+export function LevelTabs({ value, onChange, extra }: { value: string; onChange: (v: string) => void; extra?: { key: string; label: string }[] }) {
+  const items = [...LEVELS.map((l) => ({ key: l, label: l })), ...(extra ?? [])];
+  return (
+    <div className="tabs btn-group">
+      {items.map((it) => (
+        <button key={it.key} className={`btn btn-sm${value === it.key ? ' active' : ''}`} onClick={() => onChange(it.key)}>
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function OrgSelect({ league, value, onChange }: { league: League; value: number; onChange: (id: number) => void }) {
+  const sorted = [...league.orgs].sort((a, b) => a.region.localeCompare(b.region));
+  return (
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))}>
+      {sorted.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.region} {o.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function ActionSelect({ league, p }: { league: League; p: Player }) {
+  const actions = playerActions(league, p);
+  if (!actions.length) return null;
+  return (
+    <select
+      className="move"
+      value=""
+      onChange={async (e) => {
+        const a = actions.find((x) => x.key === e.target.value);
+        if (!a || a.reason) return;
+        if (a.confirm && !(await askConfirm(a.confirm))) return;
+        a.run();
+        setMessage(null);
+        changed();
+      }}
+    >
+      <option value="">Move…</option>
+      {actions.map((a) => (
+        <option key={a.key} value={a.key} disabled={!!a.reason}>
+          {a.label}
+          {a.reason ? ` (${a.reason})` : ''}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function StatusTags({ league, p }: { league: League; p: Player }) {
+  return (
+    <>
+      {p.il && <span className="tag tag-il">{p.il.type.replace('IL', 'IL-').replace('MiLB', 'MiLB IL-').replace('IL-IL', 'IL')}</span>}
+      {!p.il && p.injury && <span className="tag tag-il" title={p.injury.name}>inj {p.injury.daysLeft}d</span>}
+      {p.dfa && <span className="tag tag-dfa">DFA</span>}
+      {p.waivers && <span className="tag tag-dfa">Waivers</span>}
+      {p.on40 && p.level !== 'MLB' && !p.il && <span className="tag tag-opt">40</span>}
+      {p.optionedOnDay !== null && p.on40 && p.level !== 'MLB' && league.day - p.optionedOnDay < 15 && <span className="tag">opt</span>}
+    </>
+  );
+}

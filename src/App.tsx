@@ -1,0 +1,194 @@
+import { useEffect, useRef, useState } from 'react';
+import { useStore, sim, requestStop, setMessage } from './store.ts';
+import type { ReactNode } from 'react';
+import { useRoute, href } from './router.ts';
+import { dayLabel } from './core/settings.ts';
+import type { League } from './core/types.ts';
+import Home from './ui/pages/Home.tsx';
+import Dashboard from './ui/pages/Dashboard.tsx';
+import Roster from './ui/pages/Roster.tsx';
+import PlayerPage from './ui/pages/Player.tsx';
+import Standings from './ui/pages/Standings.tsx';
+import Stats from './ui/pages/Stats.tsx';
+import Transactions from './ui/pages/Transactions.tsx';
+import Depth from './ui/pages/Depth.tsx';
+import Farm from './ui/pages/Farm.tsx';
+import Staff from './ui/pages/Staff.tsx';
+import Schedule from './ui/pages/Schedule.tsx';
+import Scores from './ui/pages/Scores.tsx';
+import Box from './ui/pages/Box.tsx';
+import Payroll from './ui/pages/Payroll.tsx';
+import LeaguePayrolls from './ui/pages/LeaguePayrolls.tsx';
+import FreeAgents from './ui/pages/FreeAgents.tsx';
+import Waivers from './ui/pages/Waivers.tsx';
+import Injuries from './ui/pages/Injuries.tsx';
+import Playoffs from './ui/pages/Playoffs.tsx';
+import SettingsPage from './ui/pages/Settings.tsx';
+import News from './ui/pages/News.tsx';
+import Prospects from './ui/pages/Prospects.tsx';
+
+const SIDEBAR: { head: string; links: [string, string][] }[] = [
+  { head: 'League', links: [['dashboard', 'Dashboard'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['news', 'News'], ['league-payrolls', 'League Payrolls']] },
+  { head: 'Team', links: [['roster', 'Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
+  { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
+];
+
+function PlayMenu({ league, simming }: { league: League; simming: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+  if (simming) {
+    return (
+      <button className="btn btn-play" onClick={() => requestStop()}>
+        Stop
+      </button>
+    );
+  }
+  const items: { label: string; run?: () => void; disabled?: boolean }[] = [];
+  if (league.phase === 'regular') {
+    items.push({ label: 'One day', run: () => sim(1, 'Playing') });
+    items.push({ label: 'One week', run: () => sim(7, 'Playing') });
+    items.push({ label: 'One month', run: () => sim(30, 'Playing') });
+    if (league.day < league.settings.septemberDay) {
+      items.push({ label: 'Until September call-ups', run: () => sim((l) => l.day >= l.settings.septemberDay, 'Playing') });
+    }
+    items.push({ label: 'Until end of regular season', run: () => sim((l) => l.phase !== 'regular', 'Playing') });
+  } else if (league.phase === 'playoffs') {
+    items.push({ label: 'One day', run: () => sim(1, 'Playoffs') });
+    items.push({ label: 'Until end of playoffs', run: () => sim((l) => l.phase !== 'playoffs', 'Playoffs') });
+  } else {
+    items.push({ label: 'Offseason: coming in the next milestone', disabled: true });
+  }
+  return (
+    <div className="dropdown" ref={ref}>
+      <button className="btn btn-play" onClick={() => setOpen(!open)}>
+        Play ▾
+      </button>
+      {open && (
+        <div className="menu">
+          {items.map((it) => (
+            <button
+              key={it.label}
+              disabled={it.disabled}
+              onClick={() => {
+                setOpen(false);
+                it.run?.();
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const st = useStore();
+  const route = useRoute();
+  const league = st.league;
+
+  const dialog = st.confirm && (
+    <div className="modal-back">
+      <div className="modal">
+        <p>{st.confirm.text}</p>
+        <div className="form-row" style={{ justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={() => st.confirm!.resolve(false)}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => st.confirm!.resolve(true)}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+  const wrap = (x: ReactNode) => (
+    <>
+      {x}
+      {dialog}
+    </>
+  );
+
+  if (!league || route.page === '') return wrap(<Home />);
+
+  const org = league.orgs[league.userOrgId];
+  const phaseLabel = league.phase === 'regular' ? 'regular season' : league.phase === 'playoffs' ? 'playoffs' : 'offseason';
+  let page;
+  switch (route.page) {
+    case 'dashboard': page = <Dashboard />; break;
+    case 'roster': page = <Roster />; break;
+    case 'player': page = <PlayerPage />; break;
+    case 'standings': page = <Standings />; break;
+    case 'stats': page = <Stats />; break;
+    case 'transactions': page = <Transactions />; break;
+    case 'depth': page = <Depth />; break;
+    case 'farm': page = <Farm />; break;
+    case 'staff': page = <Staff />; break;
+    case 'schedule': page = <Schedule />; break;
+    case 'scores': page = <Scores />; break;
+    case 'box': page = <Box />; break;
+    case 'payroll': page = <Payroll />; break;
+    case 'league-payrolls': page = <LeaguePayrolls />; break;
+    case 'free-agents': page = <FreeAgents />; break;
+    case 'waivers': page = <Waivers />; break;
+    case 'injuries': page = <Injuries />; break;
+    case 'playoffs': page = <Playoffs />; break;
+    case 'settings': page = <SettingsPage />; break;
+    case 'news': page = <News />; break;
+    case 'prospects': page = <Prospects />; break;
+    default: page = <Dashboard />;
+  }
+
+  return wrap(
+    <>
+      <div className="topbar">
+        <a className="brand" href={href('dashboard')}>
+          Baseball GM
+        </a>
+        <PlayMenu league={league} simming={st.simming} />
+        <div className="status">
+          <b>{dayLabel(league.season, league.day)}</b>
+          <br />
+          {league.season} {phaseLabel} · {org.region} {org.name}
+        </div>
+        {st.simming && <span className="progress">{st.progress}</span>}
+        <span className="spacer" />
+        <span className="toplinks">
+          <a href={href('roster')}>Roster</a>
+          <a href={href('farm')}>Farm</a>
+          <a href={href('stats')}>Stats</a>
+        </span>
+      </div>
+      <div className="layout">
+        <nav className="sidebar">
+          {SIDEBAR.map((g) => (
+            <div key={g.head}>
+              <div className="head">{g.head}</div>
+              {g.links.map(([page, label]) => (
+                <a key={label} href={href(page)} className={route.page === page ? 'active' : ''}>
+                  {label}
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <main className="content">
+          {st.message && (
+            <div className="alert alert-warn">
+              {st.message}{' '}
+              <button className="btn btn-sm" onClick={() => setMessage(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
+          {page}
+        </main>
+      </div>
+    </>
+  );
+}
