@@ -112,9 +112,10 @@ function roleParts(league: League, org: Org, p: Player): number {
     const e = p.stats.find((s) => s.season === season && s.level === 'MLB' && s.orgId === org.id);
     if (!isPitcher(p)) {
       const rank = mlb.filter((x) => !isPitcher(x)).sort((a, b) => ovr(b) - ovr(a)).indexOf(p);
-      const expected = rank < 9 ? 0.8 : rank < 12 ? 0.35 : 0.15;
+      // Starters expect to play; bench players know their role.
+      const expected = rank < 9 ? 0.8 : rank < 12 ? 0.22 : 0.08;
       const actual = (e?.bat.pa ?? 0) / (g * 4.1);
-      return clamp((actual - expected) * 35, -18, 8);
+      return clamp((actual - expected) * (rank < 9 ? 35 : 20), -18, 8);
     }
     if (p.pos === 'SP') {
       const rank = mlb.filter((x) => x.pos === 'SP').sort((a, b) => ovr(b) - ovr(a)).indexOf(p);
@@ -125,9 +126,9 @@ function roleParts(league: League, org: Org, p: Player): number {
     return 0;
   }
   // A 40-man player who thinks he belongs in the majors.
-  if (p.on40 && p.level === 'AAA' && league.season - p.born >= 25) {
+  if (p.on40 && p.level === 'AAA' && league.season - p.born >= 26) {
     const worst = mlb.filter((x) => isPitcher(x) === isPitcher(p)).map(ovr).sort((a, b) => a - b)[0] ?? 99;
-    if (ovr(p) >= worst + 3) return -10;
+    if (ovr(p) >= worst + 5) return -10;
   }
   return 0;
 }
@@ -209,27 +210,45 @@ export const unreadInbox = (league: League) => (league.inbox ?? []).filter((m) =
 const hasOpen = (league: League, pid: number, kind: InboxMsg['kind']) =>
   (league.inbox ?? []).some((m) => m.pids.includes(pid) && m.kind === kind && ((!m.resolved && league.season === m.season) || (m.season === league.season && league.day - m.day < 45)));
 
-// Weekly: agents of unhappy players reach out.
+// Weekly: agents of unhappy players reach out. Only players with a real case
+// complain, and at most one complaint every two weeks across your club.
+const COMPLAINTS: InboxMsg['kind'][] = ['role', 'callup', 'trade-request'];
 function agentMessages(league: League): void {
   const user = league.userOrgId;
-  for (const p of orgPlayers(league, user)) {
+  const recent = (league.inbox ?? []).some((x) => COMPLAINTS.includes(x.kind) && x.season === league.season && league.day - x.day < 14);
+  const mlbHitters = activeAt(league, user, 'MLB').filter((x) => !isPitcher(x)).sort((a, b) => ovr(b) - ovr(a));
+  let sent = recent;
+  for (const p of shuffle(orgPlayers(league, user))) {
     const m = p.morale;
     if (!m?.parts || !p.on40) continue;
     const a = ensureAgent(league, p);
     const from = `Agent ${agentName(a)}`;
-    if (m.value < 22 && ovr(p) >= 48 && !hasOpen(league, p.id, 'trade-request') && rand() < 0.5) {
+    const complain = !sent;
+    // A real case for more playing time: healthy, one of your best (top 9 hitters
+    // or top 5 starters), and left out of your lineups or rotation. With an
+    // automatic depth chart your best players play, so nobody has a case.
+    const depth = league.orgs[user].depth.MLB;
+    const manual = !!depth && !depth.auto;
+    const sps = activeAt(league, user, 'MLB').filter((x) => x.pos === 'SP').sort((a, b) => ovr(b) - ovr(a));
+    const benched = manual && !p.injury && !p.il && (isPitcher(p)
+      ? p.pos === 'SP' && sps.indexOf(p) >= 0 && sps.indexOf(p) < 5 && !depth!.rotation.includes(p.id)
+      : mlbHitters.indexOf(p) >= 0 && mlbHitters.indexOf(p) < 9 && !depth!.lineup.some((x) => x.pid === p.id) && !(depth!.lineupL ?? []).some((x) => x.pid === p.id));
+    if (complain && m.value < 22 && ovr(p) >= 50 && !hasOpen(league, p.id, 'trade-request') && rand() < 0.25) {
+      sent = true;
       addInbox(league, {
         from, subject: `${pname(p)} requests a trade`, kind: 'trade-request', pids: [p.id], stop: true,
         text: `My client ${posLabel(p)} ${pname(p)} is miserable and has asked me to request a trade. He'd like this handled quietly.`,
         actions: [{ key: 'block', label: 'Put him on the trading block' }, { key: 'promise-trade', label: 'Promise to trade him within 30 days' }, { key: 'refuse', label: 'Refuse' }],
       });
-    } else if (m.parts.role <= -8 && p.level === 'MLB' && !hasOpen(league, p.id, 'role') && rand() < 0.25) {
+    } else if (complain && benched && m.parts.role <= -8 && p.level === 'MLB' && !hasOpen(league, p.id, 'role') && rand() < 0.15) {
+      sent = true;
       addInbox(league, {
         from, subject: `${pname(p)} wants a bigger role`, kind: 'role', pids: [p.id],
         text: `${pname(p)} doesn't understand why he's not playing more. He's ready to contribute every day.`,
         actions: [{ key: 'promise-pt', label: 'Promise more playing time' }, { key: 'explain', label: 'Explain his role' }, { key: 'ignore', label: 'Ignore' }],
       });
-    } else if (m.parts.role <= -8 && p.level === 'AAA' && !hasOpen(league, p.id, 'callup') && rand() < 0.25) {
+    } else if (complain && m.parts.role <= -8 && p.level === 'AAA' && !hasOpen(league, p.id, 'callup') && rand() < 0.1) {
+      sent = true;
       addInbox(league, {
         from, subject: `${pname(p)} wants a call-up`, kind: 'callup', pids: [p.id],
         text: `${pname(p)} has nothing left to prove in Triple-A. He wants a shot in the majors, or a trade to a team that will give him one.`,
