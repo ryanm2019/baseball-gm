@@ -5,15 +5,20 @@ import type { Pos, TradeProposal, TradeStance } from '../../core/types.ts';
 import { TRADE_STANCES } from '../../core/types.ts';
 import { aiCounterFor, emptyAssets, evaluate, executeTrade, playerTradeBlock, tradeWindowOpen } from '../../core/trade.ts';
 import { posLabel } from '../../core/rules.ts';
-import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { fmtMoney } from '../../core/contracts.ts';
 import { orgPlayers } from '../../core/util.ts';
 import { NEED_POS, STANCE_HELP, teamNeeds } from '../../core/market.ts';
-import { Rating } from '../components.tsx';
+import { DataTable, Rating, type Column } from '../components.tsx';
+import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
+import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import type { Player } from '../../core/types.ts';
+
+let blockView: TradeView = 'ratings';
 
 export default function TradingBlock() {
   const { league } = useStore();
   const [offers, setOffers] = useState<TradeProposal[] | null>(null);
+  const [view, setViewState] = useState<TradeView>(blockView);
+  const setView = (v: TradeView) => { blockView = v; setViewState(v); };
   if (!league) return null;
   const user = league.orgs[league.userOrgId];
   const mine = orgPlayers(league, user.id)
@@ -22,6 +27,32 @@ export default function TradingBlock() {
   const window = tradeWindowOpen(league);
   const needs = teamNeeds(league, user.id);
   const watched = user.interest.pids.map((id) => league.players[id]).filter(Boolean);
+  const viewSwitch = (
+    <div className="btn-group" style={{ margin: '4px 0' }}>
+      <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
+      <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
+    </div>
+  );
+  const nameCol: Column<Player> = { key: 'name', label: 'Name', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> };
+  const watchCols: Column<Player>[] = [
+    nameCol,
+    { key: 'team', label: 'Team', value: (p) => (p.orgId !== null ? league.orgs[p.orgId].abbrev : 'FA') },
+    ...tradePlayerCols(league, view),
+    {
+      key: 'act', label: '', noSort: true,
+      render: (p) => (
+        <span className="nowrap">
+          {p.orgId !== null && <a className="btn btn-sm" href={href('trade', [], { org: p.orgId, pid: p.id })}>Trade for</a>}{' '}
+          <button className="btn btn-sm" onClick={() => { user.interest.pids = user.interest.pids.filter((x) => x !== p.id); changed(); }}>Remove</button>
+        </span>
+      ),
+    },
+  ];
+  const blockCols: Column<Player>[] = [
+    { key: 'blk', label: 'Block', value: (p) => (user.block.includes(p.id) ? 1 : 0), sortDesc: true, render: (p) => <input type="checkbox" checked={user.block.includes(p.id)} onChange={() => toggleBlock(p.id)} /> },
+    nameCol,
+    ...tradePlayerCols(league, view),
+  ];
 
   const toggleBlock = (id: number) => {
     user.block = user.block.includes(id) ? user.block.filter((x) => x !== id) : [...user.block, id];
@@ -70,47 +101,17 @@ export default function TradingBlock() {
         ))}
       </div>
       <h3>Watch list</h3>
+      {viewSwitch}
       {watched.length === 0 ? (
         <p className="muted small">No one yet. Use "Watch" on a player's page or on the <a href={href('trade-market')}>Trade Market</a>.</p>
       ) : (
-        <table className="data compact">
-          <thead><tr><th className="l">Name</th><th>Team</th><th>Pos</th><th>Age</th><th>Lvl</th><th>Ovr</th><th>Pot</th><th>Contract</th><th /></tr></thead>
-          <tbody>
-            {watched.map((p) => (
-              <tr key={p.id}>
-                <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a></td>
-                <td>{p.orgId !== null ? league.orgs[p.orgId].abbrev : 'FA'}</td>
-                <td>{posLabel(p)}</td><td>{league.season - p.born}</td><td>{p.level}</td>
-                <td><Rating v={scoutedOvr(league, p)} /></td><td><Rating v={scoutedPot(league, p)} /></td>
-                <td>{p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} → ${p.contract.exp}` : 'MiLB'}</td>
-                <td className="nowrap">
-                  {p.orgId !== null && <a className="btn btn-sm" href={href('trade', [], { org: p.orgId, pid: p.id })}>Trade for</a>}{' '}
-                  <button className="btn btn-sm" onClick={() => { user.interest.pids = user.interest.pids.filter((x) => x !== p.id); changed(); }}>Remove</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable cols={watchCols} rows={watched} rowKey={(p) => p.id} compact />
       )}
 
       <h2>Your block</h2>
       <p className="muted small">Checked players are shopped to the league; AI clubs reach out about them, mostly before the deadline and during the winter. "Get offers now" asks every club at once.</p>
-      <div className="table-wrap" style={{ maxHeight: 360, overflowY: 'auto' }}>
-        <table className="data compact">
-          <thead><tr><th>Block</th><th className="l">Name</th><th>Pos</th><th>Age</th><th>Lvl</th><th>Ovr</th><th>Pot</th><th>Contract</th></tr></thead>
-          <tbody>
-            {mine.map((p) => (
-              <tr key={p.id}>
-                <td><input type="checkbox" checked={user.block.includes(p.id)} onChange={() => toggleBlock(p.id)} /></td>
-                <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a></td>
-                <td>{posLabel(p)}</td><td>{league.season - p.born}</td><td>{p.level}</td>
-                <td><Rating v={scoutedOvr(league, p)} /></td><td><Rating v={scoutedPot(league, p)} /></td>
-                <td>{p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} → ${p.contract.exp}` : 'MiLB'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {viewSwitch}
+      <DataTable cols={blockCols} rows={mine} rowKey={(p) => p.id} compact maxHeight={360} />
       <button className="btn btn-primary" disabled={!user.block.length || !!window} onClick={ask}>Get offers now</button>
       {offers && (
         <>

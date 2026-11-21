@@ -40,7 +40,9 @@ export function DataTable<T>({
   rowKey,
   compact,
   footer,
+  maxHeight,
 }: {
+  maxHeight?: number; // scroll inside a box this tall (header sticks to the box)
   cols: Column<T>[];
   rows: T[];
   defaultSort?: { key: string; desc: boolean };
@@ -86,7 +88,7 @@ export function DataTable<T>({
     return out;
   }, [rows, sort, cols]);
   return (
-    <div className={`table-wrap${fits ? ' fits' : ''}`} ref={wrap}>
+    <div className={`table-wrap${fits && !maxHeight ? ' fits' : ''}`} ref={wrap} style={maxHeight ? { maxHeight } : undefined}>
       <table className={`data${compact ? ' compact' : ''}`}>
         <thead>
           <tr>

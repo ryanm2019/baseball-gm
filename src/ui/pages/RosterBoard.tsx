@@ -22,7 +22,7 @@ import {
   posLabel,
   transferIL60,
 } from '../../core/rules.ts';
-import { serviceYears } from '../../core/contracts.ts';
+import { serviceLabel, serviceYears } from '../../core/contracts.ts';
 import { playerActions } from '../actions.ts';
 import { PlayerCard } from '../PlayerCard.tsx';
 import { avg, era, fmt3, ipStr, obp, seasonBat, seasonPit, slg, whip } from '../fmt.tsx';
@@ -204,7 +204,7 @@ export default function RosterBoard() {
       { key: 'pot', label: 'Pot', value: (p) => scoutedPot(league, p) },
       { key: 'mood', label: 'Mood', title: 'Morale (50 = content)', value: (p) => p.morale?.value ?? 55, render: (p) => (p.morale ? <span className={p.morale.value < 35 ? 'neg' : p.morale.value >= 65 ? 'pos' : ''}>{Math.round(p.morale.value)}</span> : '-') },
       { key: 'opt', label: 'Opt', title: 'Option years left', value: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : -1), render: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-') },
-      { key: 'svc', label: 'Svc', title: 'MLB service years', value: (p) => serviceYears(p.mlServiceDays, s), render: (p) => serviceYears(p.mlServiceDays, s).toFixed(3) },
+      { key: 'svc', label: 'Svc', title: 'MLB service time (years.days)', value: (p) => p.mlServiceDays, render: (p) => serviceLabel(p.mlServiceDays, s) },
       {
         key: 'status', label: 'Status', left: true, value: (p) => (p.injury ? p.injury.daysLeft : 0),
         render: (p) => <span className="small">{p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}{p.il ? ` ${p.il.type}` : ''}{p.rehab ? ` · rehab ${p.rehab.level} (${p.rehab.daysLeft}d)` : ''}{p.dfa ? ' DFA' : ''}{p.waivers ? ' waivers' : ''}</span>,

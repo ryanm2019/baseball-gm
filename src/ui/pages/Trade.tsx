@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
-import type { League, TradeAssets, TradeProposal } from '../../core/types.ts';
+import type { League, Player, TradeAssets, TradeProposal } from '../../core/types.ts';
 import { aiOpinion, balanceForAi, emptyAssets, executeTrade, aiAccepts, playerTradeBlock, validateTrade, hasTenAndFive, tradeWindowOpen } from '../../core/trade.ts';
 import { fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
-import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
+import { scoutedOvr } from '../../core/ratings.ts';
 import { fortyMan, orgPlayers } from '../../core/util.ts';
-import { OrgSelect, Rating, StatusTags } from '../components.tsx';
+import { DataTable, OrgSelect, StatusTags, type Column } from '../components.tsx';
+import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
 import { seasonFraction } from '../../core/value.ts';
 
 // The trade being built survives page changes.
@@ -22,44 +23,46 @@ let lastQuery = '';
 
 const LEVEL_ORDER = ['MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL'];
 
+// Ratings or stats view, shared by both sides of the trade (kept while you move around).
+let assetView: TradeView = 'ratings';
+
 function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId: number; assets: TradeAssets; onToggle: (pid: number) => void }) {
   const [lvl, setLvl] = useState('40');
+  const [view, setViewState] = useState<TradeView>(assetView);
+  const setView = (v: TradeView) => { assetView = v; setViewState(v); };
   const ps = orgPlayers(league, orgId)
     .filter((p) => (lvl === '40' ? p.on40 : lvl === 'all' ? true : p.level === lvl))
     .sort((a, b) => LEVEL_ORDER.indexOf(a.level ?? 'AAA') - LEVEL_ORDER.indexOf(b.level ?? 'AAA') || scoutedOvr(league, b) - scoutedOvr(league, a));
+  const cols: Column<Player>[] = [
+    {
+      key: 'pick', label: '', noSort: true,
+      render: (p) => {
+        const block = playerTradeBlock(league, p);
+        return <input type="checkbox" title={block ?? ''} disabled={!!block} checked={assets.pids.includes(p.id)} onChange={() => onToggle(p.id)} />;
+      },
+    },
+    {
+      key: 'name', label: 'Name', left: true, value: (p) => `${p.last} ${p.first}`,
+      render: (p) => <span title={hasTenAndFive(league, p) ? '10-and-5 rights: can veto a trade' : ''}><a href={href('player', [p.id])}>{p.first} {p.last}</a><StatusTags league={league} p={p} />{hasTenAndFive(league, p) && <span className="tag">10/5</span>}</span>,
+    },
+    ...tradePlayerCols(league, view),
+  ];
   return (
     <>
-      <div className="btn-group tabs">
-        {['40', 'MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL', 'all'].map((l) => (
-          <button key={l} className={`btn btn-sm${lvl === l ? ' active' : ''}`} onClick={() => setLvl(l)}>
-            {l === '40' ? '40-man' : l === 'all' ? 'All' : l}
-          </button>
-        ))}
+      <div className="form-row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+        <div className="btn-group tabs" style={{ margin: 0 }}>
+          {['40', 'MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL', 'all'].map((l) => (
+            <button key={l} className={`btn btn-sm${lvl === l ? ' active' : ''}`} onClick={() => setLvl(l)}>
+              {l === '40' ? '40-man' : l === 'all' ? 'All' : l}
+            </button>
+          ))}
+        </div>
+        <div className="btn-group" style={{ margin: 0 }}>
+          <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
+          <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
+        </div>
       </div>
-      <div className="table-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
-        <table className="data compact">
-          <thead>
-            <tr><th /><th className="l">Name</th><th>Pos</th><th>Age</th><th>Lvl</th><th>Ovr</th><th>Pot</th><th>Contract</th></tr>
-          </thead>
-          <tbody>
-            {ps.map((p) => {
-              const block = playerTradeBlock(league, p);
-              return (
-                <tr key={p.id} title={block ?? (hasTenAndFive(league, p) ? '10-and-5 rights: can veto a trade' : '')}>
-                  <td><input type="checkbox" disabled={!!block} checked={assets.pids.includes(p.id)} onChange={() => onToggle(p.id)} /></td>
-                  <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a><StatusTags league={league} p={p} />{hasTenAndFive(league, p) && <span className="tag">10/5</span>}</td>
-                  <td>{posLabel(p)}</td>
-                  <td>{league.season - p.born}</td>
-                  <td>{p.level}</td>
-                  <td><Rating v={scoutedOvr(league, p)} /></td>
-                  <td><Rating v={scoutedPot(league, p)} /></td>
-                  <td>{p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} → ${p.contract.exp}` : 'MiLB'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable cols={cols} rows={ps} rowKey={(p) => p.id} compact maxHeight={420} />
     </>
   );
 }

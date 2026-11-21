@@ -6,18 +6,25 @@ import type { League, Player, Pos } from '../../core/types.ts';
 import { fillNeed, findPackagesFor, shopPlayer, type FinderOpts, type FoundDeal, type NeedRow, type Want } from '../../core/tradeFinder.ts';
 import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { posLabel } from '../../core/rules.ts';
-import { fmtMoney } from '../../core/contracts.ts';
+import { contractInfo, fmtMoney } from '../../core/contracts.ts';
 import { orgPlayers } from '../../core/util.ts';
 import { tradeWindowOpen } from '../../core/trade.ts';
 import { loadTrade } from './Trade.tsx';
+import { seasonSummary } from '../tradeCols.tsx';
+import { ContractCell } from '../fmt.tsx';
 
 type Mode = 'get' | 'shop' | 'need';
 const NEEDS: (Pos | 'OF' | 'LHP')[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'OF', 'DH', 'SP', 'RP', 'LHP'];
 
+// Name with position, age, ovr/pot and this season's key number; hover for the
+// line at each level and the contract.
 function PName({ league, p }: { league: League; p: Player }) {
+  const s = seasonSummary(league, p);
+  const c = contractInfo(league, p);
+  const tip = `${c.text}${c.faAfter !== null ? ` (FA after ${c.faAfter})` : ''}${s ? `\n${s.tip}` : ''}`;
   return (
-    <span className="nowrap">
-      <a href={href('player', [p.id])}>{p.first[0]}. {p.last}</a> <span className="muted small">{posLabel(p)} {league.season - p.born}y {scoutedOvr(league, p)}/{scoutedPot(league, p)}{p.level !== 'MLB' ? ` ${p.level}` : ''}</span>
+    <span className="nowrap" title={tip}>
+      <a href={href('player', [p.id])}>{p.first[0]}. {p.last}</a> <span className="muted small">{posLabel(p)} {league.season - p.born}y {scoutedOvr(league, p)}/{scoutedPot(league, p)}{p.level !== 'MLB' ? ` ${p.level}` : ''}{s ? (s.wrc !== null ? ` · wRC+ ${s.wrc}` : ` · FIP- ${s.fipm}`) : ''}</span>
     </span>
   );
 }
@@ -157,14 +164,13 @@ export default function TradeFinder() {
       {rows && (
         rows.length === 0 ? <p className="muted">Nobody available at {need} who'd upgrade your current option under those limits.</p> : (
           <table className="data compact">
-            <thead><tr><th className="l">Player</th><th>Team</th><th>Salary</th><th>Thru</th><th className="l">Cheapest package</th><th /></tr></thead>
+            <thead><tr><th className="l">Player</th><th>Team</th><th title="Salary and how long the club controls him">Contract</th><th className="l">Cheapest package</th><th /></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.p.id}>
                   <td className="l"><PName league={league} p={r.p} /></td>
                   <td>{league.orgs[r.p.orgId!].abbrev}</td>
-                  <td>{fmtMoney(r.p.contract.salary)}</td>
-                  <td>{r.p.contract.exp}</td>
+                  <td><ContractCell league={league} p={r.p} /></td>
                   <td className="l">{r.deal ? <Assets league={league} side={0} d={r.deal} /> : <span className="muted">Nothing that works</span>}</td>
                   <td>{r.deal && <button className="btn btn-sm" onClick={() => open(r.deal!)}>Open in Trade</button>}</td>
                 </tr>

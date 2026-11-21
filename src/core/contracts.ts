@@ -188,3 +188,67 @@ export function fmtMoney(x: number): string {
   if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}k`;
   return `${sign}$${Math.round(a)}`;
 }
+
+// The last season the club controls him (he's a free agent after it): his
+// contract or, for pre-arb/arbitration players, until he reaches six years of
+// service (assuming a full MLB season each year from here).
+export function controlThrough(league: League, p: Player): number {
+  const s = league.settings;
+  const need = 6 * s.serviceDaysPerYear;
+  const c = p.contract;
+  const contractEnd = c.type === 'ML' ? Math.max(c.exp, c.option && c.option.type !== 'player' ? c.option.season : c.exp) : league.season;
+  let days = p.mlServiceDays;
+  let season = league.phase === 'offseason' ? league.season + 1 : league.season;
+  if (league.phase === 'regular' || league.phase === 'playoffs') {
+    if (league.phase === 'regular') days += Math.max(0, Math.min(s.serviceDaysPerYear - p.serviceThisSeason, s.seasonDays - league.day));
+    if (days >= need) return Math.max(league.season, contractEnd);
+    season = league.season + 1;
+  }
+  if (days >= need) return Math.max(season - 1, contractEnd);
+  while (days < need) {
+    days += s.serviceDaysPerYear;
+    if (days >= need) break;
+    season++;
+  }
+  return Math.max(season, contractEnd);
+}
+
+export interface ContractInfo {
+  salary: number;
+  text: string; // short label for tables
+  compact: string; // tighter label for narrow tables ('32 = 2032)
+  tip: string; // fuller explanation on hover
+  faAfter: number | null; // free agent after this season (when that's this season or next)
+  minors: boolean;
+}
+
+// One way to describe a contract everywhere: pre-arb and arbitration players show
+// their service class and how long they're controlled; signed deals show the end
+// year; anyone hitting free agency after this season is flagged.
+export function contractInfo(league: League, p: Player): ContractInfo {
+  const s = league.settings;
+  const c = p.contract;
+  if (c.type !== 'ML') return { salary: 0, text: 'MiLB', compact: 'MiLB', tip: 'Minor-league contract (not on the 40-man roster)', faAfter: null, minors: true };
+  const cls = serviceClass(p, s);
+  const ctl = controlThrough(league, p);
+  const cur = league.phase === 'offseason' ? league.season + 1 : league.season;
+  const opt = c.option ? ` + ${c.option.season} ${c.option.type} option${c.option.type === 'player' ? ' (his choice)' : ''}` : '';
+  const signedDeal = c.exp > league.season || (c.sched?.length ?? 1) > 1 || cls === 'FA eligible';
+  const faSoon = ctl <= cur ? ctl : null;
+  let text: string;
+  let tip: string;
+  let compact: string;
+  const yy = (y: number) => `'${String(y).slice(2)}`;
+  if (!signedDeal && ctl > c.exp) {
+    text = `${fmtMoney(c.salary)} · ${cls} · control thru ${ctl}`;
+    compact = `${fmtMoney(c.salary)} · ${cls} · ctl ${yy(ctl)}`;
+    tip = `${cls}: renewed each year (arbitration from 3 years of service). Club control through ${ctl}; free agent after that season.`;
+  } else {
+    text = `${fmtMoney(c.salary)} thru ${c.exp}${c.option ? ` (+${c.option.season} opt)` : ''}`;
+    compact = `${fmtMoney(c.salary)} thru ${yy(c.exp)}${c.option ? ' +opt' : ''}${ctl > c.exp && !c.option ? ` · ctl ${yy(ctl)}` : ''}`;
+    tip = `Signed through ${c.exp}${opt}.${ctl > c.exp ? ` Still under club control (${cls === 'FA eligible' ? 'arbitration' : cls}) through ${ctl} after the deal.` : ` Free agent after ${ctl}.`}`;
+    if (ctl > c.exp && !c.option) text += ` · control thru ${ctl}`;
+  }
+  if (!c.oneWay) tip += ` Split deal: ${fmtMoney(c.minorSalary)} in the minors.`;
+  return { salary: c.salary, text, compact, tip, faAfter: faSoon, minors: false };
+}

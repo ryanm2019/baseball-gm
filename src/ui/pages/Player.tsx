@@ -5,7 +5,7 @@ import { crushBoost } from '../../core/development.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, FIELD_POSITIONS, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
+import { controlThrough, fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
 import { project } from '../../core/projections.ts';
@@ -379,6 +379,24 @@ export default function PlayerPage() {
                 ? `${fmtMoney(p.contract.salary)}/yr through ${p.contract.exp} (${p.contract.oneWay ? 'one-way' : `split, ${fmtMoney(p.contract.minorSalary)} in minors`})`
                 : `Minor league deal (${fmtMoney(p.contract.salary)})`}
             </div>
+            {p.contract.type === 'ML' && p.orgId !== null && (() => {
+              const ctl = controlThrough(league, p);
+              const cls = serviceClass(p, s);
+              const cur = league.phase === 'offseason' ? league.season + 1 : league.season;
+              return (
+                <>
+                  <div>Team control</div>
+                  <div>
+                    {ctl > p.contract.exp && cls === 'FA eligible' && p.contract.option
+                      ? <>Through <b>{ctl}</b> if the {p.contract.option.type} option is exercised; otherwise free agent after {p.contract.exp}</>
+                      : ctl > p.contract.exp
+                        ? <>Through <b>{ctl}</b> ({cls}{cls === 'Pre-Arb' ? ', arbitration at 3 years of service' : ''}); free agent after {ctl}</>
+                        : <>Free agent after <b>{ctl}</b></>}
+                    {ctl <= cur && <span className="tag tag-fa">FA after {ctl}</span>}
+                  </div>
+                </>
+              );
+            })()}
             {p.contract.type === 'ML' && (p.contract.sched || p.contract.option || p.contract.optOuts || p.contract.ntc || p.contract.deferPct) && (
               <>
                 <div>Terms</div>
@@ -479,7 +497,7 @@ export default function PlayerPage() {
                 ? `${optLeft === 0 ? 'Out of options; ' : `${optLeft} left, but `}${s.optionConsentServiceYears}+ years of service: can't be sent down without his consent`
                 : <>{p.optionsUsed} used, {optLeft} left{!optionYearAvailable(league, p) ? ' (out of options)' : ''}; {p.optionDaysThisSeason} days optioned this season{p.optionDaysThisSeason >= s.optionDaysToUseYear ? ' (year charged)' : ''}; optioned {p.optionsThisSeason}x</>}
             </div>
-            <div>Pro seasons</div><div>{p.proSeasons}</div>
+            <div title="Seasons as a professional, minors included">Pro seasons (incl. minors)</div><div>{p.proSeasons}</div>
             <div>Outrighted before</div><div>{p.outrightedBefore ? 'Yes' : 'No'}</div>
           </div>
         </div>

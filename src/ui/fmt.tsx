@@ -2,7 +2,7 @@
 import type { BatStats, League, Player, PitStats, Level } from '../core/types.ts';
 import { avg, era, fip, fmt3, ipStr, obp, ops, slg, sumBat, sumPit, whip } from '../core/util.ts';
 import { scoutedOvr, scoutedPot, isPitcher } from '../core/ratings.ts';
-import { fmtMoney, serviceLabel } from '../core/contracts.ts';
+import { contractInfo, serviceLabel } from '../core/contracts.ts';
 import { optionYearAvailable } from '../core/rules.ts';
 import type { Column } from './components.tsx';
 import { PlayerLink, Rating, StatusTags } from './components.tsx';
@@ -77,9 +77,7 @@ export function contractCols(league: League): Column<Player>[] {
       value: (p) => p.contract.salary,
       render: (p) =>
         p.contract.type === 'ML' ? (
-          <span title={p.contract.oneWay ? 'One-way' : `Split: ${fmtMoney(p.contract.minorSalary)} in minors`}>
-            {fmtMoney(p.contract.salary)} thru {p.contract.exp}
-          </span>
+          <ContractCell league={league} p={p} />
         ) : (
           <span className="muted">MiLB</span>
         ),
@@ -95,3 +93,16 @@ export const statLine = (p: Player, b: BatStats, pt: PitStats) =>
     : `${fmt3(avg(b))}/${fmt3(obp(b))}/${fmt3(slg(b))}, ${b.hr} HR, ${b.pa} PA`;
 
 export { era, fip, whip, ops, fmt3, ipStr, avg, obp, slg };
+
+// Contract with team control: "$0.8M · Pre-Arb · control thru 2032", "$25.0M thru 2031",
+// and an orange "FA after" flag for anyone a free agent after this season.
+export function ContractCell({ league, p, compact }: { league: League; p: Player; compact?: boolean }) {
+  const c = contractInfo(league, p);
+  if (c.minors) return <span className="muted" title={c.tip}>MiLB</span>;
+  return (
+    <span title={c.tip} className="nowrap">
+      {compact ? c.compact : c.text}
+      {c.faAfter !== null && <span className="tag tag-fa">{compact ? `FA '${String(c.faAfter).slice(2)}` : `FA after ${c.faAfter}`}</span>}
+    </span>
+  );
+}

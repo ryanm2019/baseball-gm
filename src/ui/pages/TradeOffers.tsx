@@ -6,6 +6,8 @@ import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { dayShort } from '../../core/settings.ts';
 import { Rating } from '../components.tsx';
+import { ContractCell } from '../fmt.tsx';
+import { seasonSummary } from '../tradeCols.tsx';
 import type { League, TradeAssets } from '../../core/types.ts';
 
 function Assets({ league, a }: { league: League; a: TradeAssets }) {
@@ -17,7 +19,7 @@ function Assets({ league, a }: { league: League; a: TradeAssets }) {
         return (
           <div key={id}>
             <a href={href('player', [id])}>{p.first} {p.last}</a> {posLabel(p)}, {league.season - p.born}, {p.level} <Rating v={scoutedOvr(league, p)} />/<Rating v={scoutedPot(league, p)} />{' '}
-            <span className="muted small">{p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} thru ${p.contract.exp}` : 'MiLB'}</span>
+            <span className="muted small"><ContractCell league={league} p={p} /></span>{(() => { const s = seasonSummary(league, p); return s ? <span className="small" title={s.tip} style={{ cursor: 'help' }}> · {s.levels.join('/')}: {s.line}{s.wrc !== null ? `, wRC+ ${s.wrc}` : `, FIP- ${s.fipm}`}</span> : null; })()}
           </div>
         );
       })}

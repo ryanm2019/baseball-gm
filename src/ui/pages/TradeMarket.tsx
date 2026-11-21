@@ -3,11 +3,15 @@ import { href, go, useRoute } from '../../router.ts';
 import type { Player, Pos } from '../../core/types.ts';
 import { NEED_POS, STANCE_HELP, teamNeeds } from '../../core/market.ts';
 import { posLabel } from '../../core/rules.ts';
-import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { fmtMoney } from '../../core/contracts.ts';
-import { DataTable, Rating, type Column } from '../components.tsx';
+import { DataTable, type Column } from '../components.tsx';
+import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import { useState } from 'react';
+
+let marketView: TradeView = 'ratings';
 
 export default function TradeMarket() {
+  const [view, setViewState] = useState<TradeView>(marketView);
+  const setView = (v: TradeView) => { marketView = v; setViewState(v); };
   const { league } = useStore();
   const route = useRoute();
   if (!league) return null;
@@ -54,12 +58,7 @@ export default function TradeMarket() {
     { key: 'name', label: 'Name', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
     { key: 'team', label: 'Team', value: (p) => league.orgs[p.orgId!].abbrev },
     { key: 'stance', label: 'Stance', left: true, value: (p) => league.orgs[p.orgId!].stance },
-    { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
-    { key: 'age', label: 'Age', value: (p) => league.season - p.born },
-    { key: 'lvl', label: 'Lvl', value: (p) => p.level ?? '' },
-    { key: 'ovr', label: 'Ovr', value: (p) => scoutedOvr(league, p), render: (p) => <Rating v={scoutedOvr(league, p)} />, sortDesc: true },
-    { key: 'pot', label: 'Pot', value: (p) => scoutedPot(league, p), render: (p) => <Rating v={scoutedPot(league, p)} />, sortDesc: true },
-    { key: 'sal', label: 'Contract', value: (p) => (p.contract.type === 'ML' ? p.contract.salary : 0), render: (p) => (p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} → ${p.contract.exp}` : 'MiLB'), sortDesc: true },
+    ...tradePlayerCols(league, view),
     {
       key: 'act',
       label: '',
@@ -92,6 +91,10 @@ export default function TradeMarket() {
         {NEED_POS.map((p) => (
           <button key={p} className={`btn btn-sm${pos === p ? ' active' : ''}`} onClick={() => go('trade-market', [], { pos: p })}>{p}</button>
         ))}
+      </div>
+      <div className="btn-group" style={{ margin: '4px 0' }}>
+        <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
+        <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
       </div>
       {block.length === 0 ? <p className="muted">Nobody at that position is being shopped right now.</p> : <DataTable cols={playerCols} rows={block} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />}
     </>

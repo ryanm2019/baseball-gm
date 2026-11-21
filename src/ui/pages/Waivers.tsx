@@ -1,9 +1,9 @@
 import { useStore, changed } from '../../store.ts';
 import type { Player } from '../../core/types.ts';
 import { waiverClaims, posLabel } from '../../core/rules.ts';
-import { fmtMoney, serviceLabel } from '../../core/contracts.ts';
+import { serviceLabel } from '../../core/contracts.ts';
 import { DataTable, OrgLink, type Column } from '../components.tsx';
-import { nameCol, ratingCols, optionsLeft } from '../fmt.tsx';
+import { ContractCell, nameCol, ratingCols, optionsLeft } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
 
 export default function Waivers() {
@@ -18,7 +18,7 @@ export default function Waivers() {
     { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
     { key: 'age', label: 'Age', value: (p) => league.season - p.born },
     ...ratingCols(league),
-    { key: 'sal', label: 'Salary', value: (p) => p.contract.salary, render: (p) => (p.contract.type === 'ML' ? `${fmtMoney(p.contract.salary)} thru ${p.contract.exp}` : 'MiLB') },
+    { key: 'sal', label: 'Contract', value: (p) => p.contract.salary, render: (p) => <ContractCell league={league} p={p} /> },
     { key: 'svc', label: 'Svc', value: (p) => p.mlServiceDays, render: (p) => serviceLabel(p.mlServiceDays, s) },
     { key: 'opt', label: 'Opt', value: (p) => optionsLeft(league, p) },
   ];
