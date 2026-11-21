@@ -274,3 +274,10 @@ td.grip.picked { background: var(--link); color: #fff; }
 }
 /* roster markers explain themselves on hover */
 .flag { cursor: help; border-bottom: 1px dotted currentColor; margin-right: 3px; }
+/* player card in a side panel (Depth Chart): stays in view while you work the lineup */
+.side-panel { position: fixed; top: 56px; right: 12px; width: 380px; max-height: calc(100vh - 68px); overflow-y: auto; z-index: 40; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 12px 14px; }
+.side-panel-close { position: sticky; top: 0; float: right; z-index: 1; }
+@media (min-width: 1200px) { .with-side-panel { padding-right: 400px; } }
+@media (max-width: 760px) {
+  .side-panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 60vh; border-radius: 12px 12px 0 0; }
+}

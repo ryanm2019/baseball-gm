@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type React from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
@@ -28,6 +28,11 @@ export default function Depth() {
   const [drag, setDrag] = useState<{ from: 'lineup' | 'bench'; i: number; pid: number } | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setSel(null); };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, []);
   const [vs, setVs] = useState<'R' | 'L'>('R');
   const [when, setWhen] = useState<StatWhen>(statWhen);
   // Clicking a row shows the player's ratings; clicks on the dropdowns don't count.
@@ -127,7 +132,8 @@ export default function Depth() {
   const missingPos = POSITIONS.filter((p) => !posList.includes(p));
   const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id)) && d.closer !== null;
   const dirty = draft?.key === key;
-  const shown = league.players[sel ?? cur[0]?.pid ?? -1] ?? null;
+  // The player you clicked opens in a side panel (a bottom sheet on a phone).
+  const shown = sel !== null ? league.players[sel] ?? null : null;
   const relievers = pitchers.filter((p) => !d.rotation.includes(p.id));
   const roleOf = (pid: number): PenRole => (d.closer === pid ? 'CL' : d.setup.includes(pid) ? 'SU' : d.pen?.[pid] && d.pen[pid] !== 'CL' && d.pen[pid] !== 'SU' ? d.pen[pid] : 'MR');
   const setRole = (pid: number, role: PenRole) =>
@@ -156,7 +162,7 @@ export default function Depth() {
   };
 
   return (
-    <>
+    <div className={shown ? 'with-side-panel' : ''}>
       <h1>Depth Chart <span className="muted small">{org.affiliates[level].name}</span></h1>
       <LevelTabs value={level} onChange={(v) => go('depth', [], { level: v })} />
       <p>
@@ -320,7 +326,6 @@ export default function Depth() {
             </tbody>
           </table>
           {d.closer === null && <div className="alert alert-err">Pick a closer.</div>}
-          {shown && <div style={{ marginTop: 16 }}><PlayerCard league={league} p={shown} level={level} /></div>}
         </div>
       </div>
       <button className="btn btn-primary" disabled={!valid} onClick={() => save(false)}>
@@ -328,6 +333,12 @@ export default function Depth() {
       </button>{' '}
       {dirty && <span className="muted small">Unsaved changes</span>}{' '}
       {dirty && <button className="btn btn-sm" onClick={() => setDraft(null)}>Undo changes</button>}
-    </>
+      {shown && (
+        <div className="side-panel" role="dialog" aria-label={`${shown.first} ${shown.last}`}>
+          <button className="btn btn-sm side-panel-close" onClick={() => setSel(null)} title="Close (Esc)">✕</button>
+          <PlayerCard league={league} p={shown} level={level} />
+        </div>
+      )}
+    </div>
   );
 }
