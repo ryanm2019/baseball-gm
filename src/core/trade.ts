@@ -242,6 +242,16 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
   ], `${league.orgs[a].abbrev} get ${desc[1]}; ${league.orgs[b].abbrev} get ${desc[0]}`);
   pruneBlocks(league);
   league.tradeOffers = league.tradeOffers.filter((o) => !pids.some((id) => o.proposal.give[0].pids.includes(id) || o.proposal.give[1].pids.includes(id)));
+  // Your other open offers involving these players are withdrawn.
+  for (const t of league.tradeTalks ?? []) {
+    if (t.status !== 'waiting' && t.status !== 'countered') continue;
+    const props = [t.proposal, t.counter].filter(Boolean) as TradeProposal[];
+    if (!props.some((pr) => pids.some((id) => pr.give[0].pids.includes(id) || pr.give[1].pids.includes(id)))) continue;
+    t.status = 'withdrawn';
+    for (const m of league.inbox ?? []) if (m.talkId === t.id && !m.resolved && m.actions) m.resolved = 'Withdrawn';
+    const moved = pids.map((id) => league.players[id]).filter((p) => p && [...t.proposal.give[0].pids, ...t.proposal.give[1].pids].includes(p.id)).map((p) => pname(p));
+    addInbox(league, { from: 'Assistant GM', subject: `Offer to ${league.orgs[t.orgId].abbrev} withdrawn`, kind: 'info', pids: [], text: `Your offer to the ${league.orgs[t.orgId].affiliates.MLB.name} was withdrawn: ${moved.join(', ')} ${moved.length === 1 ? 'has' : 'have'} been traded.` });
+  }
   return null;
 }
 
@@ -444,7 +454,7 @@ function pushOffer(league: League, ai: Org, prop: TradeProposal, note: string, p
     }
     return;
   }
-  const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: prop, expires: league.day + 7, note };
+  const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: prop, expires: league.day + 3, note };
   league.tradeOffers.push(offer);
   addNews(league, user.id, `The ${ai.affiliates.MLB.name} reached out with a trade offer: ${note} See Trade Offers.`, pids);
   addInbox(league, { from: `${ai.region} ${ai.name} front office`, subject: 'Trade offer', kind: 'info', pids, text: `The ${ai.affiliates.MLB.name} sent you a trade offer: ${note}`, link: { page: 'trade-offers' } });

@@ -1,8 +1,11 @@
 // Messages from agents, the owner, your staff and other clubs. Some ask for a
 // decision; promises you make are checked later.
 import { useState } from 'react';
+import { answerCounter } from '../../core/negotiation.ts';
+import { answerIlReady } from '../../core/farmDirector.ts';
+import { loadTrade } from './Trade.tsx';
 import { useStore, changed, setMessage } from '../../store.ts';
-import { href } from '../../router.ts';
+import { go, href } from '../../router.ts';
 import { answerInbox, moraleLabel } from '../../core/morale.ts';
 import { answerStory } from '../../core/storylines.ts';
 import { answerPosition, answerSeptember } from '../../core/positions.ts';
@@ -63,6 +66,13 @@ export default function Inbox() {
                         m.resolved = a.label;
                         m.read = true;
                         setMessage(answerInjury(league, m.pids[0], a.key));
+                      } else if (m.kind === 'trade-reply') {
+                        const t = (league.tradeTalks ?? []).find((x) => x.id === m.talkId);
+                        const counter = t?.counter;
+                        setMessage(answerCounter(league, m, a.key));
+                        if (a.key === 'revise' && t && counter) { loadTrade(t.orgId, [counter.give[0], counter.give[1]]); go('trade'); }
+                      } else if (m.kind === 'il-ready') {
+                        setMessage(answerIlReady(league, m, a.key));
                       } else if (m.kind === 'position') {
                         m.resolved = a.label;
                         m.read = true;

@@ -3,6 +3,8 @@
 // control; MLB injury moves are handled only when "Auto MLB roster moves" is on.
 import type { FarmDirector, League, Level, Org, Player } from './types.ts';
 import { MINOR_LEVELS } from './types.ts';
+import type { InboxMsg } from './types.ts';
+import { addInbox } from './morale.ts';
 import { LEVEL_AGE, LEVEL_TALENT } from './settings.ts';
 import { isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgPlayers, pitcherLimit, pname } from './util.ts';
@@ -101,7 +103,15 @@ export function manageOrg(league: League, org: Org): void {
         makeFortyRoom(league, org);
         why = canActivate(league, p);
       }
-      if (!why) activateFromIL(league, p);
+      if (!why) {
+        const txBefore = league.transactions.length;
+        activateFromIL(league, p);
+        // Your assistant GM handled it: let you know what he did.
+        if (isUser) {
+          const moves = league.transactions.slice(txBefore).filter((t) => t.orgId === org.id).map((t) => t.text).filter((t) => !t.includes(p.last));
+          addInbox(league, { from: 'Assistant GM', subject: `${pname(p)} activated from the IL`, kind: 'info', pids: [p.id], text: `${pname(p)} is healthy, so I activated him from the IL.${moves.length ? ` To make room: ${moves.join('; ')}.` : ''}` });
+        }
+      }
     } else if (!canActivate(league, p)) {
       activateFromIL(league, p);
     }
@@ -172,7 +182,7 @@ function makeFortyRoom(league: League, org: Org): boolean {
   return true;
 }
 
-function makeMlbRoom(league: League, org: Org, pitcher: boolean, allowDfa: boolean): boolean {
+export function makeMlbRoom(league: League, org: Org, pitcher: boolean, allowDfa: boolean): boolean {
   const all = activeAt(league, org.id, 'MLB');
   const catchers = all.filter((p) => p.pos === 'C').length;
   // Never send down the second catcher.
@@ -461,4 +471,62 @@ function aiMlbReview(league: League, org: Org): void {
       .sort((a, b) => prospectValue(b) - prospectValue(a))[0];
     if (prospect) addTo40(league, prospect);
   }
+}
+
+// ---------- telling you when a player can come off the MLB injured list ----------
+
+const MLB_IL = ['IL10', 'IL15', 'IL60'];
+
+// Daily (in season): a healthy player who has served his minimum stay, with no
+// rehab assignment running, gets a message that stops the sim, unless your
+// assistant GM handles injuries (then he activates him and tells you).
+export function ilReadyNotices(league: League): void {
+  if (league.phase !== 'regular') return;
+  const org = league.orgs[league.userOrgId];
+  if (isManaged(league, org, 'MLB')) return;
+  for (const p of orgPlayers(league, org.id)) {
+    if (!p.il || !MLB_IL.includes(p.il.type) || p.injury || p.rehab) continue;
+    if (p.il.readyNoticeDay !== undefined && league.day - p.il.readyNoticeDay < 7) continue;
+    if ((league.inbox ?? []).some((m) => m.kind === 'il-ready' && m.pids[0] === p.id && !m.resolved)) continue;
+    const why = canActivate(league, p);
+    if (why && !why.includes('roster is full') && !why.includes('Pitcher limit') && !why.includes('40-man')) continue;
+    p.il.readyNoticeDay = league.day;
+    const full = why ? ` Your active roster is full, so activating him means sending someone down.` : '';
+    addInbox(league, {
+      from: 'Medical staff', subject: `${pname(p)} is ready to come off the IL`, kind: 'il-ready', pids: [p.id], stop: true,
+      text: `${pname(p)} is healthy and has served his minimum stay on the ${p.il.type}.${full}`,
+      actions: [
+        { key: 'activate', label: why ? `Activate (option the weakest ${isPitcher(p) ? 'pitcher' : 'position player'})` : 'Activate now' },
+        { key: 'rehab', label: 'Rehab assignment first (about a week)' },
+        { key: 'leave', label: 'Leave him on the IL for now' },
+      ],
+      link: { page: 'roster-moves' },
+    });
+  }
+}
+
+export function answerIlReady(league: League, msg: InboxMsg, key: string): string {
+  const p = league.players[msg.pids[0]];
+  const label = msg.actions?.find((a) => a.key === key)?.label ?? key;
+  msg.read = true;
+  if (!p || !p.il || p.orgId !== league.userOrgId) { msg.resolved = 'Already handled'; return 'He is no longer on your IL.'; }
+  if (key === 'leave') { msg.resolved = label; return `${pname(p)} stays on the IL. We'll remind you in a week.`; }
+  if (key === 'rehab') {
+    p.rehab = { level: 'AAA', daysLeft: 7, total: 7 };
+    p.il.readyNoticeDay = undefined;
+    msg.resolved = label;
+    return `${pname(p)} begins a rehab assignment with ${league.orgs[p.orgId].affiliates.AAA.name} (about a week). You'll hear when it's done.`;
+  }
+  const org = league.orgs[league.userOrgId];
+  let why = canActivate(league, p);
+  const txBefore = league.transactions.length;
+  if (why && (why.includes('roster is full') || why.includes('Pitcher limit'))) {
+    makeMlbRoom(league, org, isPitcher(p), false);
+    why = canActivate(league, p);
+  }
+  if (why) return `Can't activate him yet: ${why}. Make room on Roster Moves, then activate him there.`;
+  activateFromIL(league, p);
+  msg.resolved = label;
+  const moves = league.transactions.slice(txBefore).map((t) => t.text).filter((t) => !t.includes(p.last));
+  return `${pname(p)} is activated.${moves.length ? ` ${moves.join('; ')}.` : ''}`;
 }

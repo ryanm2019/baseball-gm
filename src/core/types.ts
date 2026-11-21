@@ -160,6 +160,7 @@ export interface IlStatus {
   type: 'IL10' | 'IL15' | 'IL60' | 'MiLB7' | 'MiLB60';
   since: number; // league day placed
   returnLevel: Level;
+  readyNoticeDay?: number; // when we last told the user he's ready to come off
 }
 
 export interface Injury {
@@ -399,6 +400,21 @@ export interface TradeProposal {
   give: [TradeAssets, TradeAssets]; // give[i] = what orgs[i] sends
 }
 
+// A trade offer you sent: the other club answers in a day or two (same day at the deadline).
+export interface TradeTalk {
+  id: number;
+  orgId: number; // the other club
+  season: number;
+  sentDay: number;
+  respondDay: number;
+  round: number; // 1 = your first offer
+  proposal: TradeProposal; // orgs = [you, them]
+  status: 'waiting' | 'countered' | 'done' | 'declined' | 'withdrawn' | 'expired';
+  counter?: TradeProposal; // their counter (orgs = [you, them])
+  counterExpires?: number;
+  noise: number; // their read on the day (fraction of value), fixed per offer
+}
+
 export interface TradeOffer {
   id: number;
   day: number;
@@ -589,7 +605,8 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply';
+  talkId?: number; // trade-reply: the negotiation it belongs to
   actions?: InboxAction[];
   resolved?: string; // what you chose
   read?: boolean;
@@ -813,6 +830,9 @@ export interface League {
   draftAdjust?: DraftAdjust;
   cbPicks: CbPick[];
   tradeOffers: TradeOffer[];
+  tradeTalks?: TradeTalk[];
+  // Per club: how many rounds this season and when they'll take your calls again.
+  tradeRelations?: Record<number, { season: number; rounds: number; frozenUntil: number }>;
   ifaPenalty: Record<number, number>; // pool reductions for the next signing period
   fired?: boolean;
   moves: Move[];

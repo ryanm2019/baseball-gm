@@ -7,7 +7,7 @@ import { LEVELS } from '../types.ts';
 import { buildLineup, pickStarter, postseasonEligible, type GameLineup } from './lineup.ts';
 import { createGame, setGameLeague, setOffenseAdj, simGame, type GameEngine, type GameOutput } from './game.ts';
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
-import { farmDirectorReview, isManaged, manageOrg } from '../farmDirector.ts';
+import { farmDirectorReview, ilReadyNotices, isManaged, manageOrg } from '../farmDirector.ts';
 import { weeklyFarmReport } from '../farmReport.ts';
 import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
@@ -16,6 +16,7 @@ import { faDay } from '../freeAgency.ts';
 import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
 import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
+import { talksDay } from '../negotiation.ts';
 import { tradeDay } from '../trade.ts';
 import { aiExtensions } from '../extensions.ts';
 import { inboxStop, moraleWeek } from '../morale.ts';
@@ -216,13 +217,13 @@ function dailyUpkeep(league: League): void {
           const days = Math.round(isPitcher(p) ? clamp(total / 4, 5, 25) : clamp(total / 6, 3, 15));
           p.rehab = { level: 'AAA', daysLeft: days, total: days };
           if (p.orgId === league.userOrgId) addNews(league, p.orgId, `${pname(p)} began a rehab assignment with ${league.orgs[p.orgId].affiliates.AAA.name} (about ${days} days). You can activate him early, but he'll be rusty.`, [p.id]);
-        } else if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} is healthy and can be activated from the IL.`, [p.id]);
+        }
       }
     } else if (p.rehab) {
       p.rehab.daysLeft--;
       if (p.rehab.daysLeft <= 0 || !p.il) {
         p.rehab = null;
-        if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} finished his rehab assignment and is ready to be activated.`, [p.id]);
+        if (p.orgId === league.userOrgId && p.il) addNews(league, p.orgId, `${pname(p)} finished his rehab assignment.`, [p.id]);
       }
     }
     if (p.orgId === null || !inSeason) continue;
@@ -418,7 +419,9 @@ function beginRegularDay(league: League): string | null {
 function finishRegularDay(league: League): DayResult {
   faDay(league);
   ifaDay(league);
+  talksDay(league);
   tradeDay(league);
+  ilReadyNotices(league);
   aiExtensions(league);
   aiPositionMoves(league);
   suggestPositionMoves(league);
@@ -510,16 +513,19 @@ export function simOneDay(league: League): DayResult {
       faDay(league);
       postingDeadlines(league);
       ifaDay(league);
+      const talk = talksDay(league);
       tradeDay(league);
       offseasonUpkeep(league);
       if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
       league.day++;
+      if (talk) return { stop: talk };
     }
     return { stop: null };
   }
   if (league.phase === 'preseason') {
     faDay(league);
     ifaDay(league);
+    const talk = talksDay(league);
     tradeDay(league);
     aiExtensions(league);
     springWork(league);
@@ -533,7 +539,7 @@ export function simOneDay(league: League): DayResult {
       league.phase = 'regular';
       addNews(league, null, `Opening Day of the ${league.season} season!`);
     }
-    return { stop: null };
+    return { stop: talk };
   }
   if (league.phase === 'regular') {
     const stop = beginRegularDay(league);

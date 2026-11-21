@@ -59,10 +59,11 @@ export function onInjury(league: League, p: Player): void {
     return;
   }
   if (p.level !== 'MLB' && !p.on40 && !topProspects(league, p.orgId).has(p.id)) {
+    const injName = inj.name;
     decide(league, p, recommend);
     addInbox(league, {
       from: 'Medical staff', subject: `${pname(p)}: ${recommend === 'surgery' ? s.label : 'rehab'}`, kind: 'info', pids: [p.id],
-      text: `${pname(p)} (${p.level}) has a ${inj.name}. We went with ${recommend === 'surgery' ? s.label : 'rehab'} (re-injury risk with rehab about ${Math.round(est * 100)}%). He's out about ${p.injury?.daysLeft ?? inj.daysLeft} days.`,
+      text: `${pname(p)} (${p.level}): ${injName}. We went with ${recommend === 'surgery' ? s.label : 'rehab'} (re-injury risk with rehab about ${Math.round(est * 100)}%). He's out about ${p.injury?.daysLeft ?? inj.daysLeft} days.`,
     });
     return;
   }

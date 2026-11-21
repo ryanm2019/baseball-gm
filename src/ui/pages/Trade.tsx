@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
-import type { League, Player, TradeAssets, TradeProposal } from '../../core/types.ts';
-import { aiOpinion, balanceForAi, emptyAssets, executeTrade, aiAccepts, playerTradeBlock, validateTrade, hasTenAndFive, tradeWindowOpen } from '../../core/trade.ts';
+import type { League, Player, TradeAssets, TradeProposal, TradeTalk } from '../../core/types.ts';
+import { emptyAssets, playerTradeBlock, validateTrade, hasTenAndFive, tradeWindowOpen } from '../../core/trade.ts';
+import { agmRead, agmSuggestion, openTalks, sendOffer, withdrawOffer } from '../../core/negotiation.ts';
 import { fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
@@ -131,7 +132,6 @@ export default function Trade() {
   };
   const err = validateTrade(league, prop);
   const empty = !st.give[0].pids.length && !st.give[1].pids.length && !st.give[0].cash && !st.give[1].cash && !st.give[0].pool && !st.give[1].pool && !st.give[0].cbPicks.length && !st.give[1].cbPicks.length;
-  const opinion = !empty ? aiOpinion(league, other, prop) : '';
   const window = tradeWindowOpen(league);
   const userPay = orgPayroll(league, user);
   const otherPay = orgPayroll(league, other);
@@ -139,29 +139,25 @@ export default function Trade() {
   const dOther = -dUser;
   const in40 = (i: number) => st.give[1 - i].pids.filter((id) => league.players[id]?.on40).length - st.give[i].pids.filter((id) => league.players[id]?.on40).length;
 
+  // Offers go to the other front office; they answer in a day or two (same day at the deadline).
   const propose = async () => {
     if (err) return setMessage(err);
-    if (!aiAccepts(league, other, prop)) {
-      setMessage(`The ${other.affiliates.MLB.name} turned it down. ${aiOpinion(league, other, prop)}`);
-      return;
-    }
-    if (!(await askConfirm(`Trade ${summary(league, st.give[0])} for ${summary(league, st.give[1])}?`))) return;
-    const e = executeTrade(league, prop);
-    if (e) setMessage(e);
-    else {
-      setMessage(`Trade completed with the ${other.affiliates.MLB.name}.`);
-      saved = { other: other.id, give: [emptyAssets(), emptyAssets()] };
-    }
+    if (!(await askConfirm(`Send the ${other.affiliates.MLB.name} an offer: ${summary(league, st.give[0])} for ${summary(league, st.give[1])}? If they accept, the trade goes through right away.`))) return;
+    setMessage(sendOffer(league, prop));
     changed();
   };
 
+  // His best guess at what gets it done; no guarantee until they answer.
   const balance = () => {
-    const b = balanceForAi(league, prop);
-    if (!b) return setMessage(`The ${other.affiliates.MLB.name} don't see a way to make this work.`);
-    st.give = b.give;
-    setMessage(`The ${other.affiliates.MLB.name} would do it if you add: ${summary(league, { ...emptyAssets(), pids: b.give[0].pids.filter((id) => !prop.give[0].pids.includes(id)) })}.`);
+    const b = agmSuggestion(league, prop);
+    if (!b) return setMessage(`Assistant GM: "I don't see a way to make this work with them."`);
+    st.give = b.prop.give;
+    setMessage(`Assistant GM: "${b.text}"`);
     refresh();
   };
+  const read = !empty && !err ? agmRead(league, prop) : null;
+  const talks = openTalks(league);
+  const withThem = talks.filter((t) => t.orgId === other.id);
 
   return (
     <>
@@ -187,10 +183,10 @@ export default function Trade() {
       </div>
       {!empty && (
         <div className="trade-bar">
-          <div className="small"><b>You send</b> {summary(league, st.give[0])} · <b>You get</b> {summary(league, st.give[1])}{!err && <> · <span className="muted">{other.abbrev}: {opinion}</span></>}</div>
+          <div className="small"><b>You send</b> {summary(league, st.give[0])} · <b>You get</b> {summary(league, st.give[1])}{read && <> · <span className={read.theirsTone}>AGM: {read.theirs}</span></>}</div>
           <div className="form-row" style={{ margin: 0 }}>
-            <button className="btn btn-sm btn-primary" disabled={!!err} onClick={() => void propose()}>Propose trade</button>
-            <button className="btn btn-sm" disabled={!!window} onClick={balance}>What would make this work?</button>
+            <button className="btn btn-sm btn-primary" disabled={!!err} onClick={() => void propose()}>Send offer</button>
+            <button className="btn btn-sm" disabled={!!window} onClick={balance}>Ask your assistant GM</button>
           </div>
         </div>
       )}
@@ -201,18 +197,52 @@ export default function Trade() {
         <div>Your payroll</div><div>{fmtMoney(userPay.cbt)} → {fmtMoney(userPay.cbt + dUser)} (budget {fmtMoney(user.budget)})</div>
         <div>Their payroll</div><div>{fmtMoney(otherPay.cbt)} → {fmtMoney(otherPay.cbt + dOther)}</div>
         <div>40-man after</div><div>You {fortyMan(league, user.id).length + in40(0)} · them {fortyMan(league, other.id).length + in40(1)}</div>
-        <div>{other.abbrev} GM</div><div>{empty ? '-' : opinion}</div>
+        <div>Your AGM: would we?</div><div className={read?.mineTone}>{read ? read.mine : '-'}</div>
+        <div>Your AGM: will they?</div><div className={read?.theirsTone}>{read ? read.theirs : '-'}</div>
       </div>
+      {withThem.length > 0 && <div className="alert" style={{ marginTop: 8 }}>{withThem.map((t) => <div key={t.id}>{talkLine(league, t)}</div>)} Sending a new offer replaces it.</div>}
       {err && !empty && <div className="alert alert-err" style={{ marginTop: 8 }}>{err}</div>}
       <div className="form-row">
-        <button className="btn btn-primary" disabled={!!err} onClick={() => void propose()}>Propose trade</button>
-        <button className="btn" disabled={!!window || empty} onClick={balance}>What would make this work?</button>
+        <button className="btn btn-primary" disabled={!!err} onClick={() => void propose()}>Send offer</button>
+        <button className="btn" disabled={!!window || empty} onClick={balance} title="His best guess at what would get it done">Ask your assistant GM</button>
         <button className="btn" onClick={() => { saved = { other: other.id, give: [emptyAssets(), emptyAssets()] }; refresh(); }}>Clear</button>
       </div>
+      {talks.length > 0 && (
+        <>
+          <h2>Your open offers</h2>
+          <table className="data compact">
+            <thead><tr><th className="l">Team</th><th className="l">Offer</th><th className="l">Status</th><th /></tr></thead>
+            <tbody>
+              {talks.map((t) => (
+                <tr key={t.id}>
+                  <td className="l">{league.orgs[t.orgId].abbrev}</td>
+                  <td className="l small">{summary(league, t.proposal.give[0])} for {summary(league, t.proposal.give[1])}</td>
+                  <td className="l small">{talkLine(league, t)}</td>
+                  <td className="nowrap">
+                    {t.status === 'countered' && <a className="btn btn-sm" href={href('inbox')}>See counter</a>}{' '}
+                    <button className="btn btn-sm" onClick={() => { withdrawOffer(league, t.id); changed(); }}>Withdraw</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       <p className="muted small">
+        Offers go to the other club's front office, which answers in a day or two (within the day on deadline day): they accept (the trade goes through), decline, or counter in your Inbox. After about three rounds without a deal, or a lowball, they stop taking your calls for a while.{' '}
         Rules: no trades after the deadline (Jul 31) or during the playoffs. Free agents signed this winter can't be traded until June 15, and this year's draftees until after the World Series. Cash is limited to the remaining salary of the players you send plus $1M. International pool money trades in $250k increments during the signing period (a team can add up to 60% of its pool). Competitive Balance picks are the only tradable draft picks. Players with 10-and-5 rights can veto. Anyone acquired after Aug 31 can't play in the postseason.
       </p>
     </>
   );
 }
 
+
+function talkLine(league: League, t: TradeTalk): string {
+  const name = league.orgs[t.orgId].abbrev;
+  if (t.status === 'waiting') {
+    const d = t.respondDay - league.day;
+    return `Waiting on ${name}: answer ${d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`}.`;
+  }
+  const d = (t.counterExpires ?? league.day) - league.day;
+  return `${name} countered: their counter expires ${d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`}.`;
+}

@@ -36,7 +36,7 @@ export default function TradeOffers() {
   return (
     <>
       <h1>Trade Offers</h1>
-      <p className="muted small">Clubs reach out on their own, most often in the weeks before the deadline and during the winter (especially the Winter Meetings). Put players on your <a href={href('trading-block')}>trading block</a> or set what you're interested in to steer the calls. Offers expire after a week. Your assistant GM can answer them for you (Staff page).</p>
+      <p className="muted small">Clubs reach out on their own, most often in the weeks before the deadline and during the winter (especially the Winter Meetings). Put players on your <a href={href('trading-block')}>trading block</a> or set what you're interested in to steer the calls. Offers expire after 3 days. Your assistant GM can answer them for you (Staff page).</p>
       {offers.length === 0 && <p className="muted">No offers right now.</p>}
       {offers.map((o) => {
         const ai = league.orgs[o.fromOrg];
