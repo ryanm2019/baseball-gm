@@ -2,7 +2,7 @@
 import { createLeague } from '../src/core/league.ts';
 import { simOneDay, startLiveDay, endLiveDay, hasUserGameToday } from '../src/core/sim/day.ts';
 const L = createLeague({ name: 't', userOrgIndex: 5, season: 2027 });
-for (let i = 0; i < 3; i++) simOneDay(L);
+for (let i = 0; i < 3 || (!hasUserGameToday(L) && i < 15); i++) simOneDay(L);
 console.log('game today', hasUserGameToday(L), 'day', L.day);
 const ld = startLiveDay(L);
 if ('stop' in ld) { console.log('stop', ld.stop); process.exit(1); }

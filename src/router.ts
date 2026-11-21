@@ -18,12 +18,33 @@ function parse(): Route {
 
 let current = parse();
 const subs = new Set<() => void>();
+// Scroll memory: Back/Forward returns you to where you were on that page;
+// following a link or go() starts the new page at the top.
+const scrolls = new Map<string, number>();
+let lastHash = window.location.hash;
+let linkNav = false;
+window.addEventListener('scroll', () => scrolls.set(lastHash, window.scrollY), { passive: true });
+document.addEventListener('click', (e) => {
+  if ((e.target as Element | null)?.closest?.('a[href^="#"]')) linkNav = true;
+}, true);
+function restore(y: number, tries = 20): void {
+  requestAnimationFrame(() => {
+    window.scrollTo(0, y);
+    if (Math.abs(window.scrollY - y) > 2 && tries > 0) restore(y, tries - 1); // page still rendering
+  });
+}
 window.addEventListener('hashchange', () => {
   const prev = current;
+  const fromLink = linkNav;
+  linkNav = false;
+  lastHash = window.location.hash;
   current = parse();
   for (const s of subs) s();
-  // New page: start at the top. Same page with a different tab/filter: stay put.
-  if (prev.page !== current.page || prev.args.join('/') !== current.args.join('/')) window.scrollTo(0, 0);
+  // Same page with a different tab/filter: stay put.
+  if (prev.page === current.page && prev.args.join('/') === current.args.join('/')) return;
+  const saved = scrolls.get(lastHash);
+  if (!fromLink && saved) restore(saved);
+  else window.scrollTo(0, 0);
 });
 
 export function useRoute(): Route {
@@ -43,5 +64,6 @@ export function href(page: string, args: (string | number)[] = [], query: Record
 }
 
 export function go(page: string, args: (string | number)[] = [], query: Record<string, string | number | undefined> = {}): void {
+  linkNav = true;
   window.location.hash = href(page, args, query);
 }

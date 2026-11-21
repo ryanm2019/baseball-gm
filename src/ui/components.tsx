@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { League, Level, Player } from '../core/types.ts';
 import { LEVELS } from '../core/types.ts';
 import { href } from '../router.ts';
@@ -15,6 +15,21 @@ export interface Column<T> {
   render?: (row: T) => ReactNode;
   sortDesc?: boolean; // default sort direction for this column
   noSort?: boolean;
+}
+
+// Sort choices are remembered per table (page + columns), across visits and reloads.
+type Sort = { key: string; desc: boolean } | null;
+const SORT_KEY = 'bgm-sorts';
+let sortMemory: Record<string, Sort> | null = null;
+function sorts(): Record<string, Sort> {
+  if (!sortMemory) {
+    try { sortMemory = JSON.parse(localStorage.getItem(SORT_KEY) ?? '{}') ?? {}; } catch { sortMemory = {}; }
+  }
+  return sortMemory!;
+}
+function saveSort(id: string, s: Sort): void {
+  sorts()[id] = s;
+  try { localStorage.setItem(SORT_KEY, JSON.stringify(sortMemory)); } catch { /* storage unavailable */ }
 }
 
 export function DataTable<T>({
@@ -34,7 +49,28 @@ export function DataTable<T>({
   compact?: boolean;
   footer?: ReactNode;
 }) {
-  const [sort, setSort] = useState(defaultSort ?? null);
+  const sortId = `${window.location.hash.replace(/^#\/?/, '').split(/[/?]/)[0]}|${cols.map((c) => c.key).join(',')}`;
+  const [sort, setSortState] = useState<Sort>(() => {
+    const saved = sorts()[sortId];
+    return saved && cols.some((c) => c.key === saved.key) ? saved : defaultSort ?? null;
+  });
+  const setSort = (s: Sort) => { setSortState(s); saveSort(sortId, s); };
+  // Tables that fit the width scroll with the page (header sticks under the top bar);
+  // wider ones scroll inside their own box (header sticks to the box).
+  const wrap = useRef<HTMLDivElement>(null);
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const check = () => {
+      const t = el.querySelector('table');
+      if (t) setFits(t.scrollWidth <= el.clientWidth + 1);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows.length, cols.length]);
   const sorted = useMemo(() => {
     if (!sort) return rows;
     const col = cols.find((c) => c.key === sort.key);
@@ -50,7 +86,7 @@ export function DataTable<T>({
     return out;
   }, [rows, sort, cols]);
   return (
-    <div className="table-wrap">
+    <div className={`table-wrap${fits ? ' fits' : ''}`} ref={wrap}>
       <table className={`data${compact ? ' compact' : ''}`}>
         <thead>
           <tr>

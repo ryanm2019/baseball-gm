@@ -180,7 +180,7 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
     p.lastPitchedDay = league.day;
     p.lastPitchCount = line.pitches;
     if (isStarter) p.lastStartDay = league.day;
-    else p.recentApps = [...(p.recentApps ?? []).filter((d) => d > league.day - 7 && d <= league.day), league.day];
+    else p.recentApps = [...(p.recentApps ?? []).filter((d) => d > league.day - 30 && d <= league.day), league.day];
   }
   // Getting up in the bullpen counts as work too.
   for (const { p, pitches } of out.warmed ?? []) {

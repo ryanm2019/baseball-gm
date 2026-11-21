@@ -7,12 +7,22 @@ import { clamp, normal } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { devMultiplier } from './staff.ts';
 
+// Growth is steadier before 22 and strongest from 22 to 26, so most players
+// peak at 25-28 (a teenage star is rare, not routine).
 function ageRate(a: number): number {
-  if (a <= 20) return 0.042;
-  if (a <= 23) return 0.034;
-  if (a <= 26) return 0.024;
-  if (a <= 29) return 0.01;
+  if (a <= 20) return 0.027;
+  if (a <= 21) return 0.031;
+  if (a <= 23) return 0.038;
+  if (a <= 26) return 0.033;
+  if (a <= 29) return 0.013;
   return 0;
+}
+
+// Hitting tools (and speed) at 72 or better.
+function eliteTools(p: Player, pot = false): number {
+  const keys: (keyof BatSplit)[] = ['babip', 'avoidK', 'gap', 'power', 'eye'];
+  const r = (k: keyof BatSplit) => (pot ? p.pot.bat[k] : 0.7 * p.ratings.vR[k] + 0.3 * p.ratings.vL[k]);
+  return keys.filter((k) => r(k) >= 72).length + ((pot ? p.pot.speed : p.ratings.run.speed) >= 72 ? 1 : 0);
 }
 
 // Decline starts at 32 and accelerates gently; elite players (and hard
@@ -34,7 +44,9 @@ export function developPlayer(league: League, p: Player): void {
   const dec = decline(a, p);
   const tcr = 0.45;
 
-  const move = (cur: number, pot: number) => clamp(cur + Math.max(0, pot - cur) * rate + normal(0, tcr) - dec, 15, 85);
+  // Stacking elite tools gets harder: past three, each extra one slows growth above 70.
+  const stack = isPitcher(p) ? 1 : 1 / (1 + 0.3 * Math.max(0, eliteTools(p) - 3));
+  const move = (cur: number, pot: number) => clamp(cur + Math.max(0, pot - cur) * rate * (cur >= 70 ? stack : 1) + normal(0, tcr) - dec, 15, 85);
 
   const batKeys: (keyof BatSplit)[] = ['babip', 'avoidK', 'gap', 'power', 'eye'];
   if (!isPitcher(p)) {
@@ -90,7 +102,13 @@ export function yearlyPotentialDrift(league: League, p: Player): void {
     p.pot.control = bump(p.ratings.pit.control, p.pot.control);
   } else {
     const keys: (keyof BatSplit)[] = ['babip', 'avoidK', 'gap', 'power', 'eye'];
-    for (const k of keys) p.pot.bat[k] = bump(0.7 * p.ratings.vR[k] + 0.3 * p.ratings.vL[k], p.pot.bat[k]);
+    // Five-tool ceilings usually don't all hold: with five or more elite tools,
+    // the elite ones tend to stall a little each year.
+    const many = eliteTools(p, true) >= 5;
+    for (const k of keys) {
+      const extra = many && p.pot.bat[k] >= 72 ? normal(-0.7, 0.8) : 0;
+      p.pot.bat[k] = clamp(Math.max(0.7 * p.ratings.vR[k] + 0.3 * p.ratings.vL[k], p.pot.bat[k] + d + extra), 15, 85);
+    }
   }
 }
 

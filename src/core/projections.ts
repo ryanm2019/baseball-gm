@@ -134,7 +134,17 @@ export function teamWar(league: League, org: Org): number {
 }
 
 // Projected wins for every club, centered on .500 (projections are humble).
+// Cached until the day, phase or rosters change (the Season Preview and Dashboard call it on every render).
+let standingsCache: { key: string; rows: { org: Org; war: number; w: number; l: number }[] } | null = null;
 export function projectedStandings(league: League): { org: Org; war: number; w: number; l: number }[] {
+  const key = `${league.id}:${league.season}:${league.day}:${league.phase}:${league.nextId.tx}`;
+  if (standingsCache?.key === key) return standingsCache.rows;
+  const rows = computeStandings(league);
+  standingsCache = { key, rows };
+  return rows;
+}
+
+function computeStandings(league: League): { org: Org; war: number; w: number; l: number }[] {
   const games = league.settings.gamesPerSeason.MLB;
   const rows = league.orgs.map((org) => ({ org, war: teamWar(league, org) }));
   const mean = rows.reduce((t, r) => t + r.war, 0) / rows.length;

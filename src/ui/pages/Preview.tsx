@@ -39,7 +39,9 @@ export default function Preview() {
   const players = Object.values(league.players).filter((p) => !p.retired && p.orgId !== null);
   const mlb = players.filter((p) => p.level === 'MLB');
   const topPlayers = [...mlb].sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a)).slice(0, 15);
-  const topProspects = players.filter((p) => p.level !== 'MLB' && !p.prospect && !p.ifa).sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a) || scoutedOvr(league, b) - scoutedOvr(league, a)).slice(0, 15);
+  const topProspects = players.filter((p) => p.level !== 'MLB' && !p.prospect && !p.ifa)
+    .map((p) => ({ p, pot: scoutedPot(league, p), o: scoutedOvr(league, p) }))
+    .sort((a, b) => b.pot - a.pot || b.o - a.o).slice(0, 15).map((x) => x.p);
   const proj = league.orgs.map((o) => ({ o, w: Math.round(expectedWins(league, o.id)), last: league.lastWins?.[o.id] }));
   const withLast = proj.filter((x) => x.last !== undefined);
   const rising = [...withLast].sort((a, b) => b.w - b.last! - (a.w - a.last!)).slice(0, 5);

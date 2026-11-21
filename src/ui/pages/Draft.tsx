@@ -1,6 +1,7 @@
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href, go, useRoute } from '../../router.ts';
-import type { Player } from '../../core/types.ts';
+import type { League, Player } from '../../core/types.ts';
+import { scoutedPot } from '../../core/ratings.ts';
 import { advanceDraft, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
 import { useState } from 'react';
 import type { DraftPick } from '../../core/types.ts';
@@ -11,7 +12,23 @@ import { DataTable, type Column } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { delegated } from '../../core/staff.ts';
 
+// Board filters (kept while you move around the app).
+const boardFilter = { pos: 'all', from: 'all', sign: 'all', q: '', all: false };
+const POS_GROUPS: Record<string, (p: Player) => boolean> = {
+  all: () => true,
+  hitters: (p) => p.pos !== 'SP' && p.pos !== 'RP',
+  C: (p) => p.pos === 'C',
+  IF: (p) => ['1B', '2B', '3B', 'SS'].includes(p.pos),
+  OF: (p) => ['LF', 'CF', 'RF'].includes(p.pos),
+  pitchers: (p) => p.pos === 'SP' || p.pos === 'RP',
+  SP: (p) => p.pos === 'SP',
+  RP: (p) => p.pos === 'RP',
+};
+const fromOf = (p: Player) => (p.prospect?.college ? 'college' : 'hs');
+
 export default function Draft() {
+  const [f, setF] = useState(boardFilter);
+  const setFilter = (x: Partial<typeof boardFilter>) => { Object.assign(boardFilter, x); setF({ ...boardFilter }); };
   const { league } = useStore();
   const route = useRoute();
   if (!league) return null;
@@ -102,7 +119,33 @@ export default function Draft() {
         {d && <button className={`btn btn-sm${tab === 'mine' ? ' active' : ''}`} onClick={() => go('draft', [], { tab: 'mine' })}>My picks</button>}
         {d && <button className={`btn btn-sm${tab === 'all' ? ' active' : ''}`} onClick={() => go('draft', [], { tab: 'all' })}>All picks</button>}
       </div>
-      {tab === 'board' && <DataTable cols={cols} rows={avail} rowKey={(p) => p.id} defaultSort={{ key: 'pot', desc: true }} compact />}
+      {tab === 'board' && (() => {
+        const q = f.q.trim().toLowerCase();
+        const shown = avail.filter((p) => POS_GROUPS[f.pos](p) && (f.from === 'all' || fromOf(p) === f.from)
+          && (f.sign === 'all' || !signabilityLabel(league, p).startsWith('Tough')) && (!q || `${p.first} ${p.last}`.toLowerCase().includes(q)));
+        // Without "show all", list the 150 best by potential (sorting still works within them).
+        const rows = f.all || shown.length <= 150 ? shown : topByPot(league, shown, 150);
+        return (
+          <>
+            <div className="form-row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+              <select value={f.pos} onChange={(e) => setFilter({ pos: e.target.value })}>
+                <option value="all">All positions</option><option value="hitters">Hitters</option><option value="C">C</option><option value="IF">Infield</option><option value="OF">Outfield</option>
+                <option value="pitchers">Pitchers</option><option value="SP">SP</option><option value="RP">RP</option>
+              </select>
+              <select value={f.from} onChange={(e) => setFilter({ from: e.target.value })}>
+                <option value="all">High school + college</option><option value="hs">High school</option><option value="college">College</option>
+              </select>
+              <select value={f.sign} onChange={(e) => setFilter({ sign: e.target.value })}>
+                <option value="all">Any signability</option><option value="signable">Hide tough signs</option>
+              </select>
+              <input placeholder="Name" value={f.q} onChange={(e) => setFilter({ q: e.target.value })} style={{ width: 130 }} />
+              <label className="small"><input type="checkbox" checked={f.all} onChange={(e) => setFilter({ all: e.target.checked })} /> Show all {shown.length}</label>
+              {!f.all && shown.length > 150 && <span className="muted small">Showing the top 150 by potential.</span>}
+            </div>
+            <DataTable cols={cols} rows={rows} rowKey={(p) => p.id} defaultSort={{ key: 'pot', desc: true }} compact />
+          </>
+        );
+      })()}
       {tab === 'mine' && d && <MyPicks picks={myPicks} />}
       {tab === 'all' && d && (
         <table className="data compact">
@@ -198,4 +241,9 @@ function MyPicks({ picks }: { picks: DraftPick[] }) {
       </table>
     </>
   );
+}
+
+// The n best by the board's potential column.
+function topByPot(league: League, ps: Player[], n: number): Player[] {
+  return [...ps].sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a)).slice(0, n);
 }

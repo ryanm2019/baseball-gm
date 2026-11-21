@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
-import { href, useRoute } from '../../router.ts';
+import { go, href, useRoute } from '../../router.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
-import { contact, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
+import { contact, FIELD_POSITIONS, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
@@ -337,7 +337,8 @@ export default function PlayerPage() {
     <>
       <h1>
         {pname(p)} <StatusTags league={league} p={p} />{' '}
-        <a className="btn btn-sm" href={href('compare', [], { pids: String(p.id) })}>Compare</a>
+        <a className="btn btn-sm" href={href('compare', [], { pids: String(p.id) })}>Compare</a>{' '}
+        <RosterNav league={league} p={p} />
       </h1>
       <div className="cards">
         <div className="box">
@@ -511,5 +512,39 @@ export default function PlayerPage() {
         </div>
       ))}
     </>
+  );
+}
+
+// Previous / next player on his team's roster at his level (← and → keys too).
+function rosterOrder(p: Player): number {
+  if (p.pos === 'SP') return 20;
+  if (p.pos === 'RP') return 21;
+  const i = FIELD_POSITIONS.indexOf(p.pos as FieldPos);
+  return i < 0 ? 9 : i;
+}
+function RosterNav({ league, p }: { league: League; p: Player }) {
+  const mates = p.orgId === null || p.retired ? [] : Object.values(league.players)
+    .filter((x) => x.orgId === p.orgId && x.level === p.level && !x.retired)
+    .sort((a, b) => rosterOrder(a) - rosterOrder(b) || a.last.localeCompare(b.last));
+  const i = mates.findIndex((x) => x.id === p.id);
+  const prev = i > 0 ? mates[i - 1] : null;
+  const next = i >= 0 && i < mates.length - 1 ? mates[i + 1] : null;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.ctrlKey || e.metaKey || e.altKey || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+      if (e.key === 'ArrowLeft' && prev) go('player', [prev.id]);
+      if (e.key === 'ArrowRight' && next) go('player', [next.id]);
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [prev, next]);
+  if (mates.length < 2) return null;
+  return (
+    <span className="roster-nav">
+      <a className={`btn btn-sm${prev ? '' : ' disabled'}`} href={prev ? href('player', [prev.id]) : undefined} title="Previous on roster (←)">‹ {prev ? prev.last : ''}</a>{' '}
+      <span className="muted small">{i + 1}/{mates.length}</span>{' '}
+      <a className={`btn btn-sm${next ? '' : ' disabled'}`} href={next ? href('player', [next.id]) : undefined} title="Next on roster (→)">{next ? next.last : ''} ›</a>
+    </span>
   );
 }

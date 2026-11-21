@@ -81,12 +81,6 @@ export function onSeasonEnd(league: League): void {
   seasonAwards(league);
   archiveSeason(league);
   closeBooks(league);
-  // Keep the star pipeline steady: if fewer than ~70 MLB players rate 60+,
-  // young players develop a little faster next year (and slower if more).
-  {
-    const n60 = Object.values(league.players).filter((p) => p.orgId !== null && p.level === 'MLB' && displayOvr(p, ovr(p)) >= 60).length;
-    if (n60 > 0) league.devAdj = clamp((league.devAdj ?? 1) * clamp(Math.pow(66 / n60, 0.8), 0.85, 1.3), 0.85, 2);
-  }
   // Hold the run environment near 4.45 runs per game as talent shifts.
   {
     const rg = seasonCtx(league, league.season).ra9;
@@ -575,6 +569,13 @@ function runRollover(league: League): void {
     }
   }
   recenterRatings(league);
+  // Keep the star pipeline steady: measured after the winter's aging and
+  // recentering (what Opening Day looks like). If fewer than ~66 players on
+  // 40-man rosters rate 60+, young players develop faster next year (slower if more).
+  {
+    const n60 = Object.values(league.players).filter((p) => p.orgId !== null && p.on40 && !p.retired && displayOvr(p, ovr(p)) >= 60).length;
+    if (n60 > 0) league.devAdj = clamp((league.devAdj ?? 1) * clamp(Math.pow(66 / n60, 0.8), 0.85, 1.3), 0.85, 2);
+  }
 
   league.schedule = buildSchedule(league.orgs, s, league.nextId.game);
   league.nextId.game += league.schedule.length;
@@ -699,6 +700,9 @@ export function setOvrBaseline(league: League): void {
 // Keeps saves small: retired players who never reached the majors, and
 // free agents no club will ever sign, are removed.
 export function pruneLeague(league: League): void {
+  // Other clubs' transaction logs keep five seasons; yours is kept in full.
+  const keepFrom = league.season - 5;
+  league.transactions = league.transactions.filter((t) => t.season >= keepFrom || t.orgId === league.userOrgId || t.type === 'Trade');
   for (const p of Object.values(league.players)) {
     const mlb = p.stats.some((s) => s.level === 'MLB');
     if (p.retired && !mlb) delete league.players[p.id];

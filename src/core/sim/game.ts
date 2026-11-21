@@ -53,8 +53,17 @@ export function setOffenseAdj(x: number): void { OFFENSE_ADJ = x; }
 let currentLeague: League = null as unknown as League;
 export function setGameLeague(l: League): void { currentLeague = l; }
 
+// Ratings flatten above 57, and again above 70: an 80 still leads the league,
+// but doesn't produce video-game seasons.
 const SOFT_AT = 57;
-const soft = (r: number): number => (r <= SOFT_AT ? r : SOFT_AT + (r - SOFT_AT) * 0.4);
+const SOFT_2 = 66;
+const soft = (r: number): number => (r <= SOFT_AT ? r : r <= SOFT_2 ? SOFT_AT + (r - SOFT_AT) * 0.4 : SOFT_AT + (SOFT_2 - SOFT_AT) * 0.4 + (r - SOFT_2) * 0.22);
+// How much rating gaps matter at the plate (MLB's talent spread is narrower
+// than the 20-80 scale suggests): hitters 85%, pitchers 90%, around a 50.
+const SPREAD_BAT = 0.85;
+const SPREAD_PIT = 0.9;
+const bat = (r: number): number => 50 + (soft(r) - 50) * SPREAD_BAT;
+const pitR = (r: number): number => 50 + (soft(r) - 50) * SPREAD_PIT;
 
 const oddsAdj = (p: number, mult: number): number => {
   const o = (p / (1 - p)) * mult;
@@ -294,7 +303,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
   // the best teams lose more often than their ratings alone would say.
   // A shared team component matters most: independent player noise averages
   // out over nine hitters, but a whole club having a good or bad day doesn't.
-  const teamDay = new Map<number, number>([[home.orgId, normal(0, 3)], [away.orgId, normal(0, 3)]]);
+  const teamDay = new Map<number, number>([[home.orgId, normal(0, 4)], [away.orgId, normal(0, 4)]]);
   const formMap = new Map<number, number>();
   const form = (p: Player) => {
     let f = formMap.get(p.id);
@@ -461,8 +470,15 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       if (fs.used.has(p.id) || injured.has(p.id)) return false;
       const daysSince = opts.day - p.lastPitchedDay;
       if (daysSince <= 0) return false;
-      if (daysSince === 1 && (p.lastPitchCount > 22 || p.consecutiveDays >= 2 || rand() < 0.45)) return false;
-      if (daysSince === 2 && p.lastPitchCount > 45) return false;
+      if (daysSince === 1 && (p.lastPitchCount > 22 || p.consecutiveDays >= 2 || rand() < 0.5)) return false;
+      // Longer outings need longer rest: 30+ pitches two days, 45+ three, 60+ four.
+      if (daysSince <= 2 && p.lastPitchCount > 30) return false;
+      if (daysSince <= 3 && p.lastPitchCount > 45) return false;
+      if (daysSince <= 4 && p.lastPitchCount > 60) return false;
+      // Over two weeks, no more than six appearances (about a 75-game pace at most).
+      if ((p.recentApps ?? []).filter((d) => d > opts.day - 14 && d < opts.day).length >= 6) return false;
+      // And no more than thirteen in a month (only a few reach 75 games).
+      if ((p.recentApps ?? []).filter((d) => d > opts.day - 30 && d < opts.day).length >= 13) return false;
       if (p.lastStartDay > opts.day - 4) return false;
       // Workload: at most three times in any five days, or four in a week.
       const recent = (p.recentApps ?? []).filter((d) => d > opts.day - 7 && d < opts.day);
@@ -711,12 +727,12 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     // Pitch framing: a good receiver steals strikes; a worn-down one gives them back.
     const cat = fs.catcher;
     const frame = cat ? (defAt(cat, 'C') - 50) * 0.07 - catcherFatigue(currentLeague, cat) : -1.5;
-    const stuff = soft(pr.stuff) - fatigue - tto + sameHand - cold + pm + playUp;
-    const control = soft(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm + frame;
-    const movement = soft(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5 + pm;
+    const stuff = pitR(pr.stuff) - fatigue - tto + sameHand - cold + pm + playUp;
+    const control = pitR(pr.control) - fatigue * 0.8 - tto * 0.5 - cold + settle + pm + frame;
+    const movement = pitR(pr.movement) - fatigue * 0.8 - tto + sameHand * 0.5 - cold * 0.5 + pm;
     const raw = pit.throws === 'L' ? batter.ratings.vL : batter.ratings.vR;
     const bm = moraleBoost(batter) + form(batter) + OFFENSE_ADJ - (batter.pos === 'C' ? catcherFatigue(currentLeague, batter) * 0.5 : 0);
-    const split = { ...raw, avoidK: soft(raw.avoidK) + bm, eye: soft(raw.eye) + bm, power: soft(raw.power) + bm, babip: soft(raw.babip) + bm, gap: soft(raw.gap) + bm };
+    const split = { ...raw, avoidK: bat(raw.avoidK) + bm, eye: bat(raw.eye) + bm, power: bat(raw.power) + bm, babip: bat(raw.babip) + bm, gap: bat(raw.gap) + bm };
     const speed = batter.ratings.run.speed;
 
     be.line.pa++;

@@ -223,8 +223,8 @@ export function ownerCheckin(league: League): string | null {
   const msg = `Owner check-in from ${org.owner.first} ${org.owner.last}: ${lines.join(' ')} (Job security ${org.owner.patience}/100.)`;
   addNews(league, org.id, msg);
   addInbox(league, { from: `Owner ${org.owner.first} ${org.owner.last}`, subject: delta < 0 ? 'Owner check-in: concerns' : 'Owner check-in', kind: 'info', pids: [], text: msg });
-  // Good news goes to the Inbox; the sim only stops when he's unhappy.
-  return delta < 0 ? msg : null;
+  // Check-ins go to the Inbox; the sim only stops when your job is in real danger.
+  return delta < 0 && org.owner.patience <= 20 ? msg : null;
 }
 
 // Owner patience with the user, updated at the end of each season.

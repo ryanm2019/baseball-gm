@@ -85,13 +85,16 @@ p { margin: 0.4rem 0; }
 .content { flex: 1; min-width: 0; padding: 14px 20px 60px; }
 
 /* tables */
-.table-wrap { overflow-x: auto; margin-bottom: 1rem; }
+.table-wrap { overflow: auto; max-height: calc(100vh - 100px); margin-bottom: 1rem; }
+.table-wrap.fits { overflow: visible; max-height: none; }
 table.data { border-collapse: collapse; width: auto; min-width: 100%; font-size: 13px; }
 table.data th, table.data td { padding: 3px 7px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
-table.data th { background: #fff; position: sticky; top: 0; font-weight: 600; border-bottom: 2px solid var(--border); cursor: default; user-select: none; }
+table.data th { background: #fff; position: sticky; top: 46px; z-index: 2; font-weight: 600; border-bottom: 2px solid var(--border); cursor: default; user-select: none; }
 table.data th.sortable { cursor: pointer; }
 table.data th.sorted::after { content: ' ▾'; font-size: 10px; }
 table.data th.sorted.asc::after { content: ' ▴'; }
+/* headers inside their own scroll box stick to the box instead of the page */
+.table-wrap:not(.fits) table.data th, [style*='overflow'] table.data th, .board-list table.data th, .pbp table.data th { top: 0; }
 table.data td.l, table.data th.l { text-align: left; }
 table.data td.c, table.data th.c { text-align: center; }
 table.data tbody tr:nth-child(even) { background: var(--stripe); }
@@ -210,8 +213,11 @@ th.sortable { cursor: pointer; user-select: none; }
   h1 { font-size: 20px; }
   h2 { font-size: 17px; }
   /* tables scroll sideways instead of stretching the page */
-  table.data { display: block; overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
-  table.data th { position: static; }
+  table.data { display: block; overflow: auto; max-width: 100%; max-height: 80vh; -webkit-overflow-scrolling: touch; }
+  table.data th { top: 0; }
+  .table-wrap table.data { display: table; overflow: visible; max-width: none; max-height: none; }
+  .table-wrap.fits table.data th { top: 46px; }
+  .table-wrap:not(.fits) { max-height: 80vh; }
   .cards { gap: 12px; }
   .box { min-width: 0 !important; width: 100%; box-sizing: border-box; }
   .board-box { min-width: 0; }
@@ -236,3 +242,33 @@ th.sortable { cursor: pointer; user-select: none; }
   .menu button { padding: 10px 16px; font-size: 15px; }
 }
 td.grip.picked { background: var(--link); color: #fff; }
+.menu-hint { padding: 6px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); white-space: nowrap; }
+/* player search */
+.top-search { position: relative; }
+.top-search input { width: 210px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
+.search-toggle { display: none; border: 1px solid var(--border); background: #fff; border-radius: 4px; padding: 3px 7px; cursor: pointer; }
+.search-results { position: absolute; right: 0; top: 32px; width: 340px; max-height: 70vh; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); z-index: 60; }
+.search-results button { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: none; cursor: pointer; font-size: 13px; }
+.search-results button:hover, .search-results button.sel { background: #eef4ff; }
+@media (max-width: 760px) {
+  .menu-hint { display: none; }
+  .search-toggle { display: inline-block; }
+  .top-search input { display: none; }
+  .top-search.open { position: static; }
+  .top-search.open input { display: block; position: fixed; top: 50px; left: 8px; right: 8px; width: auto; z-index: 61; font-size: 16px; padding: 8px 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+  .top-search.open .search-results { position: fixed; top: 92px; left: 8px; right: 8px; width: auto; }
+}
+.roster-nav { font-size: 13px; font-weight: 400; white-space: nowrap; }
+.btn.disabled { opacity: 0.4; pointer-events: none; }
+/* trade builder: proposal stays in view while you scroll the lists */
+.trade-bar { position: sticky; bottom: 0; z-index: 15; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: space-between; margin: 8px 0; padding: 8px 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+/* live game on a phone: at-bat controls before the lineups, play buttons pinned to the bottom */
+@media (max-width: 760px) {
+  .live-page { display: flex; flex-direction: column; padding-bottom: 64px; }
+  .live-page > h1 { order: 0; }
+  .live-page > .cards:not(.live-actions) { order: 1; }
+  .live-page > .live-actions { order: 2; }
+  .live-page > .live-row { order: 3; }
+  .live-controls { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; margin: 0; padding: 8px; background: #fff; border-top: 1px solid var(--border); box-shadow: 0 -4px 12px rgba(0,0,0,0.08); justify-content: center; flex-wrap: nowrap; gap: 6px; }
+  .live-controls .btn { padding: 8px 10px; font-size: 13px; }
+}

@@ -44,14 +44,27 @@ function serviceAt(league: League, p: Player, season: number): number {
   return nowFull + (season - (league.season + 1));
 }
 
+// What he projects to be that season. Proven players are priced mostly on what
+// they've done; young players on what they project to become (you pay for the
+// projection, not just today's production).
 function projOvr(league: League, p: Player, season: number): number {
   const age = season - p.born;
-  const now = marketOvr(league, p, ovr(p), 0.5);
+  const now = marketOvr(league, p, ovr(p), 0.75);
   const yrs = season - league.season;
   let o = now;
-  if (age <= 27) o += (potOvr(p) - ovr(p)) * Math.min(1, yrs / 4) * 0.6;
+  if (age <= 27) o += Math.max(0, potOvr(p) - ovr(p)) * Math.min(1, yrs / 3) * 0.6;
   if (age > 31) o -= 1.4 * (age - 31);
   return clamp(o, 25, 80);
+}
+
+// How much of a star he is (or, with projection, projects to be): 0 = average
+// regular, 1 = MVP level. Arbitration pays for production; security discounts
+// and willingness to wait for free agency follow the projection too.
+export function starLevel(league: League, p: Player, projection = true): number {
+  const now = marketOvr(league, p, ovr(p), 0.75);
+  const young = league.season - p.born <= 26;
+  const proj = young && projection ? now + Math.max(0, potOvr(p) - ovr(p)) * 0.6 : now;
+  return clamp((proj - 60) / 12, 0, 1);
 }
 
 // What each covered season is worth to him, before any discount.
@@ -59,6 +72,10 @@ export function extYears(league: League, p: Player, years: number): ExtYear[] {
   const s = league.settings;
   const start = extStart(league, p);
   const out: ExtYear[] = [];
+  // Arbitration pays proven stars a bigger share of their market value.
+  const star = starLevel(league, p, false);
+  const base = [0.25, 0.4, 0.55, 0.68];
+  const top = [0.3, 0.45, 0.6, 0.72];
   for (let i = 0; i < years; i++) {
     const season = start + i;
     const svc = serviceAt(league, p, season);
@@ -69,7 +86,8 @@ export function extYears(league: League, p: Player, years: number): ExtYear[] {
     else if (svc < 6) {
       const n = svc - 2;
       status = (`Arb ${Math.min(4, n)}`) as YearStatus;
-      fair = Math.max(s.minSalary, mv * [0.25, 0.4, 0.55, 0.68][Math.min(3, n - 1)]);
+      const j = Math.min(3, n - 1);
+      fair = Math.max(s.minSalary, mv * (base[j] + (top[j] - base[j]) * star));
     } else { status = 'FA'; fair = mv; }
     out.push({ season, status, fair: roundSalary(fair) });
   }
@@ -84,7 +102,9 @@ export function securityDiscount(league: League, p: Player): { control: number; 
   const pers = (1 - (p.personality.greed - 50) / 100) * (1 + (p.personality.loyalty - 50) / 150);
   const agent = agentFactor(league, p);
   const mood = 1 + clamp(((p.morale?.value ?? 55) - 55) / 100, -0.3, 0.3);
-  return { control: control * pers * agent * mood, fa: fa * pers * agent * mood };
+  // Stars (and players projecting as stars) know they'll get paid: about half the discount.
+  const star = 1 - 0.5 * starLevel(league, p);
+  return { control: control * pers * agent * mood * star, fa: fa * pers * agent * mood * star };
 }
 
 // Hook for agents (set by the agents module): <1 for hard-line agents.
@@ -117,6 +137,9 @@ export function extRefusal(league: League, p: Player, orgId = league.userOrgId):
   if (inSeason && noInSeason) return "He won't negotiate during the season. Try again in the offseason.";
   // A few will only listen once they reach free agency.
   if (svc >= 4 && p.personality.greed > 68 && seededNormal(p.scoutSeed, 0, 5151) + (a?.toMarket ?? 0) > 0.9) return 'He intends to test free agency and has declined to negotiate.';
+  // Stars closer to free agency are likelier to bet on themselves.
+  const star = starLevel(league, p);
+  if (svc >= 3 && star >= 0.5 && seededNormal(p.scoutSeed, 0, 5152) + (a?.toMarket ?? 0) + star * 0.6 + (p.personality.greed - 50) / 60 > 1.3) return 'He intends to test free agency and has declined to negotiate.';
   if (extStart(league, p) - contractBase(league) >= 3) return 'He is already signed for three or more seasons';
   const morale = p.morale?.value;
   if (morale !== undefined && morale < 25) return 'He is too unhappy to talk about staying.';

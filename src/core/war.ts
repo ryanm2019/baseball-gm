@@ -28,12 +28,12 @@ const REPL_PER_PA = 0.031; // ~570 hitter WAR per season across the league
 const REPL_SP = 1.1; // runs per 9 innings worse than average
 const REPL_RP = 0.55;
 
-function wobaNum(b: BatStats): number {
+export function wobaNum(b: BatStats): number {
   const ubb = b.bb;
   const b1 = b.h - b.d - b.t - b.hr;
   return W.bb * ubb + W.hbp * b.hbp + W.b1 * b1 + W.b2 * b.d + W.b3 * b.t + W.hr * b.hr;
 }
-const wobaDen = (b: BatStats) => b.ab + b.bb + b.hbp + b.sf;
+export const wobaDen = (b: BatStats) => b.ab + b.bb + b.hbp + b.sf;
 
 const cache = new Map<string, Ctx>();
 
@@ -184,15 +184,15 @@ export function pitAdvanced(s: PitStats, ctx: Ctx): PitAdv {
 // front office would put on it (sample size). Used for arbitration, free
 // agent asking prices and how other clubs value him in trades.
 export function perfOvr(league: League, p: Player): { est: number; w: number } | null {
-  const done = league.phase === 'offseason' ? league.season : league.season - 1;
-  const seasons = [league.season, done, done - 1].filter((x, i, a) => a.indexOf(x) === i && x <= league.season);
-  const weights = league.phase === 'offseason' ? [0, 1, 0.6] : [1, 0.7, 0.4];
+  // Offseason: the season just finished counts most, then the one before.
+  // In season: this season, then the last two.
+  const pairs: [number, number][] = league.phase === 'offseason'
+    ? [[league.season, 1], [league.season - 1, 0.6]]
+    : [[league.season, 1], [league.season - 1, 0.7], [league.season - 2, 0.4]];
   let war = 0;
   let sample = 0;
   const pit = isPitcher(p);
-  seasons.forEach((season, i) => {
-    const wt = weights[i] ?? 0;
-    if (!wt) return;
+  pairs.forEach(([season, wt]) => {
     for (const e of p.stats) {
       if (e.season !== season || e.level !== 'MLB') continue;
       const n = pit ? e.pit.outs : e.bat.pa;
@@ -207,8 +207,9 @@ export function perfOvr(league: League, p: Player): { est: number; w: number } |
   const rate = (war / sample) * full; // WAR per full season
   const slope = pit ? (p.pos === 'SP' ? 0.21 : 0.075) : 0.22;
   const est = Math.max(25, Math.min(85, 42 + rate / slope));
-  const k = pit ? (p.pos === 'SP' ? 900 : 400) : 900;
-  return { est, w: Math.min(0.6, sample / (sample + k)) };
+  // Two strong full seasons count for about two-thirds; the cap keeps ratings in the picture.
+  const k = pit ? (p.pos === 'SP' ? 800 : 350) : 800;
+  return { est, w: Math.min(0.75, sample / (sample + k)) };
 }
 
 // Overall as the market sees it: ratings blended with recent performance.

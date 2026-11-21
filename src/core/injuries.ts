@@ -12,6 +12,7 @@ import { deptEffect } from './depts.ts';
 import { addNews, pname } from './util.ts';
 import { addInbox } from './morale.ts';
 import { temp } from './storylines.ts';
+import { topProspects } from './sim/lineup.ts';
 
 interface Serious { surgery: number; risk: number; label: string }
 const SERIOUS: Record<string, Serious> = {
@@ -51,9 +52,18 @@ export function onInjury(league: League, p: Player): void {
   const age = league.season - p.born;
   const recommend: 'surgery' | 'rehab' = est > 0.35 || (inj.name === 'UCL sprain' && age < 32 && est > 0.25) ? 'surgery' : 'rehab';
   inj.decision = { estRisk: est, recommend, surgeryDays: s.surgery, label: s.label, decided: false };
-  // A GM decision: it always comes to you (AI clubs follow their doctors).
+  // A GM decision for players who matter (MLB, 40-man, top-30 prospects); the
+  // medical staff makes the call for the rest of the system, and AI clubs follow their doctors.
   if (p.orgId !== league.userOrgId) {
     decide(league, p, recommend);
+    return;
+  }
+  if (p.level !== 'MLB' && !p.on40 && !topProspects(league, p.orgId).has(p.id)) {
+    decide(league, p, recommend);
+    addInbox(league, {
+      from: 'Medical staff', subject: `${pname(p)}: ${recommend === 'surgery' ? s.label : 'rehab'}`, kind: 'info', pids: [p.id],
+      text: `${pname(p)} (${p.level}) has a ${inj.name}. We went with ${recommend === 'surgery' ? s.label : 'rehab'} (re-injury risk with rehab about ${Math.round(est * 100)}%). He's out about ${p.injury?.daysLeft ?? inj.daysLeft} days.`,
+    });
     return;
   }
   addInbox(league, {

@@ -23,8 +23,12 @@ export default function Stats() {
   const level = (route.query.level ?? 'MLB') as Level;
   const type = route.query.type ?? 'bat';
   const scope = route.query.scope ?? 'all';
-  const season = Number(route.query.season ?? league.season);
-  const games = Math.max(...Object.values(league.standings[level]).map((r) => r.w + r.l), 1);
+  const played = Math.max(...Object.values(league.standings[level]).map((r) => r.w + r.l), 0);
+  // Before this season's first game, show last season instead of an empty table.
+  const preGames = !route.query.season && played === 0 && Object.values(league.players).some((p) => p.stats.some((s) => s.season === league.season - 1 && s.level === level));
+  const season = Number(route.query.season ?? (preGames ? league.season - 1 : league.season));
+  // Qualification uses games played this season, or a full season for past years.
+  const games = season < league.season ? league.settings.gamesPerSeason[level] : Math.max(played, 1);
 
   const rows: Row[] = [];
   for (const p of Object.values(league.players)) {
@@ -129,6 +133,8 @@ export default function Stats() {
           </select>
         )}
       </div>
+      {preGames && season < league.season && <p className="muted small">No games yet in {league.season}. Showing {season}.</p>}
+      {season === league.season && played === 0 && !preGames && <p className="muted">No games played yet this season. Stats appear after Opening Day.</p>}
       {type === 'bat' ? (
         <DataTable cols={batCols} rows={shown} rowKey={(r) => `${r.p.id}-${r.orgId}`} defaultSort={{ key: 'ops', desc: true }} rowClass={(r) => (r.orgId === league.userOrgId ? 'user' : undefined)} compact />
       ) : (

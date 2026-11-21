@@ -135,7 +135,7 @@ export default function Live() {
   const recent = [...s.log].reverse().slice(0, 40);
 
   return (
-    <>
+    <div className="live-page">
       <h1>
         {league.orgs[s.sides[0].orgId].region} {league.orgs[s.sides[0].orgId].name} at {league.orgs[s.sides[1].orgId].region} {league.orgs[s.sides[1].orgId].name}
         {live.game.playoff && <span className="muted small"> ({live.game.playoff.round} game {live.game.playoff.game})</span>}
@@ -147,7 +147,7 @@ export default function Live() {
             <b>{s.over ? 'Final' : `${s.half === 0 ? 'Top' : 'Bottom'} ${ord(s.inning)}`}</b>
           </div>
           {!s.over && <Diamond bases={s.bases} outs={s.outs} />}
-          <div className="form-row">
+          <div className="form-row live-controls">
             {s.over ? (
               <button className="btn btn-primary" onClick={async () => { await finishLive(); go('box', [live.game.id]); }}>Finish game</button>
             ) : (
@@ -206,7 +206,7 @@ export default function Live() {
 
       </div>
       {!s.over && (
-        <div className="cards">
+        <div className="cards live-actions">
           <div className="box">
             <h3 style={{ marginTop: 0 }}>{batting ? 'Your at-bat' : 'In the field'}</h3>
             {batting ? (
@@ -287,7 +287,7 @@ export default function Live() {
         </div>
       )}
 
-    </>
+    </div>
   );
 }
 

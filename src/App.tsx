@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore, sim, requestStop, setMessage, startLive } from './store.ts';
+import { useStore, sim, requestStop, setMessage, startLive, changed } from './store.ts';
+import { advanceDraft } from './core/draft.ts';
+import TopSearch from './ui/TopSearch.tsx';
 import { unreadInbox } from './core/morale.ts';
 import type { ReactNode } from 'react';
 import { useRoute, href, go } from './router.ts';
@@ -64,6 +66,25 @@ const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
 ];
 
+// Page names in stop messages become links, with a button to jump straight there.
+const MESSAGE_PAGES: [string, string][] = [
+  ['Inbox page', 'inbox'], ['Draft page', 'draft'], ['Playoff Roster page', 'playoff-roster'], ['Offseason page', 'offseason'],
+  ['International page', 'international'], ['Tenders & Arbitration page', 'tenders'], ['Trading Block page', 'trading-block'],
+  ['Staff page', 'staff'], ['Rule 5 page', 'rule5'], ['Trade Offers page', 'trade-offers'], ['Free Agents page', 'free-agents'],
+];
+function MessageText({ text }: { text: string }) {
+  const hit = MESSAGE_PAGES.find(([name]) => text.includes(name));
+  if (!hit) return <>{text}</>;
+  const [name, page] = hit;
+  const i = text.indexOf(name);
+  return (
+    <>
+      {text.slice(0, i)}<a href={href(page)}>{name}</a>{text.slice(i + name.length)}{' '}
+      <button className="btn btn-sm btn-primary" onClick={() => go(page)}>Go there</button>
+    </>
+  );
+}
+
 function PlayMenu({ league, simming, inLive }: { league: League; simming: boolean; inLive: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -88,7 +109,10 @@ function PlayMenu({ league, simming, inLive }: { league: League; simming: boolea
   } else if (league.phase === 'regular') {
     if (hasUserGameToday(league)) items.push(playLive);
     const draftLive = league.day === league.settings.draftDay && (!league.draft || league.draft.season !== league.season || !league.draft.done);
-    if (draftLive) items.push({ label: 'Go to the draft', run: () => go('draft') });
+    if (draftLive) {
+      items.push({ label: 'Go to the draft', run: () => go('draft') });
+      if (league.draft?.season === league.season) items.push({ label: 'Auto-draft the rest (scouting director picks)', run: () => { while (league.draft && !league.draft.done) advanceDraft(league, true); setMessage(null); changed(); } });
+    }
     items.push({ label: 'One day', run: () => sim(1, 'Playing') });
     items.push({ label: 'One week', run: () => sim(7, 'Playing') });
     items.push({ label: 'One month', run: () => sim(30, 'Playing') });
@@ -131,6 +155,7 @@ function PlayMenu({ league, simming, inLive }: { league: League; simming: boolea
               {it.label}
             </button>
           ))}
+          <div className="menu-hint">Keys: D day · W week · M month · / find a player</div>
         </div>
       )}
     </div>
@@ -145,6 +170,27 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const routeKey = `${route.page}/${route.args.join('/')}`;
   useEffect(() => setNavOpen(false), [routeKey]);
+  // Browser tab title follows the page (player pages show his name).
+  useEffect(() => {
+    const p = route.page === 'player' && league ? league.players[Number(route.args[0])] : undefined;
+    const label = p ? `${p.first} ${p.last}` : SIDEBAR.flatMap((g) => g.links).find(([pg]) => pg === route.page)?.[1] ?? (route.page === 'live' ? 'Live game' : '');
+    document.title = label ? `${label} · Baseball GM` : 'Baseball GM';
+  }, [routeKey, league]);
+  // Keyboard shortcuts: D = one day, W = one week, M = one month (/ = player search).
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.ctrlKey || e.metaKey || e.altKey || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable) return;
+      const l = st.league;
+      if (!l || st.simming || st.live || st.confirm) return;
+      const days = { d: 1, w: 7, m: 30 }[e.key.toLowerCase()];
+      if (!days || (l.phase === 'playoffs' && days > 1)) return;
+      e.preventDefault();
+      void sim(days, l.phase === 'regular' ? 'Playing' : l.phase === 'playoffs' ? 'Playoffs' : 'Offseason');
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [st.league, st.simming, st.live, st.confirm]);
 
   const dialog = st.confirm && (
     <div className="modal-back">
@@ -237,6 +283,7 @@ export default function App() {
         </div>
         {st.simming && <span className="progress">{st.progress}</span>}
         <span className="spacer" />
+        <TopSearch league={league} />
         <span className="toplinks">
           <a href={href('roster')}>Roster</a>
           <a href={href('farm')}>Farm</a>
@@ -262,7 +309,7 @@ export default function App() {
         <main className="content">
           {st.message && (
             <div className="alert alert-warn">
-              {st.message}{' '}
+              <MessageText text={st.message} />{' '}
               <button className="btn btn-sm" onClick={() => setMessage(null)}>
                 Dismiss
               </button>

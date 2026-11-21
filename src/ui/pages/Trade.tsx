@@ -182,6 +182,15 @@ export default function Trade() {
           <Extras league={league} orgId={other.id} assets={st.give[1]} set={(a) => { st.give[1] = a; refresh(); }} />
         </div>
       </div>
+      {!empty && (
+        <div className="trade-bar">
+          <div className="small"><b>You send</b> {summary(league, st.give[0])} · <b>You get</b> {summary(league, st.give[1])}{!err && <> · <span className="muted">{other.abbrev}: {opinion}</span></>}</div>
+          <div className="form-row" style={{ margin: 0 }}>
+            <button className="btn btn-sm btn-primary" disabled={!!err} onClick={() => void propose()}>Propose trade</button>
+            <button className="btn btn-sm" disabled={!!window} onClick={balance}>What would make this work?</button>
+          </div>
+        </div>
+      )}
       <h2>Summary</h2>
       <div className="kv" style={{ maxWidth: 900 }}>
         <div>You send</div><div>{summary(league, st.give[0])}</div>
