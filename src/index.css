@@ -272,3 +272,5 @@ td.grip.picked { background: var(--link); color: #fff; }
   .live-controls { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; margin: 0; padding: 8px; background: #fff; border-top: 1px solid var(--border); box-shadow: 0 -4px 12px rgba(0,0,0,0.08); justify-content: center; flex-wrap: nowrap; gap: 6px; }
   .live-controls .btn { padding: 8px 10px; font-size: 13px; }
 }
+/* roster markers explain themselves on hover */
+.flag { cursor: help; border-bottom: 1px dotted currentColor; margin-right: 3px; }

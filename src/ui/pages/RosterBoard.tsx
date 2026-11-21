@@ -156,12 +156,13 @@ export default function RosterBoard() {
     changed();
   };
 
+  // Roster markers; hover (or tap) one for what it means.
   const flags = (p: Player) => {
-    const out: string[] = [];
-    if (p.on40 && serviceYears(p.mlServiceDays, s) >= s.optionConsentServiceYears) out.push('^');
-    if (p.on40 && optionsLeft(league, p) === 0) out.push('°');
-    if (p.rule5 && p.rule5.season === league.season) out.push('R5');
-    return out.join(' ');
+    const out: [string, string][] = [];
+    if (p.on40 && serviceYears(p.mlServiceDays, s) >= s.optionConsentServiceYears) out.push(['^', 'Can refuse an option to the minors (5+ years of MLB service)']);
+    if (p.on40 && optionsLeft(league, p) === 0) out.push(['°', 'Out of options: must clear waivers to be sent down']);
+    if (p.rule5 && p.rule5.season === league.season) out.push(['R5', 'Rule 5 pick: must stay on the MLB active roster all season or be offered back']);
+    return out.map(([m, t]) => <span key={m} className="flag" title={t}>{m}</span>);
   };
 
   const season = statSeason(league);
@@ -229,7 +230,7 @@ export default function RosterBoard() {
       <p className="muted small">
         Drag a player from one box to another to make the move: onto the active roster to recall, select or activate him; onto a minor league box to option or assign; onto the 40-man box to add him; onto an injured list; onto Designated to DFA him (or send a DFA'd player to outright waivers); or onto the release bar. Pick what each box shows from its drop-down. Tap a player to see his ratings; on a phone, tap him and then "Move here" on the box you want.
       </p>
-      <p className="muted small">Switch a box to Hitting or Pitching to compare this season's stats at each player's level (wRC+ and FIP are relative to that level); click a column to sort. ^ can refuse an option (5+ years of service) · ° out of options · R5 Rule 5 pick (must stay active) · Opt = option years left · Svc = MLB service years</p>
+      <p className="muted small">Switch a box to Hitting or Pitching to compare this season's stats at each player's level (wRC+ and FIP are relative to that level); click a column to sort. <span className="flag" title="Can refuse an option to the minors (5+ years of MLB service)">^</span> can refuse an option (5+ years of service) · <span className="flag" title="Out of options: must clear waivers to be sent down">°</span> out of options · <span className="flag" title="Rule 5 pick: must stay on the MLB active roster all season or be offered back">R5</span> Rule 5 pick (must stay active) · <span className="flag" title="Option years left">Opt</span> = option years left · <span className="flag" title="MLB service years (years.days)">Svc</span> = MLB service years</p>
       <div className="board">
         {boxes.map((b, i) => {
           const all = boxPlayers(league, b);
