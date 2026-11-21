@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
+import { crushBoost } from '../../core/development.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, FIELD_POSITIONS, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
@@ -16,7 +17,7 @@ import { orgById, pname } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
 import { ActionSelect, LinkedText, OrgLink, Rating, StatusTags } from '../components.tsx';
 import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
-import { batAdvanced, entryWar, pitAdvanced, seasonCtx } from '../../core/war.ts';
+import { batAdvanced, entryWar, levelPlus, minorPerfAdj, pitAdvanced, seasonCtx } from '../../core/war.ts';
 import { scoutArea } from '../../core/ratings.ts';
 import { playerTradeBlock } from '../../core/trade.ts';
 
@@ -427,6 +428,25 @@ export default function PlayerPage() {
                 </div>
               </>
             )}
+            {p.level && p.level !== 'MLB' && !p.retired && (() => {
+              const yr = league.phase === 'preseason' ? league.season - 1 : league.season;
+              const r = levelPlus(league, p, yr, p.level);
+              if (!r) return null;
+              const pit = isPitcher(p);
+              const boost = yr === league.season && crushBoost(league, p) > 1;
+              const adj = minorPerfAdj(league, p);
+              return (
+                <>
+                  <div>Production</div>
+                  <div className="small">
+                    {pit ? <>FIP- <b>{200 - r.plus}</b></> : <>wRC+ <b>{r.plus}</b></>} at {p.level} in {yr} <span className="muted">({r.n} {pit ? 'batters faced' : 'PA'}; 100 = level average{pit ? ', lower is better' : ''})</span>
+                    {boost && <> · <span className="pos">dominating the level: developing faster</span></>}
+                    {adj >= 1.5 && <> · <span className="pos">clubs are taking notice</span></>}
+                    {adj <= -1.5 && <> · <span className="neg">the numbers are raising doubts</span></>}
+                  </div>
+                </>
+              );
+            })()}
             {p.arb && (
               <>
                 <div>Arbitration</div>

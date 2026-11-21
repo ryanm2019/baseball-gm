@@ -5,7 +5,9 @@
 // League constants are derived from each season's own MLB totals.
 import type { BatStats, FieldPos, League, Level, PitStats, Player, StatEntry } from './types.ts';
 import { defAt, isPitcher } from './ratings.ts';
-import { emptyBat, emptyPit } from './util.ts';
+import { emptyBat, emptyPit, sumBat, sumPit } from './util.ts';
+import { MINOR_LEVELS } from './types.ts';
+import { clamp } from './random.ts';
 
 export interface Ctx {
   woba: number;
@@ -217,4 +219,42 @@ export function marketOvr(league: League, p: Player, o: number, maxW = 1): numbe
   const perf = perfOvr(league, p);
   if (!perf) return o;
   return o + Math.min(maxW, perf.w) * (perf.est - o);
+}
+
+// Production at one level on a "plus" scale (100 = that level's average, higher
+// is better): wRC+ for hitters, 200 - FIP- for pitchers. n = PA or batters faced.
+export function levelPlus(league: League, p: Player, season: number, level: Level): { plus: number; n: number } | null {
+  const es = p.stats.filter((s) => s.season === season && s.level === level);
+  if (!es.length) return null;
+  const ctx = seasonCtx(league, season, level);
+  if (isPitcher(p)) {
+    const s = sumPit(es);
+    return s.outs ? { plus: 200 - pitAdvanced(s, ctx).fipMinus, n: s.bf } : null;
+  }
+  const b = sumBat(es);
+  return b.pa ? { plus: batAdvanced(b, ctx).wrcPlus, n: b.pa } : null;
+}
+
+// Typical age at each minor-league level; younger and producing is the best sign.
+const LEVEL_AGE: Record<string, number> = { AAA: 26.5, AA: 24, 'A+': 22.5, A: 21.5, CPX: 20, DSL: 18 };
+
+// What front offices read from a minor leaguer's numbers (this season and last,
+// weighted by sample), in rating points: roughly -4 to +5.
+export function minorPerfAdj(league: League, p: Player): number {
+  if (!p.level || p.level === 'MLB') return 0;
+  const cur = league.phase === 'preseason' ? league.season - 1 : league.season;
+  let num = 0;
+  let den = 0;
+  for (const [season, w] of [[cur, 1], [cur - 1, 0.5]] as const) {
+    for (const level of MINOR_LEVELS) {
+      const r = levelPlus(league, p, season, level);
+      if (!r) continue;
+      const young = clamp(LEVEL_AGE[level] - (season - p.born), -2, 3);
+      const score = (r.plus - 100) / 12 + young * (r.plus >= 95 ? 0.5 : 0.15);
+      num += score * r.n * w;
+      den += r.n * w;
+    }
+  }
+  if (!den) return 0;
+  return clamp((num / den) * (den / (den + 400)), -4, 5);
 }

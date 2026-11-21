@@ -7,7 +7,7 @@ import { isPitcher, ovr, perceivedOvr, potOvr, scoutFactor } from './ratings.ts'
 import { marketValue, serviceYears } from './contracts.ts';
 import { agmEvalSd, staffOf } from './staff.ts';
 import { orgPlayers } from './util.ts';
-import { marketOvr } from './war.ts';
+import { marketOvr, minorPerfAdj } from './war.ts';
 
 export const DOLLARS_PER_WAR = 8e6;
 const DISCOUNT = 0.08;
@@ -33,8 +33,10 @@ function evalOvr(league: League, org: Org, p: Player): number {
     const fd = staffOf(league, org, 'AGM') ?? staffOf(league, org, 'FD');
     return (fd ? Math.max(0, ((80 - fd.evaluation) / 60) * 4) : 4) * scoutFactor(league, org, area);
   })();
-  // Front offices lean on MLB stats too, not just scouting reports.
-  return marketOvr(league, p, perceivedOvr(league, p, sd), 0.35);
+  // Front offices weigh results as well as scouting reports: MLB stats (a breakout
+  // year moves the needle; ratings still carry at least 45%) and, for prospects,
+  // minor-league production relative to the level and his age.
+  return marketOvr(league, p, perceivedOvr(league, p, sd), 0.55) + minorPerfAdj(league, p);
 }
 
 export function seasonFraction(league: League): number {

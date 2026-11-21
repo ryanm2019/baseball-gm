@@ -6,6 +6,7 @@ import { moraleDev } from './morale.ts';
 import { clamp, normal } from './random.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { devMultiplier } from './staff.ts';
+import { levelPlus } from './war.ts';
 
 // Growth is steadier before 22 and strongest from 22 to 26, so most players
 // peak at 25-28 (a teenage star is rare, not routine).
@@ -34,13 +35,22 @@ function decline(a: number, p: Player): number {
   return (a - 31) * 0.065 * elite * work;
 }
 
+// A minor leaguer dominating his level (130+ on the plus scale over 100+ PA or
+// batters faced) develops up to ~20% faster while he keeps it up.
+export function crushBoost(league: League, p: Player, age = league.season - p.born): number {
+  if (!p.level || p.level === 'MLB' || age > 27) return 1;
+  const r = levelPlus(league, p, league.season, p.level);
+  if (!r || r.n < 100 || r.plus < 130) return 1;
+  return 1 + Math.min(0.2, (r.plus - 125) / 250);
+}
+
 export function developPlayer(league: League, p: Player): void {
   const a = league.season - p.born;
   const we = 0.7 + (0.6 * (p.personality.workEthic - 20)) / 60;
   const fdm = devMultiplier(league, p);
   const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
   const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
-  const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * (a >= 22 && a <= 28 ? (league.devAdj ?? 1) : 1);
+  const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * crushBoost(league, p, a) * (a >= 22 && a <= 28 ? (league.devAdj ?? 1) : 1);
   const dec = decline(a, p);
   const tcr = 0.45;
 
