@@ -10,12 +10,15 @@ import { battingOrder, buildLineup } from '../../core/sim/lineup.ts';
 import { LevelTabs } from '../components.tsx';
 import { PlayerCard } from '../PlayerCard.tsx';
 import { posLabel } from '../../core/rules.ts';
+import { depthSeason, HIT_HEAD, HitCells, PIT_HEAD, PitCells, StarterLine, type StatWhen } from '../depthStats.tsx';
 
 const POSITIONS: Pos[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 
 // The auto lineup includes random rest days, so build it once per roster state
 // rather than on every redraw (otherwise players shuffle while you drag).
 let autoCache: { key: string; d: DepthChart } | null = null;
+// Which season's stats the chart shows (kept while you move around).
+let statWhen: StatWhen = 'this';
 
 export default function Depth() {
   const { league, version } = useStore();
@@ -26,6 +29,7 @@ export default function Depth() {
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [vs, setVs] = useState<'R' | 'L'>('R');
+  const [when, setWhen] = useState<StatWhen>(statWhen);
   // Clicking a row shows the player's ratings; clicks on the dropdowns don't count.
   const pick = (pid: number) => (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('select, option, a, button')) return;
@@ -34,6 +38,7 @@ export default function Depth() {
   if (!league) return null;
   const org = league.orgs[league.userOrgId];
   const roster = activeAt(league, org.id, level).filter((p) => !p.injury);
+  const season = depthSeason(league, when);
   const healthyHitters = roster.filter((p) => !isPitcher(p));
   const pitchers = roster.filter(isPitcher);
   // Everyone you can write into the lineup: active hitters, plus injured or IL
@@ -165,6 +170,14 @@ export default function Depth() {
       <p className="muted small">
         Edit any time. Your manual lineup is used every day; if someone in it is hurt or off the active roster, only his spot is filled by the best available bench player at that position, and he goes back in when he returns. Auto lineups platoon against the opposing starter and rest regulars now and then.
       </p>
+      <div className="form-row small">
+        Stats:{' '}
+        <select value={when} onChange={(e) => { statWhen = e.target.value as StatWhen; setWhen(statWhen); }}>
+          <option value="this">{depthSeason(league, 'this')} at {level}</option>
+          <option value="last">{depthSeason(league, 'last')} at {level}</option>
+        </select>{' '}
+        <span className="muted">Hover a column header for what it means.</span>
+      </div>
       <div className="cards">
         <div className="box">
           <h3>Lineup</h3>
@@ -186,7 +199,7 @@ export default function Depth() {
           </button>
           <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. On a phone, tap the ⋮⋮ handle on a player, then tap the ⋮⋮ on the spot you want. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
           <table className="data compact">
-            <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th></tr></thead>
+            <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th>{HIT_HEAD(vs)}</tr></thead>
             <tbody>
               {cur.map((s, i) => {
                 const p = league.players[s.pid];
@@ -224,6 +237,7 @@ export default function Depth() {
                       </select>
                     </td>
                     <td>{def}</td>
+                    {p ? <HitCells league={league} p={p} level={level} season={season} vs={vs} /> : <td colSpan={5} />}
                   </tr>
                 );
               })}
@@ -232,6 +246,7 @@ export default function Depth() {
           <h3>Bench</h3>
           {bench.length === 0 ? <p className="muted small">No other hitters.</p> : (
             <table className="data compact">
+              <thead><tr><th /><th className="l">Player</th>{HIT_HEAD(vs)}</tr></thead>
               <tbody>
                 {bench.map((h) => (
                   <tr
@@ -250,6 +265,7 @@ export default function Depth() {
                       ⋮⋮
                     </td>
                     <td className="l">{name(h)} {outReason(h) && <span className="tag tag-il">{outReason(h)}</span>}</td>
+                    <HitCells league={league} p={h} level={level} season={season} vs={vs} />
                   </tr>
                 ))}
               </tbody>
@@ -272,6 +288,7 @@ export default function Depth() {
                 )}{' '}
                 {!bp && <button className="btn btn-sm" onClick={() => setSel(pid)}>Ratings</button>}{' '}
                 <label className="small"><input type="checkbox" checked={bp} onChange={(e) => update((x) => { const s = new Set(x.bullpenDays ?? []); if (e.target.checked) s.add(i); else s.delete(i); x.bullpenDays = [...s].sort(); })} /> Bullpen game</label>
+                {!bp && league.players[pid] && <div style={{ flexBasis: '100%', paddingLeft: 18 }}><StarterLine league={league} p={league.players[pid]} level={level} season={season} /></div>}
               </div>
             );
           })}
@@ -286,7 +303,7 @@ export default function Depth() {
           <h3>Bullpen roles</h3>
           <p className="muted small">The manager goes to each role by game situation. One closer, up to two setup men; setup 1 gets the 8th, setup 2 the 7th.</p>
           <table className="data compact">
-            <thead><tr><th className="l">Reliever</th><th className="l">Role</th><th /></tr></thead>
+            <thead><tr><th className="l">Reliever</th><th className="l">Role</th>{PIT_HEAD}<th /></tr></thead>
             <tbody>
               {relievers.map((p) => (
                 <tr key={p.id} className={shown?.id === p.id ? 'selected' : ''}>
@@ -296,6 +313,7 @@ export default function Depth() {
                       {PEN_ROLES.map((r) => <option key={r.key} value={r.key}>{r.key === 'SU' && d.setup.includes(p.id) ? `Setup ${d.setup.indexOf(p.id) + 1}` : r.label}</option>)}
                     </select>
                   </td>
+                  <PitCells league={league} p={p} level={level} season={season} />
                   <td><button className="btn btn-sm" onClick={() => setSel(p.id)}>Ratings</button></td>
                 </tr>
               ))}
