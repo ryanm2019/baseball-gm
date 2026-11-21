@@ -1,4 +1,5 @@
 import { useStore, changed, setLeague, setMessage } from '../../store.ts';
+import { NumInput } from '../components.tsx';
 import { askConfirm } from '../../store.ts';
 import type { Level, Settings } from '../../core/types.ts';
 import { LEVELS } from '../../core/types.ts';
@@ -110,7 +111,7 @@ export default function SettingsPage() {
           {['Easy', 'Normal', 'Hard', 'Insane'].map((x) => <option key={x}>{x}</option>)}
         </select>
         AI-to-AI trade frequency{' '}
-        <input type="number" step="0.25" min={0} max={3} value={s.aiTradeFactor} onChange={(e) => { s.aiTradeFactor = Math.max(0, Number(e.target.value)); changed(); }} />
+        <NumInput  step="0.25" min={0} max={3} value={s.aiTradeFactor} onChange={(n) => { s.aiTradeFactor = Math.max(0, n); changed(); }} />
         <span className="muted small">0 = off, 1 = realistic (busiest before the deadline and over the winter)</span>
       </div>
       <div className="form-row">
@@ -132,7 +133,7 @@ export default function SettingsPage() {
               {g.fields.map(([k, label, note]) => (
                 <tr key={k}>
                   <td className="l">{label}{note && <span className="muted small"> ({note})</span>}</td>
-                  <td><input type="number" value={s[k] as number} onChange={(e) => setNum(k, e.target.value)} /></td>
+                  <td><NumInput  value={s[k] as number} onChange={(_n, raw) => setNum(k, raw)} /></td>
                 </tr>
               ))}
             </tbody>
@@ -143,13 +144,13 @@ export default function SettingsPage() {
       <div className="form-row">
         Base rate by consecutive payer year:
         {s.cbtBaseRates.map((r, i) => (
-          <input key={i} type="number" step="0.01" value={r} onChange={(e) => { s.cbtBaseRates[i] = Number(e.target.value); changed(); }} />
+          <NumInput key={i}  step="0.01" value={r} onChange={(n) => { s.cbtBaseRates[i] = n; changed(); }} />
         ))}
       </div>
       <div className="form-row">
         Surcharges for tiers 2, 3, 4:
         {s.cbtSurcharges.map((r, i) => (
-          <input key={i} type="number" step="0.005" value={r} onChange={(e) => { s.cbtSurcharges[i] = Number(e.target.value); changed(); }} />
+          <NumInput key={i}  step="0.005" value={r} onChange={(n) => { s.cbtSurcharges[i] = n; changed(); }} />
         ))}
       </div>
       <h2>Minor league active roster limits</h2>
@@ -158,7 +159,7 @@ export default function SettingsPage() {
           {LEVELS.filter((l) => l !== 'MLB').map((l: Level) => (
             <tr key={l}>
               <td className="l">{l}</td>
-              <td><input type="number" value={s.milbActiveMax[l]} onChange={(e) => { s.milbActiveMax[l] = Number(e.target.value); changed(); }} /></td>
+              <td><NumInput  value={s.milbActiveMax[l]} onChange={(n) => { s.milbActiveMax[l] = n; changed(); }} /></td>
             </tr>
           ))}
         </tbody>

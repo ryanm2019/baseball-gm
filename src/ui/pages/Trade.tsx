@@ -8,7 +8,7 @@ import { fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
 import { fortyMan, orgPlayers } from '../../core/util.ts';
-import { DataTable, OrgSelect, StatusTags, type Column } from '../components.tsx';
+import { DataTable, OrgSelect, StatusTags, type Column, NumInput } from '../components.tsx';
 import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
 import { seasonFraction } from '../../core/value.ts';
 
@@ -73,10 +73,10 @@ function Extras({ league, orgId, assets, set }: { league: League; orgId: number;
   const poolLeft = (league.intl.pools[orgId] ?? 0) - (league.intl.spent[orgId] ?? 0);
   return (
     <div className="form-row">
-      Cash $<input type="number" step="0.25" min={0} style={{ width: 70 }} value={assets.cash / 1e6} onChange={(e) => set({ ...assets, cash: Math.max(0, Math.round(Number(e.target.value) * 4) / 4) * 1e6 })} />M
+      Cash $<NumInput  step="0.25" min={0} style={{ width: 70 }} value={assets.cash / 1e6} onChange={(n) => set({ ...assets, cash: Math.max(0, Math.round(n * 4) / 4) * 1e6 })} />M
       {league.intl.open && (
         <>
-          {' '}· Intl pool $<input type="number" step="0.25" min={0} style={{ width: 70 }} value={assets.pool / 1e6} onChange={(e) => set({ ...assets, pool: Math.max(0, Math.round(Number(e.target.value) * 4) / 4) * 1e6 })} />M <span className="muted small">({fmtMoney(poolLeft)} left)</span>
+          {' '}· Intl pool $<NumInput  step="0.25" min={0} style={{ width: 70 }} value={assets.pool / 1e6} onChange={(n) => set({ ...assets, pool: Math.max(0, Math.round(n * 4) / 4) * 1e6 })} />M <span className="muted small">({fmtMoney(poolLeft)} left)</span>
         </>
       )}
       {picks.map((c) => (

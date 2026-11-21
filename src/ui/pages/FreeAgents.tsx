@@ -6,7 +6,7 @@ import { MINOR_LEVELS } from '../../core/types.ts';
 import { signFreeAgent, posLabel } from '../../core/rules.ts';
 import { fmtMoney, serviceLabel } from '../../core/contracts.ts';
 import { interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
-import { DataTable, type Column } from '../components.tsx';
+import { DataTable, type Column, NumInput } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
 import { fortyMan } from '../../core/util.ts';
@@ -46,7 +46,7 @@ function OfferCell({ p }: { p: Player }) {
       <select value={years} onChange={(e) => setYears(Number(e.target.value))}>
         {Array.from({ length: 10 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1} yr</option>)}
       </select>{' '}
-      $<input type="number" step="0.25" style={{ width: 70 }} value={aav} onChange={(e) => setAav(e.target.value)} />M{' '}
+      $<NumInput  step="0.25" style={{ width: 70 }} value={aav} onChange={(_n, raw) => setAav(raw)} />M{' '}
       <button
         className="btn btn-sm"
         onClick={() => {

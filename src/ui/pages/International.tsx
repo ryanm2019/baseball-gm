@@ -6,7 +6,7 @@ import { askingRange, canOfferIfa, ifaBidders, ifaPhase, ifaWillingness, isIfa, 
 import { willingnessBand } from '../../core/draft.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
-import { DataTable, type Column } from '../components.tsx';
+import { DataTable, type Column, NumInput } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { delegated } from '../../core/staff.ts';
 
@@ -99,7 +99,7 @@ export default function International() {
               {last !== undefined && <span className="muted">Your last offer: {fmtMoney(p.ifa!.bids?.[org.id] ?? 0)} ({league.day - last} days ago).</span>}
             </p>
             <div className="form-row">
-              <input type="number" step={0.05} min={0} style={{ width: 80 }} value={(a / 1e6).toFixed(2)} onChange={(e) => setAmt({ ...amt, [p.id]: Math.max(10_000, Number(e.target.value) * 1e6) })} /> $M{' '}
+              <NumInput  step={0.05} min={0} style={{ width: 80 }} value={(a / 1e6).toFixed(2)} onChange={(n) => setAmt({ ...amt, [p.id]: Math.max(10_000, n * 1e6) })} /> $M{' '}
               <input type="range" min={10_000} max={Math.max(r.hi * 1.6, 50_000)} step={10_000} value={a} onChange={(e) => setAmt({ ...amt, [p.id]: Number(e.target.value) })} style={{ width: 200 }} />{' '}
               <span className="meter"><span className="meter-fill" style={{ width: `${Math.round(w * 100)}%`, background: w >= 0.65 ? '#2e8b57' : w >= 0.35 ? '#d4a017' : '#c0392b' }} /></span>{' '}
               <span className="small">{willingnessBand(w)}</span>{' '}

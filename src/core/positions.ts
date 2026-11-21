@@ -199,24 +199,65 @@ export function aiPositionMoves(league: League): void {
   }
 }
 
-// Your farm director suggests moves he believes in (you accept or decline).
+// A move that fixes your MLB roster, or null. Position players: only when he's
+// blocked at his spot by a clearly better teammate who plays it (say, a center
+// fielder you just acquired) and he'd be an upgrade where he goes. Pitchers: a
+// starter outside your top five who'd help the bullpen, or a reliever who'd beat
+// your fifth starter.
+function rosterMove(league: League, org: Org, p: Player): { pos: Pos; text: string; gain: number } | null {
+  if (p.level !== 'MLB' || p.il || p.injury) return null;
+  const mlb = activeAt(league, org.id, 'MLB').filter((x) => x.id !== p.id && !x.injury);
+  if (isPitcher(p)) {
+    const pr = p.ratings.pit;
+    const asSp = pitcherOvr(pr.stuff, pr.movement, pr.control, pr.stamina, 'SP');
+    const asRp = pitcherOvr(pr.stuff, pr.movement, pr.control, pr.stamina, 'RP');
+    const sps = mlb.filter((x) => x.pos === 'SP').map(ovr).sort((a, b) => b - a);
+    const rps = mlb.filter((x) => x.pos === 'RP').map(ovr).sort((a, b) => b - a);
+    if (p.pos === 'SP' && sps.length >= 5 && ovr(p) < sps[4] && rps.length && asRp >= rps[Math.min(rps.length - 1, 6)] + 3)
+      return { pos: 'RP', gain: asRp - rps[Math.min(rps.length - 1, 6)], text: `${pname(p)} is our sixth starter right now. In the bullpen his stuff would play up and he'd be one of our better relievers.` };
+    if (p.pos === 'RP' && pr.stamina >= 45 && sps.length >= 4 && asSp >= (sps[4] ?? sps[sps.length - 1]) + 2)
+      return { pos: 'SP', gain: asSp - (sps[4] ?? sps[sps.length - 1]), text: `${pname(p)} would be better than our current fifth starter. He has the arsenal and the arm; we'd stretch him out gradually.` };
+    return null;
+  }
+  if (p.pos === 'DH') return null;
+  const here = ovrAt(p, p.pos);
+  const blocker = mlb.filter((x) => x.pos === p.pos).sort((a, b) => ovrAt(b, p.pos) - ovrAt(a, p.pos))[0];
+  if (!blocker || ovrAt(blocker, p.pos) < here + 2) return null;
+  const bestAt = (pos: Pos) => mlb.filter((x) => x.pos === pos).map((x) => ovrAt(x, pos)).sort((a, b) => b - a)[0] ?? 0;
+  const dest = positionReads(league, org, p)
+    .filter((r) => r.pos !== p.pos && r.pos !== 'DH' && (r.fit === 'Natural' || r.fit === 'Good fit' || r.fit === 'Can handle it'))
+    .map((r) => ({ r, upgrade: r.projected - bestAt(r.pos) }))
+    .filter((x) => x.upgrade >= 2.5)
+    .sort((a, b) => b.upgrade - a.upgrade)[0];
+  if (!dest) return null;
+  const incumbent = mlb.filter((x) => x.pos === dest.r.pos).sort((a, b) => ovrAt(b, dest.r.pos) - ovrAt(a, dest.r.pos))[0];
+  return {
+    pos: dest.r.pos,
+    gain: dest.upgrade,
+    text: `With ${pname(blocker)} at ${p.pos}, ${pname(p)} could slide over to ${dest.r.pos}${incumbent ? `, where he'd be an upgrade over ${pname(incumbent)}` : ', where we have an opening'}. Our staff calls him "${dest.r.fit.toLowerCase()}" there; it may take time for him to settle in.`,
+  };
+}
+
+// Your farm director suggests a move only when it fixes your MLB roster (you
+// accept or decline). Checked daily, so a trade that creates the need prompts it.
 export function suggestPositionMoves(league: League): void {
-  if (!(league.phase === 'preseason' && league.day % 10 === 0) && !(league.phase === 'regular' && league.day % 21 === 0)) return;
+  if (league.phase !== 'preseason' && league.phase !== 'regular') return;
   const org = league.orgs[league.userOrgId];
-  const asked = new Set((league.inbox ?? []).filter((m) => m.kind === 'position' && m.season === league.season).map((m) => m.pids[0]));
+  const mine = (league.inbox ?? []).filter((m) => m.kind === 'position' && m.season === league.season);
+  // One idea at a time, three weeks apart, unless a trade or signing just changed the roster.
+  if (mine.some((m) => !m.resolved)) return;
+  const last = mine[mine.length - 1];
+  const rosterChanged = league.transactions.some((t) => t.orgId === org.id && t.season === league.season && t.day >= league.day - 2 && /^(Acquired|Traded|Signed|Claimed)/.test(t.text));
+  if (last && league.day - last.day < 21 && !rosterChanged) return;
+  const asked = new Set(mine.map((m) => m.pids[0]));
   const ideas = orgPlayers(league, org.id)
-    .filter((p) => !asked.has(p.id) && (p.level === 'MLB' || p.level === 'AAA' || p.level === 'AA'))
-    .map((p) => ({ p, m: bestMove(league, org, p) }))
+    .filter((p) => !asked.has(p.id) && p.level === 'MLB')
+    .map((p) => ({ p, m: rosterMove(league, org, p) }))
     .filter((x) => x.m)
     .sort((a, b) => b.m!.gain - a.m!.gain)
-    .slice(0, 2);
+    .slice(0, 1);
   for (const { p, m } of ideas) {
-    const pitch = isPitcher(p);
-    const text = pitch
-      ? m!.pos === 'RP'
-        ? `${pname(p)} might be more valuable in the bullpen, where his stuff would play up in short stints.`
-        : `${pname(p)} has the arsenal and the arm to start. We'd stretch him out gradually.`
-      : `Our staff thinks ${pname(p)} could handle ${m!.pos}. It may take time for him to settle in, and there's no guarantee he does.`;
+    const text = m!.text;
     addInbox(league, {
       from: 'Farm director', subject: `Position idea: ${pname(p)} to ${m!.pos}`, kind: 'position', pids: [p.id], text,
       actions: [{ key: `move-${m!.pos}`, label: `Move him to ${m!.pos}` }, { key: 'keep', label: `Keep him at ${p.pos}` }],

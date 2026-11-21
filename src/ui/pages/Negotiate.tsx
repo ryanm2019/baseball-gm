@@ -1,6 +1,7 @@
 // Contract negotiation for extensions and free agents: year-by-year salaries,
 // options, opt-outs, no-trade clauses and deferred money, with a live meter.
 import { useState } from 'react';
+import { NumInput } from '../components.tsx';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href, useRoute } from '../../router.ts';
 import type { ContractOption, League, Player } from '../../core/types.ts';
@@ -122,7 +123,7 @@ export default function Negotiate() {
 
       <div className="form-row">
         <label>Years <select value={cur.years} onChange={(e) => set({ years: Number(e.target.value), custom: null })}>{Array.from({ length: 10 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></label>{' '}
-        <label>Total $<input type="number" step={0.5} style={{ width: 90 }} value={M(tot)} onChange={(e) => set({ total: Number(e.target.value) * 1e6, custom: null })} />M</label>{' '}
+        <label>Total $<NumInput  step={0.5} style={{ width: 90 }} value={M(tot)} onChange={(n) => set({ total: n * 1e6, custom: null })} />M</label>{' '}
         <label>Structure <select value={cur.shape} onChange={(e) => set({ shape: e.target.value as Structure, custom: null })}>
           <option value="flat">Flat</option><option value="front">Front-loaded</option><option value="back">Back-loaded</option><option value="ramp">Arb-style ramp (+20%/yr)</option>
         </select></label>
@@ -135,7 +136,7 @@ export default function Negotiate() {
               <td>{start + i}</td>
               {statuses && <td className="l">{statuses[i]?.status}</td>}
               {statuses && <td>{fmtMoney(statuses[i]?.fair ?? 0)}</td>}
-              <td><input type="number" step={0.25} style={{ width: 80 }} value={M(x)} onChange={(e) => { const c = [...sched]; c[i] = roundSalary(Number(e.target.value) * 1e6); set({ custom: c }); }} /></td>
+              <td><NumInput  step={0.25} style={{ width: 80 }} value={M(x)} onChange={(n) => { const c = [...sched]; c[i] = roundSalary(n * 1e6); set({ custom: c }); }} /></td>
             </tr>
           ))}
         </tbody>
@@ -147,9 +148,9 @@ export default function Negotiate() {
           <option value="none">None</option><option value="club">Club option</option><option value="player">Player option</option><option value="mutual">Mutual option</option><option value="vesting">Vesting option</option>
         </select></label>{' '}
         {cur.opt !== 'none' && <>
-          <label>Salary $<input type="number" step={0.25} style={{ width: 70 }} value={M(cur.optSalary)} onChange={(e) => set({ optSalary: Number(e.target.value) * 1e6 })} />M</label>{' '}
-          {cur.opt !== 'player' && <label>Buyout $<input type="number" step={0.25} style={{ width: 70 }} value={M(cur.optBuyout)} onChange={(e) => set({ optBuyout: Number(e.target.value) * 1e6 })} />M</label>}{' '}
-          {cur.opt === 'vesting' && <label>Vests at <input type="number" style={{ width: 60 }} value={cur.vestNeed} onChange={(e) => set({ vestNeed: Number(e.target.value) })} /> {p.pos === 'RP' ? 'appearances' : p.pos === 'SP' ? 'innings' : 'plate appearances'} in {start + cur.years - 1}</label>}
+          <label>Salary $<NumInput  step={0.25} style={{ width: 70 }} value={M(cur.optSalary)} onChange={(n) => set({ optSalary: n * 1e6 })} />M</label>{' '}
+          {cur.opt !== 'player' && <label>Buyout $<NumInput  step={0.25} style={{ width: 70 }} value={M(cur.optBuyout)} onChange={(n) => set({ optBuyout: n * 1e6 })} />M</label>}{' '}
+          {cur.opt === 'vesting' && <label>Vests at <NumInput  style={{ width: 60 }} value={cur.vestNeed} onChange={(n) => set({ vestNeed: n })} /> {p.pos === 'RP' ? 'appearances' : p.pos === 'SP' ? 'innings' : 'plate appearances'} in {start + cur.years - 1}</label>}
         </>}
       </div>
       <div className="form-row">
@@ -160,7 +161,7 @@ export default function Negotiate() {
         <label>No-trade <select value={cur.ntc} onChange={(e) => set({ ntc: e.target.value as Draft['ntc'] })}>
           <option value="none">None</option><option value="partial">Partial (he picks teams)</option><option value="full">Full</option>
         </select></label>{' '}
-        {cur.ntc === 'partial' && <label><input type="number" min={1} max={29} style={{ width: 50 }} value={cur.ntcN} onChange={(e) => set({ ntcN: Math.max(1, Math.min(29, Number(e.target.value))) })} /> teams</label>}{' '}
+        {cur.ntc === 'partial' && <label><NumInput  min={1} max={29} style={{ width: 50 }} value={cur.ntcN} onChange={(n) => set({ ntcN: Math.max(1, Math.min(29, n)) })} /> teams</label>}{' '}
         <label>Deferred <select value={cur.defer} onChange={(e) => set({ defer: Number(e.target.value) })}>
           {[0, 0.1, 0.2, 0.3, 0.4, 0.5].map((x) => <option key={x} value={x}>{Math.round(x * 100)}%</option>)}
         </select></label>

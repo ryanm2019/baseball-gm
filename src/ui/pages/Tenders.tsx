@@ -5,7 +5,7 @@ import { fmtMoney, marketValue, roundSalary, serviceLabel } from '../../core/con
 import { posLabel } from '../../core/rules.ts';
 import { orgPlayers } from '../../core/util.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
-import { Rating } from '../components.tsx';
+import { Rating, NumInput } from '../components.tsx';
 import { delegated } from '../../core/staff.ts';
 
 export default function Tenders() {
@@ -77,12 +77,12 @@ export default function Tenders() {
                   <td>{a.player !== null ? fmtMoney(a.player) : '-'}</td>
                   <td>
                     {open && !exchanged ? (
-                      <input
-                        type="number"
+                      <NumInput
+                        
                         step="0.05"
                         style={{ width: 80 }}
                         value={((a.team ?? roundSalary(a.projected * 0.92)) / 1e6).toFixed(2)}
-                        onChange={(e) => { a.team = Number(e.target.value) * 1e6; changed(); }}
+                        onChange={(n) => { a.team = n * 1e6; changed(); }}
                       />
                     ) : a.team !== null ? fmtMoney(a.team) : '-'}
                   </td>

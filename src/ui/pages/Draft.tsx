@@ -8,7 +8,7 @@ import type { DraftPick } from '../../core/types.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { dayLabel, dayShort } from '../../core/settings.ts';
-import { DataTable, type Column } from '../components.tsx';
+import { DataTable, type Column, NumInput } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { delegated } from '../../core/staff.ts';
 
@@ -207,7 +207,7 @@ function MyPicks({ picks }: { picks: DraftPick[] }) {
                 {open ? (
                   <>
                     <td className="nowrap">
-                      <input type="number" step={0.05} min={0} style={{ width: 70 }} value={(a / 1e6).toFixed(2)} onChange={(e) => setAmt({ ...amt, [pk.pick]: Math.max(0, Number(e.target.value) * 1e6) })} /> $M
+                      <NumInput  step={0.05} min={0} style={{ width: 70 }} value={(a / 1e6).toFixed(2)} onChange={(n) => setAmt({ ...amt, [pk.pick]: Math.max(0, n * 1e6) })} /> $M
                     </td>
                     <td><input type="range" min={lo} max={hi} step={25_000} value={a} onChange={(e) => setAmt({ ...amt, [pk.pick]: Number(e.target.value) })} style={{ width: 110 }} /></td>
                     <td className="l nowrap">

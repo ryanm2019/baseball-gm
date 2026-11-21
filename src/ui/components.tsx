@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import type { League, Level, Player } from '../core/types.ts';
 import { LEVELS } from '../core/types.ts';
 import { href } from '../router.ts';
@@ -239,4 +239,26 @@ export function LinkedText({ league, text, pids }: { league: League; text: strin
     rest = rest.slice(hit.i + hit.name.length);
   }
   return <>{out}</>;
+}
+
+// A number box that keeps exactly what you type while you're in it (no
+// reformatting mid-typing, so the cursor stays put); the value is reported as
+// you type and re-shown formatted when you leave the box.
+export function NumInput({ value, onChange, ...rest }: { value: number | string; onChange: (n: number, raw: string) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <input
+      type="number"
+      {...rest}
+      value={text ?? String(value)}
+      onFocus={(e) => { setText(String(value)); rest.onFocus?.(e); }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        const n = Number(raw);
+        if (raw.trim() !== '' && Number.isFinite(n)) onChange(n, raw);
+      }}
+      onBlur={(e) => { setText(null); rest.onBlur?.(e); }}
+    />
+  );
 }

@@ -292,20 +292,27 @@ export function balanceForAi(league: League, prop: TradeProposal): TradeProposal
   return aiAccepts(league, ai, next) ? next : null;
 }
 
-// Builds the best package an AI club would give for the user's offered assets.
+// What an AI club offers for the user's assets: fair by their own valuation,
+// and they stop adding once it's a deal you'd take, so offers aren't stacked.
+// Pieces go in order of their own value (biggest they can afford first); a
+// piece that would make it a windfall for you is skipped.
 export function aiCounterFor(league: League, ai: Org, userGive: TradeAssets): TradeProposal | null {
+  const user = league.orgs[league.userOrgId];
   const prop: TradeProposal = { orgs: [ai.id, league.userOrgId], give: [emptyAssets(), JSON.parse(JSON.stringify(userGive))] };
+  const sent = evaluate(league, user, prop).sent; // what you'd be giving up, as you see it
+  const cap = Math.max(4e6, Math.abs(sent) * 0.25);
   const pool = tradable(league, ai.id)
     .map((p) => ({ p, v: tradeValue(league, ai, p, false) }))
     .filter((x) => x.v > 0.3e6)
     .sort((x, y) => y.v - x.v);
   for (const { p } of pool) {
-    if (prop.give[0].pids.length >= 4) break;
+    if (prop.give[0].pids.length >= 3) break;
     prop.give[0].pids.push(p.id);
-    if (!aiAccepts(league, ai, prop) || validateTrade(league, prop)) prop.give[0].pids.pop();
+    const ok = !validateTrade(league, prop) && aiAccepts(league, ai, prop) && evaluate(league, user, prop).dv <= cap;
+    if (!ok) { prop.give[0].pids.pop(); continue; }
+    if (evaluate(league, user, prop).dv >= 0) return prop; // enough: you'd take it
   }
-  if (!prop.give[0].pids.length || validateTrade(league, prop)) return null;
-  return prop;
+  return null;
 }
 
 // ---------- AI-to-AI trades ----------

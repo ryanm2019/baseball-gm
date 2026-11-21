@@ -1,4 +1,5 @@
 import { useStore, changed } from '../../store.ts';
+import { NumInput } from '../components.tsx';
 import { href } from '../../router.ts';
 import { DEPTS, deptEffect, deptSpend, effectText } from '../../core/depts.ts';
 import { fmtMoney } from '../../core/contracts.ts';
@@ -42,13 +43,13 @@ export default function Departments() {
                 <td className="l" title={d.help}><b>{d.label}</b><div className="muted small">{d.help}</div></td>
                 <td className="nowrap">
                   <button className="btn btn-sm" onClick={() => set(d.key, v - 1e6)}>−</button>{' '}
-                  <input
-                    type="number"
+                  <NumInput
+                    
                     step={0.5}
                     min={0}
                     style={{ width: 70 }}
                     value={(v / 1e6).toFixed(2).replace(/\.?0+$/, '')}
-                    onChange={(e2) => set(d.key, Number(e2.target.value) * 1e6)}
+                    onChange={(n) => set(d.key, n * 1e6)}
                   />{' '}
                   $M{' '}
                   <button className="btn btn-sm" onClick={() => set(d.key, v + 1e6)}>+</button>

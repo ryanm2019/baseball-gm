@@ -1,5 +1,6 @@
 // Trade Finder: get a player, shop one of yours, or fill a need.
 import { useState } from 'react';
+import { NumInput } from '../components.tsx';
 import { useStore, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
 import type { League, Player, Pos } from '../../core/types.ts';
@@ -153,7 +154,7 @@ export default function TradeFinder() {
         <div className="form-row">
           Position:{' '}
           <select value={need} onChange={(e) => setNeed(e.target.value as Pos | 'OF' | 'LHP')}>{NEEDS.map((n) => <option key={n} value={n}>{n === 'LHP' ? 'Left-handed pitcher' : n}</option>)}</select>{' '}
-          Max salary $<input type="number" style={{ width: 60 }} value={maxSal} onChange={(e) => setMaxSal(Number(e.target.value))} />M{' '}
+          Max salary $<NumInput  style={{ width: 60 }} value={maxSal} onChange={(n) => setMaxSal(n)} />M{' '}
           <label><input type="checkbox" checked={mlbOnly} onChange={(e) => setMlbOnly(e.target.checked)} /> MLB players only</label>{' '}
           <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => setRows(fillNeed(league, need, { ...opts(), maxSalary: maxSal * 1e6, mlbOnly })))}>Search</button>
         </div>
