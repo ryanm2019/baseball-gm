@@ -110,7 +110,7 @@ export function manageOrg(league: League, org: Org): void {
         if (isUser) {
           const txs = league.transactions.slice(txBefore).filter((t) => t.orgId === org.id && !t.pids.includes(p.id));
           const moves = txs.map((t) => t.text);
-          addInbox(league, { from: 'Assistant GM', subject: `${pname(p)} activated from the IL`, kind: 'info', cards: true, pids: [p.id, ...new Set(txs.flatMap((t) => t.pids))], text: `${pname(p)} is healthy, so I activated him from the IL.${moves.length ? ` To make room: ${moves.join('; ')}.` : ' There was room, so no one had to go down.'}` });
+          addInbox(league, { from: 'Assistant GM', subject: `${pname(p)} activated from the IL`, kind: 'info', pids: [p.id, ...new Set(txs.flatMap((t) => t.pids))], text: `${pname(p)} is healthy, so I activated him from the IL.${moves.length ? ` To make room: ${moves.join('; ')}.` : ' There was room, so no one had to go down.'}` });
         }
       }
     } else if (!canActivate(league, p)) {
@@ -497,7 +497,7 @@ export function ilReadyNotices(league: League): void {
     const down = roomy ? mlbRoomCandidate(league, org, isPitcher(p), false) : null;
     const full = !why ? '' : down ? ` Your active roster is full: activating him now would option ${pname(down.p)} to ${league.orgs[org.id].affiliates.AAA.name}.` : ` Your active roster is full and no one can be optioned; make room on Roster Moves first.`;
     addInbox(league, {
-      from: 'Medical staff', subject: `${pname(p)} is ready to come off the IL`, kind: 'il-ready', cards: true, pids: down ? [p.id, down.p.id] : [p.id], stop: true,
+      from: 'Medical staff', subject: `${pname(p)} is ready to come off the IL`, kind: 'il-ready', pids: down ? [p.id, down.p.id] : [p.id], stop: true,
       text: `${pname(p)} is healthy and has served his minimum stay on the ${p.il.type}.${full}`,
       actions: [
         { key: 'activate', label: down ? `Activate (option ${down.p.first[0]}. ${down.p.last})` : 'Activate now' },

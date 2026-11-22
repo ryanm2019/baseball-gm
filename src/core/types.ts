@@ -612,7 +612,6 @@ export interface InboxMsg {
   read?: boolean;
   stop?: boolean; // pauses the sim until you've seen it
   stopped?: boolean;
-  cards?: boolean; // show the players' ratings and this season's stats under the text
   link?: { page: string; args?: (string | number)[]; query?: Record<string, string | number> };
   storyId?: string;
 }

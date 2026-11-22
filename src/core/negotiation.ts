@@ -194,7 +194,7 @@ function respond(league: League, t: TradeTalk, stop = true): string {
     const change = [theyWant.length ? `add ${assetsText(league, { ...emptyAssets(), pids: theyWant })}` : '', theyKeep.length ? `they keep ${assetsText(league, { ...emptyAssets(), pids: theyKeep })}` : ''].filter(Boolean).join(' and ');
     addInbox(league, {
       from, subject: `Counteroffer: ${ai.abbrev}`, kind: 'trade-reply', talkId: t.id, stop,
-      pids: [...new Set([...counter.give[1].pids, ...theyWant])],
+      pids: [...new Set([...counter.give[1].pids, ...counter.give[0].pids])],
       text: `The ${name} won't do ${what}, but they'd do it if you ${change}: ${assetsText(league, counter.give[0])} for ${assetsText(league, counter.give[1])}. The offer is good ${t.counterExpires === league.day ? 'until the deadline' : `for ${COUNTER_DAYS} days`}.`,
       actions: [{ key: 'accept', label: 'Accept their counter' }, { key: 'revise', label: 'Counter back (open in Trade)' }, { key: 'decline', label: 'Decline' }],
     });

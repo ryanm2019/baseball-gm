@@ -24,6 +24,8 @@ function PlayerCards({ league, pids }: { league: League; pids: number[] }) {
   const st = tradePlayerCols(league, 'stats').filter((c) => ['n', 'wrc', 'fipm', 'line'].includes(c.key));
   const cols: Column<Player>[] = [
     { key: 'name', label: 'Player', left: true, value: (p) => p.last, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
+    // Players from more than one club (trade talk): show whose he is.
+    ...(new Set(rows.map((p) => p.orgId)).size > 1 ? [{ key: 'team', label: 'Team', value: (p: Player) => (p.orgId === null ? 'FA' : league.orgs[p.orgId].abbrev) }] : []),
     ...rat, ...st,
   ];
   return <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}><DataTable cols={cols} rows={rows} rowKey={(p) => p.id} compact /></div>;
@@ -64,7 +66,7 @@ export default function Inbox() {
             <div className="small muted">{dayShort(m.season, m.day)} · {m.from}</div>
             <div><b>{m.subject}</b>{p?.morale && <span className="small muted"> · {p.first} {p.last} is {moraleLabel(p.morale.value).toLowerCase()} ({Math.round(p.morale.value)})</span>}</div>
             <div className="small"><LinkedText league={league} text={m.text} pids={m.pids} /></div>
-            {m.cards && <PlayerCards league={league} pids={m.pids} />}
+            {m.pids.length > 0 && <PlayerCards league={league} pids={m.pids} />}
             {m.link && <a className="small" href={href(m.link.page, m.link.args ?? [], m.link.query ?? {})}>Open</a>}
             {m.actions && !m.resolved && (
               <div style={{ marginTop: 4 }}>
