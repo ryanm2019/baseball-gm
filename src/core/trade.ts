@@ -2,7 +2,7 @@
 import type { League, Org, Player, Pos, TradeAssets, TradeOffer, TradeProposal } from './types.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { orgPayroll, roundSalary, serviceYears } from './contracts.ts';
-import { addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
+import { activeAt, activeLimit, addNews, addScoop, addTransaction, fortyMan, orgPlayers, pname, touchRosters } from './util.ts';
 import { posLabel } from './rules.ts';
 import { CB_VALUE, POOL_VALUE, projectValue, seasonFraction, tradeValue } from './value.ts';
 import { delegated } from './staff.ts';
@@ -82,10 +82,8 @@ export function validateTrade(league: League, prop: TradeProposal): string | nul
       const c = league.cbPicks.find((x) => x.id === cid);
       if (!c || c.orgId !== org) return 'Competitive balance pick not owned';
     }
-    // 40-man space after the trade.
-    const in40 = prop.give[1 - i].pids.filter((id) => league.players[id]?.on40).length;
-    const out40 = g.pids.filter((id) => league.players[id]?.on40).length;
-    if (fortyMan(league, org).length + in40 - out40 > league.settings.fortyMax) return `${league.orgs[org].abbrev} would be over 40 on the 40-man roster`;
+    // Going over 40 doesn't block a trade: like real clubs, the team makes the
+    // corresponding move (designate or release) to finalize it.
   }
   void a;
   void b;
@@ -557,3 +555,40 @@ export function projectedWar(league: League, org: Org, p: Player): number {
 }
 
 export { roundSalary };
+
+// Roster space a trade would leave a club in (for the corresponding-moves note).
+export function rosterAfterTrade(league: League, prop: TradeProposal, side: 0 | 1): { forty: number; active: number } {
+  const org = prop.orgs[side];
+  const incoming = prop.give[1 - side].pids.map((id) => league.players[id]).filter(Boolean);
+  const outgoing = prop.give[side].pids.map((id) => league.players[id]).filter(Boolean);
+  const forty = fortyMan(league, org).length + incoming.filter((p) => p.on40).length - outgoing.filter((p) => p.on40).length;
+  const active = activeAt(league, org, 'MLB').length + incoming.filter((p) => p.level === 'MLB' && !p.il).length - outgoing.filter((p) => p.level === 'MLB' && !p.il).length;
+  return { forty, active };
+}
+
+// What you'll need to do after this trade, if anything.
+export function correspondingMoves(league: League, prop: TradeProposal): string | null {
+  const side = prop.orgs[0] === league.userOrgId ? 0 : 1;
+  const r = rosterAfterTrade(league, prop, side);
+  const max40 = league.settings.fortyMax;
+  const parts: string[] = [];
+  if (r.forty > max40) parts.push(`${r.forty}/${max40} on the 40-man: designate or release ${r.forty - max40} (or move an injured player to the 60-day IL)`);
+  const lim = activeLimit(league);
+  if (r.active > lim) parts.push(`${r.active}/${lim} on the active roster: option or designate ${r.active - lim}`);
+  return parts.length ? `After this trade you'd be at ${parts.join('; and ')}.` : null;
+}
+
+// After a deal: what's left for you to do (or that your assistant GM has it).
+export function rosterTodo(league: League): string {
+  const org = league.orgs[league.userOrgId];
+  const max40 = league.settings.fortyMax;
+  const f = fortyMan(league, org.id).length;
+  const a = activeAt(league, org.id, 'MLB').length;
+  const lim = activeLimit(league);
+  const parts: string[] = [];
+  if (f > max40) parts.push(`${f}/${max40} on the 40-man (designate or release ${f - max40}, or move an injured player to the 60-day IL)`);
+  if (a > lim) parts.push(`${a}/${lim} on the active roster (option or designate ${a - lim})`);
+  if (!parts.length) return '';
+  if (org.agm.roster) return ` You're at ${parts.join(' and ')}; your assistant GM will make the corresponding moves.`;
+  return ` To finalize it you're at ${parts.join(' and ')}: make the corresponding moves on the Roster Moves page before the next game.`;
+}

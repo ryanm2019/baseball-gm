@@ -70,7 +70,7 @@ const SIDEBAR: { head: string; links: [string, string][] }[] = [
 const MESSAGE_PAGES: [string, string][] = [
   ['Inbox page', 'inbox'], ['Draft page', 'draft'], ['Playoff Roster page', 'playoff-roster'], ['Offseason page', 'offseason'],
   ['International page', 'international'], ['Tenders & Arbitration page', 'tenders'], ['Trading Block page', 'trading-block'],
-  ['Staff page', 'staff'], ['Rule 5 page', 'rule5'], ['Trade Offers page', 'trade-offers'], ['Free Agents page', 'free-agents'],
+  ['Staff page', 'staff'], ['Rule 5 page', 'rule5'], ['Trade Offers page', 'trade-offers'], ['Free Agents page', 'free-agents'], ['Roster Moves page', 'roster-moves'],
 ];
 function MessageText({ text }: { text: string }) {
   const hit = MESSAGE_PAGES.find(([name]) => text.includes(name));

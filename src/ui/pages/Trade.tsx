@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
 import type { League, Player, TradeAssets, TradeProposal, TradeTalk } from '../../core/types.ts';
-import { emptyAssets, playerTradeBlock, validateTrade, hasTenAndFive, tradeWindowOpen } from '../../core/trade.ts';
+import { correspondingMoves, emptyAssets, playerTradeBlock, validateTrade, hasTenAndFive, tradeWindowOpen } from '../../core/trade.ts';
 import { agmRead, agmSuggestion, openTalks, sendOffer, withdrawOffer } from '../../core/negotiation.ts';
 import { fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
@@ -200,6 +200,7 @@ export default function Trade() {
         <div>Your AGM: would we?</div><div className={read?.mineTone}>{read ? read.mine : '-'}</div>
         <div>Your AGM: will they?</div><div className={read?.theirsTone}>{read ? read.theirs : '-'}</div>
       </div>
+      {!empty && !err && (() => { const n = correspondingMoves(league, prop); return n ? <p className="small warn-text" style={{ marginTop: 6 }}>{n} You can still send it; you'll make the corresponding moves when it goes through{league.orgs[league.userOrgId].agm.roster ? ' (your assistant GM handles them)' : ''}.</p> : null; })()}
       {withThem.length > 0 && <div className="alert" style={{ marginTop: 8 }}>{withThem.map((t) => <div key={t.id}>{talkLine(league, t)}</div>)} Sending a new offer replaces it.</div>}
       {err && !empty && <div className="alert alert-err" style={{ marginTop: 8 }}>{err}</div>}
       <div className="form-row">

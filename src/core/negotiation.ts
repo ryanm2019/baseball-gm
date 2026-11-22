@@ -3,7 +3,7 @@
 // (the deal goes through at once), decline with a reason, or counter. After a few
 // rounds without a deal, or a lowball, they stop taking your calls for a while.
 import type { League, Org, TradeAssets, TradeProposal, TradeTalk, InboxMsg } from './types.ts';
-import { balanceForAi, emptyAssets, evaluate, executeTrade, tradable, tradeWindowOpen, validateTrade, aiAccepts } from './trade.ts';
+import { balanceForAi, emptyAssets, evaluate, executeTrade, rosterTodo, tradable, tradeWindowOpen, validateTrade, aiAccepts } from './trade.ts';
 import { addInbox } from './morale.ts';
 import { posLabel } from './rules.ts';
 import { fmtMoney, orgPayroll } from './contracts.ts';
@@ -160,8 +160,9 @@ function respond(league: League, t: TradeTalk, stop = true): string {
     }
     t.status = 'done';
     rel.rounds = 0;
-    addInbox(league, { from, subject: `Trade accepted: ${ai.abbrev}`, kind: 'trade-reply', pids: t.proposal.give[1].pids, talkId: t.id, stop, text: `The ${name} accepted ${what}. The trade is done.`, link: { page: 'transactions' } });
-    return `The ${name} accepted. The trade is done.`;
+    const todo = rosterTodo(league);
+    addInbox(league, { from, subject: `Trade accepted: ${ai.abbrev}`, kind: 'trade-reply', pids: t.proposal.give[1].pids, talkId: t.id, stop, text: `The ${name} accepted ${what}. The trade is done.${todo}`, link: { page: todo && !league.orgs[league.userOrgId].agm.roster ? 'roster-moves' : 'transactions' } });
+    return `The ${name} accepted. The trade is done.${todo}`;
   }
   rel.rounds += 1;
   const gap = e.need - e.dv;
@@ -216,7 +217,7 @@ export function answerCounter(league: League, msg: InboxMsg, key: string): strin
   if (done) { t.status = 'withdrawn'; msg.resolved = 'Failed'; return done; }
   relation(league, t.orgId).rounds = 0;
   msg.resolved = 'Accepted';
-  return `Deal. You traded ${assetsText(league, t.counter.give[0])} to the ${ai.affiliates.MLB.name} for ${assetsText(league, t.counter.give[1])}.`;
+  return `Deal. You traded ${assetsText(league, t.counter.give[0])} to the ${ai.affiliates.MLB.name} for ${assetsText(league, t.counter.give[1])}.${rosterTodo(league)}`;
 }
 
 // Daily: answers come due, counters expire, the deadline closes talks.

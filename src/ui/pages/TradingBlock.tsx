@@ -3,7 +3,7 @@ import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { href } from '../../router.ts';
 import type { Pos, TradeProposal, TradeStance } from '../../core/types.ts';
 import { TRADE_STANCES } from '../../core/types.ts';
-import { aiCounterFor, emptyAssets, evaluate, executeTrade, playerTradeBlock, tradeWindowOpen } from '../../core/trade.ts';
+import { aiCounterFor, emptyAssets, evaluate, executeTrade, playerTradeBlock, tradeWindowOpen, rosterTodo } from '../../core/trade.ts';
 import { posLabel } from '../../core/rules.ts';
 import { orgPlayers } from '../../core/util.ts';
 import { NEED_POS, STANCE_HELP, teamNeeds } from '../../core/market.ts';
@@ -135,7 +135,7 @@ export default function TradingBlock() {
                   onClick={async () => {
                     if (!(await askConfirm(`Accept the ${ai.affiliates.MLB.name}' offer?`))) return;
                     const err = executeTrade(league, o);
-                    setMessage(err ?? `Trade completed with the ${ai.affiliates.MLB.name}.`);
+                    setMessage(err ?? `Trade completed with the ${ai.affiliates.MLB.name}.${rosterTodo(league)}`);
                     setOffers(null);
                     changed();
                   }}

@@ -1,6 +1,6 @@
 import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { href } from '../../router.ts';
-import { executeTrade, validateTrade } from '../../core/trade.ts';
+import { executeTrade, validateTrade, rosterTodo } from '../../core/trade.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { fmtMoney } from '../../core/contracts.ts';
@@ -57,7 +57,7 @@ export default function TradeOffers() {
                 onClick={async () => {
                   if (!(await askConfirm(`Accept the ${ai.affiliates.MLB.name}' offer?`))) return;
                   const e = executeTrade(league, o.proposal);
-                  setMessage(e ?? 'Trade completed.');
+                  setMessage(e ?? `Trade completed.${rosterTodo(league)}`);
                   league.tradeOffers = league.tradeOffers.filter((x) => x.id !== o.id);
                   changed();
                 }}
