@@ -31,8 +31,9 @@ function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId
   const [lvl, setLvl] = useState('40');
   const [view, setViewState] = useState<TradeView>(assetView);
   const setView = (v: TradeView) => { assetView = v; setViewState(v); };
+  // Players in the deal stay pinned on top (even outside the level you're viewing).
   const ps = orgPlayers(league, orgId)
-    .filter((p) => (lvl === '40' ? p.on40 : lvl === 'all' ? true : p.level === lvl))
+    .filter((p) => assets.pids.includes(p.id) || (lvl === '40' ? p.on40 : lvl === 'all' ? true : p.level === lvl))
     .sort((a, b) => LEVEL_ORDER.indexOf(a.level ?? 'AAA') - LEVEL_ORDER.indexOf(b.level ?? 'AAA') || scoutedOvr(league, b) - scoutedOvr(league, a));
   const cols: Column<Player>[] = [
     {
@@ -63,7 +64,7 @@ function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId
           <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
         </div>
       </div>
-      <DataTable cols={cols} rows={ps} rowKey={(p) => p.id} compact maxHeight={420} />
+      <DataTable cols={cols} rows={ps} rowKey={(p) => p.id} compact maxHeight={420} pinned={(p) => assets.pids.includes(p.id)} />
     </>
   );
 }

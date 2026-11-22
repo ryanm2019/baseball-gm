@@ -1,6 +1,8 @@
 // Trade Finder: get a player, shop one of yours, or fill a need.
 import { useState } from 'react';
-import { NumInput } from '../components.tsx';
+import { DataTable, NumInput, type Column } from '../components.tsx';
+import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import { markFloated } from '../../core/negotiation.ts';
 import { useStore, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
 import type { League, Player, Pos } from '../../core/types.ts';
@@ -9,7 +11,7 @@ import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { posLabel } from '../../core/rules.ts';
 import { contractInfo, fmtMoney } from '../../core/contracts.ts';
 import { orgPlayers } from '../../core/util.ts';
-import { tradeWindowOpen } from '../../core/trade.ts';
+import { tradeWindowOpen, validateTrade } from '../../core/trade.ts';
 import { loadTrade } from './Trade.tsx';
 import { seasonSummary } from '../tradeCols.tsx';
 import { ContractCell } from '../fmt.tsx';
@@ -41,30 +43,51 @@ function Assets({ league, side, d }: { league: League; side: 0 | 1; d: FoundDeal
   );
 }
 
+// Everything on this screen is kept while you look at other pages (and come back).
+const kept: Record<string, unknown> = {};
+function useKept<T>(key: string, init: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => (key in kept ? (kept[key] as T) : init));
+  return [v, (x: T) => { kept[key] = x; setV(x); }];
+}
+
 export default function TradeFinder() {
   const { league } = useStore();
-  const [mode, setMode] = useState<Mode>('get');
-  const [target, setTarget] = useState('');
-  const [mine, setMine] = useState<number | ''>('');
-  const [want, setWant] = useState<Want>('best');
-  const [need, setNeed] = useState<Pos | 'OF' | 'LHP'>('CF');
-  const [kind, setKind] = useState<FinderOpts['kind']>('any');
-  const [allowPicks, setAllowPicks] = useState(true);
-  const [maxSal, setMaxSal] = useState(40);
-  const [mlbOnly, setMlbOnly] = useState(true);
-  const [untouch, setUntouch] = useState<Set<number>>(new Set());
+  const [mode, setMode] = useKept<Mode>('mode', 'get');
+  const [target, setTarget] = useKept('target', '');
+  const [mine, setMine] = useKept<number | ''>('mine', '');
+  const [want, setWant] = useKept<Want>('want', 'best');
+  const [need, setNeed] = useKept<Pos | 'OF' | 'LHP'>('need', 'CF');
+  const [kind, setKind] = useKept<FinderOpts['kind']>('kind', 'any');
+  const [allowPicks, setAllowPicks] = useKept('allowPicks', true);
+  const [maxSal, setMaxSal] = useKept('maxSal', 40);
+  const [mlbOnly, setMlbOnly] = useKept('mlbOnly', true);
+  const [untouch, setUntouch] = useKept<Set<number>>('untouch', new Set());
   const [busy, setBusy] = useState(false);
-  const [deals, setDeals] = useState<FoundDeal[] | null>(null);
-  const [rows, setRows] = useState<NeedRow[] | null>(null);
+  const [deals, setDeals] = useKept<FoundDeal[] | null>('deals', null);
+  const [rows, setRows] = useKept<NeedRow[] | null>('rows', null);
+  const [about, setAbout] = useKept<string>('about', ''); // who the results are for
+  const [view, setView] = useKept<TradeView>('view', 'ratings');
   if (!league) return null;
   const user = league.orgs[league.userOrgId];
   const myPlayers = orgPlayers(league, user.id).filter((p) => p.on40 || p.level === 'MLB' || scoutedPot(league, p) >= 50).sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a));
   const others = Object.values(league.players).filter((p) => p.orgId !== null && p.orgId !== user.id && (p.level === 'MLB' || p.on40 || p.level === 'AAA'));
-  const matches = target.length >= 2 ? others.filter((p) => `${p.first} ${p.last}`.toLowerCase().includes(target.toLowerCase())).slice(0, 12) : [];
   const opts = (): FinderOpts => ({ untouchable: untouch, allowPicks, kind });
   const closed = tradeWindowOpen(league);
 
   const run = (f: () => void) => { setBusy(true); setDeals(null); setRows(null); setTimeout(() => { try { f(); } finally { setBusy(false); } }, 20); };
+  // The clubs put these packages on the table: send one as is (within a few days) and they'll take it.
+  const found = (ds: FoundDeal[], label: string) => { for (const d of ds) markFloated(league, d.prop); setDeals(ds); setAbout(label); };
+  // Results from an earlier visit: drop any that no longer work (players moved, etc.).
+  const liveDeals = deals?.filter((d) => !validateTrade(league, d.prop)) ?? null;
+  const findFor = (p: Player) => run(() => { const ds = findPackagesFor(league, p.id, opts()); found(ds, `${p.first} ${p.last}`); if (!ds.length) setMessage(`No package from your organization works for ${p.first} ${p.last} with these settings.`); });
+  const blockPlayers = league.orgs.filter((o) => o.id !== user.id).flatMap((o) => o.block.map((id) => league.players[id]).filter((p) => p && p.orgId === o.id));
+  const listed = target.length >= 2 ? others.filter((p) => `${p.first} ${p.last}`.toLowerCase().includes(target.toLowerCase())).slice(0, 40) : blockPlayers;
+  const listCols: Column<Player>[] = [
+    { key: 'name', label: 'Player', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
+    { key: 'team', label: 'Team', value: (p) => league.orgs[p.orgId!].abbrev },
+    ...tradePlayerCols(league, view),
+    { key: 'find', label: '', noSort: true, render: (p) => <button className="btn btn-sm" disabled={busy} onClick={() => findFor(p)}>Find packages</button> },
+  ];
   const open = (d: FoundDeal) => { loadTrade(d.prop.orgs[1], [d.prop.give[0], d.prop.give[1]]); go('trade'); };
   const dealTable = (ds: FoundDeal[], shop: boolean) => (
     <table className="data compact">
@@ -120,19 +143,17 @@ export default function TradeFinder() {
 
       {mode === 'get' && (
         <>
-          <div className="form-row">
+          <div className="form-row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <input placeholder="Search any player in the league…" value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: 280 }} />
-          </div>
-          {matches.length > 0 && (
-            <div className="small">
-              {matches.map((p) => (
-                <div key={p.id}>
-                  <button className="btn btn-sm" disabled={busy} onClick={() => run(() => { const ds = findPackagesFor(league, p.id, opts()); setDeals(ds); if (!ds.length) setMessage(`No package from your organization works for ${p.first} ${p.last} with these settings.`); })}>Find packages</button>{' '}
-                  <PName league={league} p={p} /> <span className="muted">({league.orgs[p.orgId!].abbrev}, {fmtMoney(p.contract.salary)})</span>
-                </div>
-              ))}
+            <div className="btn-group" style={{ margin: 0 }}>
+              <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
+              <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
             </div>
-          )}
+            <span className="muted small">{target.length >= 2 ? `Players matching "${target}"` : `On other clubs' trading blocks (${blockPlayers.length}). Search to find anyone else.`}</span>
+          </div>
+          {listed.length === 0
+            ? <p className="muted small">{target.length >= 2 ? 'No one by that name.' : 'No one is on a trading block right now. Search for any player.'}</p>
+            : <DataTable cols={listCols} rows={listed} rowKey={(p) => p.id} compact maxHeight={360} />}
         </>
       )}
 
@@ -146,7 +167,7 @@ export default function TradeFinder() {
           <select value={want} onChange={(e) => setWant(e.target.value as Want)}>
             <option value="best">Best offer</option><option value="prospects">Prospects</option><option value="mlb">MLB talent</option><option value="picks">Picks and pool money</option>
           </select>{' '}
-          <button className="btn btn-primary btn-sm" disabled={mine === '' || busy} onClick={() => run(() => { const ds = shopPlayer(league, Number(mine), want); setDeals(ds); if (!ds.length) setMessage(want === 'picks' ? 'No offers in picks or pool money. Only clubs holding competitive balance picks can send them, and pool money trades only during the international signing period.' : 'No offers for him with that request.'); })}>Ask every team</button>
+          <button className="btn btn-primary btn-sm" disabled={mine === '' || busy} onClick={() => run(() => { const ds = shopPlayer(league, Number(mine), want); const sp = league.players[Number(mine)]; found(ds, `offers for ${sp.first} ${sp.last}`); if (!ds.length) setMessage(want === 'picks' ? 'No offers in picks or pool money. Only clubs holding competitive balance picks can send them, and pool money trades only during the international signing period.' : 'No offers for him with that request.'); })}>Ask every team</button>
         </div>
       )}
 
@@ -156,12 +177,13 @@ export default function TradeFinder() {
           <select value={need} onChange={(e) => setNeed(e.target.value as Pos | 'OF' | 'LHP')}>{NEEDS.map((n) => <option key={n} value={n}>{n === 'LHP' ? 'Left-handed pitcher' : n}</option>)}</select>{' '}
           Max salary $<NumInput  style={{ width: 60 }} value={maxSal} onChange={(n) => setMaxSal(n)} />M{' '}
           <label><input type="checkbox" checked={mlbOnly} onChange={(e) => setMlbOnly(e.target.checked)} /> MLB players only</label>{' '}
-          <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => setRows(fillNeed(league, need, { ...opts(), maxSalary: maxSal * 1e6, mlbOnly })))}>Search</button>
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(() => { const rs = fillNeed(league, need, { ...opts(), maxSalary: maxSal * 1e6, mlbOnly }); for (const r of rs) if (r.deal) markFloated(league, r.deal.prop); setRows(rs); setAbout(`${need} upgrades`); })}>Search</button>
         </div>
       )}
 
       {busy && <p className="muted">Searching…</p>}
-      {deals && deals.length > 0 && dealTable(deals, mode === 'shop')}
+      {liveDeals && liveDeals.length > 0 && <h3 style={{ marginBottom: 4 }}>Packages{about ? `: ${about}` : ''}</h3>}
+      {liveDeals && liveDeals.length > 0 && dealTable(liveDeals, mode === 'shop')}
       {rows && (
         rows.length === 0 ? <p className="muted">Nobody available at {need} who'd upgrade your current option under those limits.</p> : (
           <table className="data compact">

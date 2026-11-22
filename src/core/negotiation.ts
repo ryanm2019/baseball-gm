@@ -53,6 +53,18 @@ export function talksFrozen(league: League, orgId: number): string | null {
   return null;
 }
 
+// Packages a club itself put on the table (via Trade Finder): send it as is
+// within a few days and they'll take it.
+const FLOAT_DAYS = 3;
+const sig = (prop: TradeProposal) => [prop.orgs.join('-'), ...prop.give.map((g) => [[...g.pids].sort((a, b) => a - b).join('.'), g.cash, g.pool, [...g.cbPicks].sort().join('.')].join('/'))].join('|');
+export function markFloated(league: League, prop: TradeProposal): void {
+  league.tradeFloated = [...(league.tradeFloated ?? []).filter((f) => league.day - f.day <= FLOAT_DAYS), { sig: sig(prop), day: league.day }].slice(-30);
+}
+export function isFloated(league: League, prop: TradeProposal): boolean {
+  const s = sig(prop);
+  return (league.tradeFloated ?? []).some((f) => f.sig === s && league.day - f.day <= FLOAT_DAYS) && aiAccepts(league, league.orgs[prop.orgs[1]], prop);
+}
+
 export const openTalks = (league: League) => (league.tradeTalks ?? []).filter((t) => t.status === 'waiting' || t.status === 'countered');
 
 // Send an offer. Returns what to tell the user.
@@ -75,7 +87,7 @@ export function sendOffer(league: League, prop: TradeProposal): string {
     round: prev + 1,
     proposal: JSON.parse(JSON.stringify(prop)),
     status: 'waiting',
-    noise: normal(0, 0.05),
+    noise: isFloated(league, prop) ? Math.abs(normal(0, 0.05)) + 0.05 : normal(0, 0.05),
   };
   league.tradeTalks.push(talk);
   if (league.tradeTalks.length > 60) league.tradeTalks.splice(0, league.tradeTalks.length - 60);
@@ -257,6 +269,7 @@ export function agmRead(league: League, prop: TradeProposal): AgmRead {
   const net = mine.dv / scale;
   const mineTxt = net > 0.15 ? `Yes. We come out ahead (about ${fmtMoney(mine.dv)} in value).` : net > -0.05 ? 'It\'s about even for us. Fine if it fills a need.' : net > -0.25 ? `I'd lean no; we're giving up a bit more than we get (about ${fmtMoney(-mine.dv)}).` : `No. We'd be overpaying by about ${fmtMoney(-mine.dv)}.`;
   const frozen = talksFrozen(league, ai.id);
+  if (!frozen && isFloated(league, prop)) return { mine: mineTxt, mineTone: net > 0.15 ? 'pos' : net <= -0.05 ? 'neg' : '', theirs: 'They put this package on the table themselves; they\'ll take it.', theirsTone: 'pos' };
   const est = agmEstimate(league, prop);
   const theirsTxt = frozen ? frozen : est > 0.12 ? 'Likely. I think they say yes.' : est > -0.05 ? 'Could go either way.' : est > -0.3 ? 'Unlikely as is; expect a counter.' : 'No chance. They\'ll laugh at it.';
   return { mine: mineTxt, mineTone: net > 0.15 ? 'pos' : net <= -0.05 ? 'neg' : '', theirs: theirsTxt, theirsTone: frozen ? 'neg' : est > 0.12 ? 'pos' : est <= -0.05 ? 'neg' : '' };

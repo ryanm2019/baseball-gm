@@ -37,6 +37,7 @@ export function DataTable<T>({
   rows,
   defaultSort,
   rowClass,
+  pinned,
   rowKey,
   compact,
   footer,
@@ -47,6 +48,7 @@ export function DataTable<T>({
   rows: T[];
   defaultSort?: { key: string; desc: boolean };
   rowClass?: (row: T) => string | undefined;
+  pinned?: (row: T) => boolean; // these rows stay on top whatever the sort
   rowKey: (row: T) => string | number;
   compact?: boolean;
   footer?: ReactNode;
@@ -87,6 +89,7 @@ export function DataTable<T>({
     if (sort.desc) out.reverse();
     return out;
   }, [rows, sort, cols]);
+  const shown = pinned ? [...sorted.filter(pinned), ...sorted.filter((r) => !pinned(r))] : sorted;
   return (
     <div className={`table-wrap${fits && !maxHeight ? ' fits' : ''}`} ref={wrap} style={maxHeight ? { maxHeight } : undefined}>
       <table className={`data${compact ? ' compact' : ''}`}>
@@ -113,8 +116,8 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r) => (
-            <tr key={rowKey(r)} className={rowClass?.(r)}>
+          {shown.map((r) => (
+            <tr key={rowKey(r)} className={[rowClass?.(r), pinned?.(r) ? 'pinned' : ''].filter(Boolean).join(' ') || undefined}>
               {cols.map((c) => (
                 <td key={c.key} className={c.left ? 'l' : ''}>
                   {c.render ? c.render(r) : c.value ? c.value(r) : null}

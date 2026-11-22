@@ -612,6 +612,7 @@ export interface InboxMsg {
   read?: boolean;
   stop?: boolean; // pauses the sim until you've seen it
   stopped?: boolean;
+  cards?: boolean; // show the players' ratings and this season's stats under the text
   link?: { page: string; args?: (string | number)[]; query?: Record<string, string | number> };
   storyId?: string;
 }
@@ -831,6 +832,7 @@ export interface League {
   cbPicks: CbPick[];
   tradeOffers: TradeOffer[];
   tradeTalks?: TradeTalk[];
+  tradeFloated?: { sig: string; day: number }[]; // packages a club put on the table (Trade Finder)
   // Per club: how many rounds this season and when they'll take your calls again.
   tradeRelations?: Record<number, { season: number; rounds: number; frozenUntil: number }>;
   ifaPenalty: Record<number, number>; // pool reductions for the next signing period

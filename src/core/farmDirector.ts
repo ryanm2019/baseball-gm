@@ -95,6 +95,7 @@ export function manageOrg(league: League, org: Org): void {
     if (!isManaged(league, org, lvl)) continue;
     if (lvl === 'MLB') {
       let why = canActivate(league, p);
+      const txBefore = league.transactions.length;
       if (why && (why.includes('roster is full') || why.includes('Pitcher limit'))) {
         makeMlbRoom(league, org, isPitcher(p), !isUser);
         why = canActivate(league, p);
@@ -104,12 +105,12 @@ export function manageOrg(league: League, org: Org): void {
         why = canActivate(league, p);
       }
       if (!why) {
-        const txBefore = league.transactions.length;
         activateFromIL(league, p);
-        // Your assistant GM handled it: let you know what he did.
+        // Your assistant GM handled it: let you know what he did, and who made room.
         if (isUser) {
-          const moves = league.transactions.slice(txBefore).filter((t) => t.orgId === org.id).map((t) => t.text).filter((t) => !t.includes(p.last));
-          addInbox(league, { from: 'Assistant GM', subject: `${pname(p)} activated from the IL`, kind: 'info', pids: [p.id], text: `${pname(p)} is healthy, so I activated him from the IL.${moves.length ? ` To make room: ${moves.join('; ')}.` : ''}` });
+          const txs = league.transactions.slice(txBefore).filter((t) => t.orgId === org.id && !t.pids.includes(p.id));
+          const moves = txs.map((t) => t.text);
+          addInbox(league, { from: 'Assistant GM', subject: `${pname(p)} activated from the IL`, kind: 'info', cards: true, pids: [p.id, ...new Set(txs.flatMap((t) => t.pids))], text: `${pname(p)} is healthy, so I activated him from the IL.${moves.length ? ` To make room: ${moves.join('; ')}.` : ' There was room, so no one had to go down.'}` });
         }
       }
     } else if (!canActivate(league, p)) {
@@ -182,23 +183,24 @@ function makeFortyRoom(league: League, org: Org): boolean {
   return true;
 }
 
-export function makeMlbRoom(league: League, org: Org, pitcher: boolean, allowDfa: boolean): boolean {
+// Who goes down to make room: the weakest optionable player of that kind
+// (never the second catcher), else (if allowed) the weakest one is designated.
+export function mlbRoomCandidate(league: League, org: Org, pitcher: boolean, allowDfa: boolean): { p: Player; dfa: boolean } | null {
   const all = activeAt(league, org.id, 'MLB');
   const catchers = all.filter((p) => p.pos === 'C').length;
-  // Never send down the second catcher.
   const active = all.filter((p) => isPitcher(p) === pitcher && !(p.pos === 'C' && catchers <= 2));
   const sorted = active.sort((a, b) => ovr(a) - ovr(b));
-  for (const p of sorted) {
-    if (!canOption(league, p)) {
-      optionPlayer(league, p, 'AAA');
-      return true;
-    }
-  }
-  if (allowDfa && sorted.length) {
-    designate(league, sorted[0]);
-    return true;
-  }
-  return false;
+  const opt = sorted.find((p) => !canOption(league, p));
+  if (opt) return { p: opt, dfa: false };
+  return allowDfa && sorted.length ? { p: sorted[0], dfa: true } : null;
+}
+
+export function makeMlbRoom(league: League, org: Org, pitcher: boolean, allowDfa: boolean): boolean {
+  const c = mlbRoomCandidate(league, org, pitcher, allowDfa);
+  if (!c) return false;
+  if (c.dfa) designate(league, c.p);
+  else optionPlayer(league, c.p, 'AAA');
+  return true;
 }
 
 function mlbNeed(league: League, org: Org): 'P' | 'C' | 'H' {
@@ -491,12 +493,14 @@ export function ilReadyNotices(league: League): void {
     const why = canActivate(league, p);
     if (why && !why.includes('roster is full') && !why.includes('Pitcher limit') && !why.includes('40-man')) continue;
     p.il.readyNoticeDay = league.day;
-    const full = why ? ` Your active roster is full, so activating him means sending someone down.` : '';
+    const roomy = why && (why.includes('roster is full') || why.includes('Pitcher limit'));
+    const down = roomy ? mlbRoomCandidate(league, org, isPitcher(p), false) : null;
+    const full = !why ? '' : down ? ` Your active roster is full: activating him now would option ${pname(down.p)} to ${league.orgs[org.id].affiliates.AAA.name}.` : ` Your active roster is full and no one can be optioned; make room on Roster Moves first.`;
     addInbox(league, {
-      from: 'Medical staff', subject: `${pname(p)} is ready to come off the IL`, kind: 'il-ready', pids: [p.id], stop: true,
+      from: 'Medical staff', subject: `${pname(p)} is ready to come off the IL`, kind: 'il-ready', cards: true, pids: down ? [p.id, down.p.id] : [p.id], stop: true,
       text: `${pname(p)} is healthy and has served his minimum stay on the ${p.il.type}.${full}`,
       actions: [
-        { key: 'activate', label: why ? `Activate (option the weakest ${isPitcher(p) ? 'pitcher' : 'position player'})` : 'Activate now' },
+        { key: 'activate', label: down ? `Activate (option ${down.p.first[0]}. ${down.p.last})` : 'Activate now' },
         { key: 'rehab', label: 'Rehab assignment first (about a week)' },
         { key: 'leave', label: 'Leave him on the IL for now' },
       ],
