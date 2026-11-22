@@ -62,8 +62,13 @@ export function projectValue(league: League, org: Org, p: Player): { total: numb
   const toMlb = p.on40 && p.level === 'MLB' ? 0 : YEARS_TO_MLB[level] ?? 2;
   const risk = RISK[level] ?? 0.6;
   const strategy = org.strategy;
-  const weight = (t: number) =>
+  const base = (t: number) =>
     strategy === 'Contend' ? (t === 0 ? 1.35 : t === 1 ? 1 : 0.75) : strategy === 'Rebuild' ? (t === 0 ? 0.5 : t === 1 ? 0.8 : 1.15) : 1;
+  // Where the club is right now matters too: a seller doesn't pay for this
+  // season's wins (no rentals, no prospects for veterans); a buyer pays extra.
+  const weight = (t: number) =>
+    org.stance === 'Selling' ? (t === 0 ? Math.min(base(0), 0.3) : t === 1 ? Math.min(base(1), 0.85) : base(t))
+    : org.stance === 'Buying' && t === 0 ? Math.max(base(0), 1.3) : base(t);
 
   // Years of control and salary.
   const c = p.contract;

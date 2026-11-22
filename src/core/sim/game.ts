@@ -477,8 +477,15 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
       if (daysSince <= 4 && p.lastPitchCount > 60) return false;
       // Over two weeks, no more than six appearances (about a 75-game pace at most).
       if ((p.recentApps ?? []).filter((d) => d > opts.day - 14 && d < opts.day).length >= 6) return false;
-      // And no more than thirteen in a month (only a few reach 75 games).
+      // And no more than thirteen in a month.
       if ((p.recentApps ?? []).filter((d) => d > opts.day - 30 && d < opts.day).length >= 13) return false;
+      // Season pace: each arm has his own ceiling (63-76 games); once he's ahead
+      // of it the manager spreads the work (only a rubber arm or two reach 75).
+      if (currentLeague?.phase === 'regular') {
+        const apps = p.stats.reduce((t, e) => (e.season === currentLeague.season ? t + e.pit.g - e.pit.gs : t), 0);
+        const ceiling = 63 + 13 * (((p.id * 2654435761) >>> 0) % 1000) / 1000;
+        if (apps > 2 + ceiling * Math.min(1, opts.day / currentLeague.settings.seasonDays)) return false;
+      }
       if (p.lastStartDay > opts.day - 4) return false;
       // Workload: at most three times in any five days, or four in a week.
       const recent = (p.recentApps ?? []).filter((d) => d > opts.day - 7 && d < opts.day);
