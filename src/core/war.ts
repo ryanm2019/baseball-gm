@@ -207,8 +207,11 @@ export function perfOvr(league: League, p: Player): { est: number; w: number } |
   if (sample <= 0) return null;
   const full = pit ? (p.pos === 'SP' ? 540 : 195) : 600;
   const rate = (war / sample) * full; // WAR per full season
-  const slope = pit ? (p.pos === 'SP' ? 0.21 : 0.075) : 0.22;
-  const est = Math.max(25, Math.min(85, 42 + rate / slope));
+  // What the sim actually produces per full season at a given overall (fit on
+  // simulated seasons): rate = a + b * ovr. Reading it backward gives an
+  // unbiased overall from the numbers.
+  const [a, b] = !pit ? [-9.94, 0.22] : p.pos === 'SP' ? [-5.22, 0.132] : [-1.62, 0.042];
+  const est = Math.max(25, Math.min(85, (rate - a) / b));
   // Two strong full seasons count for about two-thirds; the cap keeps ratings in the picture.
   const k = pit ? (p.pos === 'SP' ? 800 : 350) : 800;
   return { est, w: Math.min(0.75, sample / (sample + k)) };
