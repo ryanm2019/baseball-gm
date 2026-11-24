@@ -33,6 +33,7 @@ import { marketOvr, seasonCtx } from './war.ts';
 import { setDeptBudgets, updateFacilities } from './depts.ts';
 import { salaryIn, syncContract } from './terms.ts';
 import { addInbox } from './morale.ts';
+import { dayShort } from './settings.ts';
 import { archiveSeason, hallOfFameVote, seasonAwards } from './awards.ts';
 import { closeBooks } from './finances.ts';
 
@@ -59,6 +60,7 @@ export function offseasonCalendar(league: League): CalEvent[] {
     { key: 'tender', label: 'Non-tender deadline', day: dayOfDate(league, 10, 22), decision: { duty: 'tender', page: 'tenders', text: 'Choose who to tender on the Tenders & Arbitration page.' } },
     { key: 'posting', label: 'International pros posted', day: dayOfDate(league, 10, 25) },
     { key: 'winter-meetings', label: 'Winter Meetings (trade market heats up)', day: dayOfDate(league, 11, 7) },
+    { key: 'fa-late', label: 'Late free agent market', day: dayOfDate(league, 0, 2) },
     { key: 'r5-draft', label: 'Rule 5 draft', day: dayOfDate(league, 11, 10), decision: { duty: 'rule5draft', page: 'rule5', text: 'Pick your Rule 5 targets on the Rule 5 page.' } },
     { key: 'ifa-class', label: 'International class revealed (negotiations open)', day: dayOfDate(league, 11, 15) },
     { key: 'ifa-shake', label: 'International negotiation day', day: dayOfDate(league, 0, 1) },
@@ -615,6 +617,54 @@ function runRollover(league: League): void {
   addNews(league, null, `Spring training has opened for the ${league.season} season. ${retired} players retired this winter. The season preview is out.`);
 }
 
+// ---------- free agency stages ----------
+
+// Where the free agent market is right now (shown on the Free Agents page).
+export function faStage(league: League): { stage: string; detail: string } | null {
+  if (league.phase !== 'offseason') return null;
+  const cal = offseasonCalendar(league);
+  const at = (k: string) => cal.find((e) => e.key === k)!.day;
+  const d = league.day;
+  const when = (k: string) => dayShort(league.season, at(k));
+  if (d < at('fa-open')) return { stage: 'Exclusive window', detail: `Clubs have their own free agents to themselves. The market opens ${when('fa-open')}.` };
+  if (d < at('qo-response')) return { stage: 'Market open', detail: `Free agents are taking offers. Players with qualifying offers answer ${when('qo-response')}; the ones who decline join the market.` };
+  if (d < at('winter-meetings')) return { stage: 'Main market', detail: `The whole class is out. Each player decides on his own timeline: some in days, most in a few weeks, some not until January. Winter Meetings ${when('winter-meetings')}.` };
+  if (d < at('fa-late')) return { stage: 'Winter Meetings', detail: 'The busiest stretch: big signings and trades.' };
+  return { stage: 'Late market', detail: `The remaining free agents are running out of time before spring training (${when('rollover')}); asking prices come down as the winter goes on.` };
+}
+
+// The class in one line: the best (by your scouts' read) and their asks.
+function faHeadline(league: League, n = 6): string {
+  const fas = Object.values(league.players).filter((p) => isFreeAgent(p) && p.fa && p.fa.asking.aav > 2e6).sort((a, b) => b.fa!.asking.aav - a.fa!.asking.aav);
+  if (!fas.length) return 'No major league free agents of note are left.';
+  return `${fas.length} notable free agent${fas.length === 1 ? '' : 's'}. Top asks: ${fas.slice(0, n).map((p) => `${posLabel(p)} ${pname(p)} (${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)})`).join(', ')}.`;
+}
+
+// An inbox notice when the market moves to its next stage; returns a stop for the sim.
+function faNotice(league: League, key: string): string | null {
+  const st = faStage(league);
+  const pending = Object.values(league.players).filter((p) => p.qoPending && p.orgId !== null);
+  let subject = '', text = '';
+  if (key === 'fa-open') {
+    subject = 'Free agency is open';
+    text = `${faHeadline(league)}${pending.length ? ` Still deciding on qualifying offers (they answer ${dayShort(league.season, offseasonCalendar(league).find((e) => e.key === 'qo-response')!.day)}): ${pending.map((p) => pname(p)).join(', ')}.` : ''}`;
+  } else if (key === 'qo-response') {
+    const today = league.transactions.filter((t) => t.season === league.season && t.day === league.day && t.text.includes('qualifying offer'));
+    const declined = today.filter((t) => t.text.includes('declined')).map((t) => t.text.replace(' declined the qualifying offer and became a free agent', ''));
+    const accepted = today.filter((t) => t.text.includes('accepted')).map((t) => t.text.replace(' accepted the qualifying offer', ''));
+    subject = 'Qualifying offer decisions are in';
+    text = `${declined.length ? `Declined and now free agents: ${declined.join(', ')}.` : 'Nobody declined.'}${accepted.length ? ` Accepted: ${accepted.join(', ')}.` : ''} The whole class is on the market now. ${faHeadline(league)}`;
+  } else if (key === 'winter-meetings') {
+    subject = 'The Winter Meetings are underway';
+    text = `The trade market heats up and big free agents tend to sign this week. ${faHeadline(league)}`;
+  } else if (key === 'fa-late') {
+    subject = 'Late free agent market';
+    text = `${faHeadline(league)} Asking prices keep coming down as spring training nears.`;
+  } else return null;
+  addInbox(league, { from: 'Front office', subject, kind: 'info', pids: [], stop: true, link: { page: 'free-agents' }, text: `${st ? `${st.stage}: ` : ''}${text}` });
+  return `Inbox: ${subject}. ${st ? st.detail : ''}`;
+}
+
 // ---------- daily driver ----------
 
 export function nextEvent(league: League): CalEvent | null {
@@ -643,6 +693,7 @@ export function runOffseasonEvents(league: League): string | null {
       case 'r5-protect': runProtection(league); break;
       case 'tender': runTenders(league); break;
       case 'winter-meetings': addNews(league, null, 'The Winter Meetings are underway. Expect the trade market to heat up.'); break;
+      case 'fa-late': break;
       case 'r5-draft': runRule5Draft(league); break;
       case 'posting': postPlayers(league); break;
       case 'ifa-class':
@@ -658,6 +709,9 @@ export function runOffseasonEvents(league: League): string | null {
       case 'rollover': runRollover(league); return null;
     }
     if (byAgm) agmReport(league, ev.label, txBefore);
+    // Free agency moved to its next stage: tell the user (and pause).
+    const faStop = faNotice(league, ev.key);
+    if (faStop) return faStop;
   }
   return null;
 }

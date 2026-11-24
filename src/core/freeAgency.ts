@@ -61,7 +61,14 @@ export const isMinorFA = (league: League, p: Player) => !p.fa || p.fa.asking.aav
 
 export function openFreeAgent(league: League, p: Player, formerOrg: number | null, qo = false): void {
   const asking = askingFor(league, p);
-  const big = asking.aav > 20e6 ? randInt(20, 45) : asking.aav > 8e6 ? randInt(10, 32) : randInt(3, 20);
+  // How long he takes is his own business, like real life: a few sign within
+  // days, most take weeks, some drag into January. Bigger names lean later.
+  const timeline = () => {
+    const u = rand();
+    const late = asking.aav > 20e6 ? 0.05 : 0;
+    return u < 0.15 - late ? randInt(2, 8) : u < 0.55 - late ? randInt(9, 30) : u < 0.88 - late ? randInt(31, 60) : randInt(61, 90);
+  };
+  const big = asking.aav > 8e6 ? timeline() : randInt(3, 20);
   p.orgId = null;
   touchRosters();
   p.level = null;
@@ -252,6 +259,30 @@ export function faDay(league: League): void {
   const nextSeason = firstContractSeason(league);
   const offseason = offseasonPhase;
 
+  // Clubs don't wait forever. A club whose offer has sat a while may pull it to
+  // go after someone else (each club has its own patience), and a club that has
+  // spent its budget on other signings pulls offers it can no longer afford.
+  // (Your own offers stay until you withdraw them.)
+  for (const p of fas) {
+    const fa = p.fa!;
+    fa.offers = fa.offers.filter((o) => {
+      if (o.orgId === league.userOrgId) return true;
+      const org = league.orgs[o.orgId];
+      const room = payrollTarget(org) * 1.05 - committed(league, org.id, nextSeason);
+      if (o.aav > room) {
+        if (notableFa(p) && rand() < 0.5) addScoop(league, `Sources: the ${org.affiliates.MLB.name} no longer have the room for ${posLabel(p)} ${pname(p)} after their other moves.`, [p.id]);
+        return false;
+      }
+      const patience = 10 + ((org.id * 7919 + p.id * 104729) % 21); // 10-30 days
+      if (league.day - o.day > patience && rand() < 0.12) {
+        fa.passed = [...(fa.passed ?? []), o.orgId];
+        if (notableFa(p) && rand() < 0.5) addScoop(league, `Sources: tired of waiting, the ${org.affiliates.MLB.name} have moved on from ${posLabel(p)} ${pname(p)}.`, [p.id]);
+        return false;
+      }
+      return true;
+    });
+  }
+
   // AI offers
   const ranked = [...fas].sort((a, b) => ovr(b) - ovr(a)).slice(0, 80);
   // Offers still on the table count against a club's budget until they're answered.
@@ -268,7 +299,7 @@ export function faDay(league: League): void {
     let made = 0;
     for (const p of ranked) {
       if (made >= 3 || budget <= 0) break;
-      if (p.fa!.offers.some((o) => o.orgId === org.id)) continue;
+      if (p.fa!.offers.some((o) => o.orgId === org.id) || p.fa!.passed?.includes(org.id)) continue;
       const ageNext = nextSeason - p.born;
       if (org.strategy === 'Rebuild' && (ageNext >= 30 || p.fa!.asking.years > 2) && p.fa!.asking.aav > 5e6) continue;
       const cheap = p.fa!.asking.aav <= 4e6;
@@ -300,10 +331,11 @@ export function faDay(league: League): void {
     const scored = valid.map((o) => ({ o, s: offerScore(league, p, o) })).sort((a, b) => b.s - a.s);
     const best = scored[0];
     const due = league.day >= fa.decideDay;
-    // Big names take their time (weeks, not days): no early decision in their
-    // first two or three weeks on the market, and a smaller daily chance after.
-    const wait = fa.asking.aav > 20e6 ? 21 : fa.asking.aav > 8e6 ? 12 : 0;
-    const early = best && best.s >= 1.12 && league.day - fa.opened >= wait && rand() < (wait ? 0.1 : 0.25);
+    // A blowaway offer can end it early, but a big name sticks to at least part
+    // of his own timeline (some decide in days, others take months).
+    const notable = fa.asking.aav > 8e6;
+    const wait = notable ? Math.round((fa.decideDay - fa.opened) * 0.4) : 0;
+    const early = best && best.s >= 1.12 && league.day - fa.opened >= wait && rand() < (notable ? 0.1 : 0.25);
     // The insider names the finalists a few days before a big free agent decides.
     if (notableFa(p) && (fa.scooped ?? 0) < 2 && fa.decideDay - league.day <= 3 && scored.length >= 2) {
       fa.scooped = 2;

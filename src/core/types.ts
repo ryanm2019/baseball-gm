@@ -121,6 +121,7 @@ export interface FaStatus {
   qo: boolean; // declined a qualifying offer (signing team forfeits a pick)
   posted?: { from: string; deadline: number }; // posted by his Asian club: sign by the deadline or he goes back
   scooped?: number; // how far the insider feed has followed him (1 = meetings reported, 2 = finalists)
+  passed?: number[]; // clubs that pulled their offer and moved on
 }
 
 export interface IfaInfo {

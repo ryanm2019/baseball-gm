@@ -11,7 +11,7 @@ import { DataTable, type Column, NumInput } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
 import { fortyMan } from '../../core/util.ts';
-import { offseasonCalendar } from '../../core/offseason.ts';
+import { faStage, offseasonCalendar } from '../../core/offseason.ts';
 import { isPitcher } from '../../core/ratings.ts';
 
 // Position filter (kept while you browse other pages).
@@ -138,6 +138,7 @@ export default function FreeAgents() {
   return (
     <>
       <h1>Free Agents</h1>
+      {(() => { const st = faStage(league); return st ? <p className="alert alert-info small" style={{ margin: '4px 0 8px' }}><b>{st.stage}.</b> {st.detail}</p> : null; })()}
       <div className="btn-group tabs">
         <button className={`btn btn-sm${tab === 'ml' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'ml' })}>Major league ({ml.length - upcoming.length}{upcoming.length ? ` + ${upcoming.length} upcoming` : ''})</button>
         <button className={`btn btn-sm${tab === 'milb' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'milb' })}>Minor league ({milb.length})</button>
