@@ -15,6 +15,7 @@ import Standings from './ui/pages/Standings.tsx';
 import Stats from './ui/pages/Stats.tsx';
 import Transactions from './ui/pages/Transactions.tsx';
 import Depth from './ui/pages/Depth.tsx';
+import DepthField from './ui/pages/DepthField.tsx';
 import RosterBoard from './ui/pages/RosterBoard.tsx';
 import Extensions from './ui/pages/Extensions.tsx';
 import Negotiate from './ui/pages/Negotiate.tsx';
@@ -59,7 +60,7 @@ import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['awards', 'Awards'], ['history', 'History & Records'], ['league-payrolls', 'League Payrolls']] },
-  { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['playoff-roster', 'Playoff Roster'], ['depth', 'Depth Chart'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
+  { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['playoff-roster', 'Playoff Roster'], ['depth', 'Depth Chart'], ['depth-field', 'Depth Chart: Field'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-finder', 'Trade Finder'], ['compare', 'Compare Players'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb'], ['extensions', 'Extensions']] },
@@ -223,6 +224,7 @@ export default function App() {
     case 'stats': page = <Stats />; break;
     case 'transactions': page = <Transactions />; break;
     case 'depth': page = <Depth />; break;
+    case 'depth-field': page = <DepthField />; break;
     case 'roster-moves': page = <RosterBoard />; break;
     case 'extensions': page = <Extensions />; break;
     case 'negotiate': page = <Negotiate />; break;

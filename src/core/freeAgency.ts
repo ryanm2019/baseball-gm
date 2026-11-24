@@ -14,6 +14,7 @@ import { deptEffect } from './depts.ts';
 import { marketOvr } from './war.ts';
 import { postingFee } from './intl.ts';
 import { bookDeferred, buildContract, playerValue, shapeSchedule, type Terms } from './terms.ts';
+import { addInbox } from './morale.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -178,6 +179,7 @@ export function withdrawOffer(p: Player, orgId: number): void {
 export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void {
   const start = firstContractSeason(league);
   const fa = p.fa!;
+  const yours = fa.offers.find((x) => x.orgId === league.userOrgId);
   p.orgId = o.orgId;
   touchRosters();
   p.on40 = true;
@@ -204,6 +206,20 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   logMove(league, 'Free agent', sides, `${org.abbrev} signed ${posLabel(p)} ${pname(p)}: ${yrs}, ${fmtMoney(o.aav)}/yr`, o.aav * o.years);
   if (o.aav >= 10e6 || o.orgId === league.userOrgId || fa.formerOrg === league.userOrgId) {
     addNews(league, o.orgId, `${pname(p)} signed with the ${org.affiliates.MLB.name}: ${yrs}, $${((o.aav * o.years) / 1e6).toFixed(1)}M total.`, [p.id]);
+  }
+  // Tell the user: he signed with you, or someone you bid on went elsewhere.
+  const deal = (x: FaOffer) => `${x.years === 1 ? '1 year' : `${x.years} years`} at ${fmtMoney(x.aav)} a year (${fmtMoney(x.aav * x.years)} total)`;
+  if (o.orgId === league.userOrgId) {
+    const forty = fortyMan(league, o.orgId).length;
+    addInbox(league, {
+      from: 'Front office', subject: `${pname(p)} signed with you`, kind: 'info', pids: [p.id], stop: true,
+      text: `${posLabel(p)} ${pname(p)} accepted your offer: ${deal(o)}. He joins ${p.level === 'MLB' ? 'the major league roster' : 'Triple-A for now (your active roster is full)'}; your 40-man is at ${forty}/${league.settings.fortyMax}.${fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId ? ' He had declined a qualifying offer, so you lose a draft pick.' : ''}`,
+    });
+  } else if (yours) {
+    addInbox(league, {
+      from: 'Front office', subject: `${pname(p)} signed with the ${org.affiliates.MLB.name}`, kind: 'info', pids: [p.id], stop: true,
+      text: `${posLabel(p)} ${pname(p)} chose the ${org.affiliates.MLB.name}: ${deal(o)}. Your offer was ${deal(yours)}.`,
+    });
   }
 }
 

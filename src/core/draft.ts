@@ -12,6 +12,8 @@ import { cbtOverLastSeason } from './owners.ts';
 import type { CbPick, DraftAdjust } from './types.ts';
 import { logMove, side } from './moves.ts';
 import { posLabel } from './rules.ts';
+import { addInbox } from './morale.ts';
+import { fmtMoney } from './contracts.ts';
 
 export function normalizeAdjust(a: unknown): DraftAdjust {
   const x = (a ?? { comp: [], forfeit: [] }) as { comp: unknown[]; forfeit: unknown[] };
@@ -232,6 +234,7 @@ export function draftSigningDay(league: League): void {
   const d = league.draft;
   if (!d || !d.done || league.day >= d.deadline) return;
   const user = league.orgs[league.userOrgId];
+  const agmSigned: DraftPick[] = [];
   for (const pk of d.picks) {
     if (pk.pid === null || pk.signed !== null) continue;
     const isUser = pk.orgId === league.userOrgId;
@@ -266,7 +269,14 @@ export function draftSigningDay(league: League): void {
       offer = Math.min(offer, LATE_ROUND_FREE + share);
     }
     if (offer < want * 0.75) continue; // can't afford him
-    offerPick(league, pk, offer);
+    if (offerPick(league, pk, offer).signed && isUser) agmSigned.push(pk);
+  }
+  // Your assistant GM signed some of your picks today: let you know.
+  if (agmSigned.length) {
+    addInbox(league, {
+      from: 'Assistant GM', subject: `Signed ${agmSigned.length} draft pick${agmSigned.length === 1 ? '' : 's'}`, kind: 'info', pids: agmSigned.map((pk) => pk.pid!),
+      text: `${agmSigned.map((pk) => `round ${pk.round} ${posLabel(league.players[pk.pid!])} ${pname(league.players[pk.pid!])} (${fmtMoney(pk.bonus ?? 0)}, slot ${fmtMoney(pk.slot)})`).join('; ')}. Bonus pool: ${fmtMoney(poolSpent(league, user.id))} of ${fmtMoney(poolTotal(league, user.id))} spent.`,
+    });
   }
 }
 

@@ -107,7 +107,11 @@ export default function FreeAgents() {
   const upLabel = (p: Player) => p.qoPending ? `Deciding on a qualifying offer${qoDay !== undefined ? ` (answers ${dayShort(league.season, qoDay)})` : ''}` : league.phase === 'offseason' && faOpenDay !== undefined ? `Free agent ${dayShort(league.season, faOpenDay)}` : 'Free agent after the season';
   const ml = [...fas.filter((p) => p.fa && !isMinorFA(league, p)), ...upcoming];
   const milb = fas.filter((p) => isMinorFA(league, p));
-  const mineOffers = ml.filter((p) => p.fa?.offers.some((o) => o.orgId === league.userOrgId));
+  const mineOffers = Object.values(league.players).filter((p) => isFreeAgent(p) && p.fa?.offers.some((o) => o.orgId === league.userOrgId));
+  // How your bids turned out (signed with you, or chose someone else), this market.
+  const marketSeason = league.phase === 'offseason' ? league.season : league.season - 1;
+  const bidResults = (league.inbox ?? []).filter((m) => m.from === 'Front office' && / signed with /.test(m.subject) && (m.season === league.season || m.season === marketSeason)).slice(-12).reverse();
+  const yourOffer = (p: Player) => p.fa!.offers.find((o) => o.orgId === league.userOrgId)!;
   const start = firstContractSeason(league);
 
   const base: Column<Player>[] = [
@@ -128,6 +132,18 @@ export default function FreeAgents() {
     { key: 'posted', label: 'Posted', title: 'Posted by an Asian club: must sign by the deadline or he goes back. The signing club pays his old club a posting fee (20% of the first $25M, 17.5% of the next $25M, 15% beyond).', value: (p) => p.fa?.posted?.deadline ?? 0, render: (p) => (p.fa?.posted ? `${p.fa.posted.from}, sign by ${dayShort(league.season, p.fa.posted.deadline)}` : '') },
     { key: 'qo', label: 'QO', title: 'Declined a qualifying offer: signing him costs your second-round pick', value: (p) => (p.fa?.qo ? 1 : 0), render: (p) => (p.fa?.qo ? 'Yes' : p.qoPending ? 'Pending' : '') },
     { key: 'offer', label: 'Your offer', noSort: true, render: (p) => (p.fa ? <OfferCell p={p} /> : <span className="muted small">Can't sign yet</span>) },
+  ];
+  const bidCols: Column<Player>[] = [
+    nameCol(league),
+    { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
+    { key: 'age', label: 'Age', title: `Age in ${start}`, value: (p) => start - p.born },
+    ...ratingCols(league),
+    { key: 'yours', label: 'Your offer', value: (p) => yourOffer(p).aav, render: (p) => `${yourOffer(p).years} yr × ${fmtMoney(yourOffer(p).aav)}` },
+    { key: 'ask', label: 'Asking', value: (p) => p.fa!.asking.aav, render: (p) => `${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)}` },
+    { key: 'interest', label: 'His interest', title: 'How your offer stacks up against what he wants (money, years, your club)', value: (p) => offerScore(league, p, yourOffer(p)), render: (p) => interestLabel(offerScore(league, p, yourOffer(p))) },
+    { key: 'rivals', label: 'Other offers', value: (p) => p.fa!.offers.length - 1 },
+    { key: 'dec', label: 'Decides', value: (p) => p.fa!.decideDay, render: (p) => dayShort(league.season, p.fa!.decideDay) },
+    { key: 'wd', label: '', noSort: true, render: (p) => <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId); changed(); }}>Withdraw</button> },
   ];
   const milbCols: Column<Player>[] = [
     ...base,
@@ -167,14 +183,19 @@ export default function FreeAgents() {
           <p className="muted small">
             Make an offer and the player weighs it against everyone else's when he decides: money, years, how good the team is and, for his old club, loyalty. "Interest" previews how your offer stacks up against what he's asking. Contracts start in {start}. You need an open 40-man spot when he signs ({fortyMan(league, league.userOrgId).length}/{league.settings.fortyMax} now).
           </p>
-          {mineOffers.length > 0 && (
-            <p>
-              Your open offers:{' '}
-              {mineOffers.map((p) => {
-                const o = p.fa!.offers.find((x) => x.orgId === league.userOrgId)!;
-                return <span key={p.id} style={{ marginRight: 14 }}>{p.first} {p.last} ({o.years} × {fmtMoney(o.aav)})</span>;
-              })}
-            </p>
+          {(mineOffers.length > 0 || bidResults.length > 0) && (
+            <div className="box" style={{ margin: '6px 0 10px' }}>
+              <h3 style={{ margin: '0 0 4px' }}>Your bids</h3>
+              {mineOffers.length > 0
+                ? <DataTable cols={bidCols} rows={mineOffers} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
+                : <p className="muted small">No open offers.</p>}
+              {bidResults.length > 0 && (
+                <div className="small" style={{ marginTop: 6 }}>
+                  <b>Results this winter:</b>{' '}
+                  {bidResults.map((m, i) => <span key={m.id} className={m.subject.endsWith('with you') ? 'pos' : 'muted'}>{i ? ' · ' : ''}{m.subject}</span>)}
+                </div>
+              )}
+            </div>
           )}
           <DataTable cols={mlCols} rows={ml} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
         </>

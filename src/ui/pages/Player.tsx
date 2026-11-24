@@ -1,3 +1,4 @@
+import { acquisition } from '../../core/moves.ts';
 import { useEffect, useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
@@ -346,6 +347,7 @@ export default function PlayerPage() {
           <div className="kv">
             <div>Position</div><div>{posLabel(p)}{isPitcher(p) ? '' : ` (bats ${p.bats})`}, throws {p.throws}</div>
             <div>Team</div><div>{org ? <><OrgLink league={league} orgId={org.id} level={p.level ?? 'MLB'} /> ({p.level})</> : 'Free agent'}</div>
+            {org && (() => { const a = acquisition(league, p); return a ? <><div>How acquired</div><div>{a.text}</div></> : null; })()}
             <div>Age</div><div>{a} (born {p.born}, {p.country})</div>
             <div>Height / weight</div><div>{ft}'{inch}", {p.weight} lbs</div>
             <div>Overall / Potential</div><div><Rating v={scoutedOvr(league, p)} /> / <Rating v={scoutedPot(league, p)} /></div>

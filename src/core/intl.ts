@@ -19,6 +19,7 @@ import { delegated, staffOf } from './staff.ts';
 import { logMove, side } from './moves.ts';
 import { originFrom } from './names.ts';
 import { openFreeAgent } from './freeAgency.ts';
+import { addInbox } from './morale.ts';
 
 export function poolFor(market: number): number {
   return market < 0.8 ? 7_555_500 : market <= 1.1 ? 6_908_600 : 6_261_600;
@@ -93,6 +94,13 @@ export function openIfaPeriod(league: League): void {
     signIfa(league, s.orgId, s.p, s.amount);
   }
   signed.sort((a, b) => b.amount - a.amount);
+  const mine = signed.filter((s) => s.orgId === league.userOrgId);
+  if (mine.length) {
+    addInbox(league, {
+      from: 'International scouting', subject: `Signing day: ${mine.length} international player${mine.length === 1 ? '' : 's'} signed`, kind: 'info', pids: mine.map((s) => s.p.id), stop: true,
+      text: `${mine.map((s) => `${pname(s.p)} (${s.p.country}, ${fmtMoney(s.amount)})`).join('; ')}. They report to your Dominican Summer League and complex teams.`,
+    });
+  }
   const top = signed.slice(0, 5).map((s) => `${pname(s.p)} (${league.orgs[s.orgId].abbrev}, ${fmtMoney(s.amount)})`);
   addNews(league, null, `International signing day: ${signed.length} players signed.${top.length ? ` Top bonuses: ${top.join(', ')}.` : ''}`, signed.slice(0, 5).map((s) => s.p.id));
 }

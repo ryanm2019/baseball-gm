@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
 import { useStore, changed } from '../../store.ts';
-import { go, useRoute } from '../../router.ts';
+import { go, href, useRoute } from '../../router.ts';
 import type { DepthChart, Level, PenRole, Player, Pos } from '../../core/types.ts';
 import { PEN_ROLES } from '../../core/types.ts';
 import { activeAt, playersAt } from '../../core/util.ts';
@@ -163,7 +163,7 @@ export default function Depth() {
 
   return (
     <div className={shown ? 'with-side-panel' : ''}>
-      <h1>Depth Chart <span className="muted small">{org.affiliates[level].name}</span></h1>
+      <h1>Depth Chart <span className="muted small">{org.affiliates[level].name}</span>{level === 'MLB' && <> <a className="btn btn-sm" href={href('depth-field')}>Field view</a></>}</h1>
       <LevelTabs value={level} onChange={(v) => go('depth', [], { level: v })} />
       <p>
         Mode: <b>{org.depth[level]?.auto === false ? 'Manual' : 'Auto (manager sets the lineup each day)'}</b>{' '}
