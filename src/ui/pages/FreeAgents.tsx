@@ -4,7 +4,7 @@ import { go, href, useRoute } from '../../router.ts';
 import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
 import { signFreeAgent, posLabel } from '../../core/rules.ts';
-import { fmtMoney, serviceLabel } from '../../core/contracts.ts';
+import { fmtMoney, serviceLabel, serviceYears } from '../../core/contracts.ts';
 import { interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { DataTable, type Column, NumInput } from '../components.tsx';
@@ -27,6 +27,7 @@ const POS_FILTERS: Record<string, (p: Player) => boolean> = {
 };
 const POS_LABELS: [string, string][] = [['all', 'All positions'], ['hitters', 'Hitters'], ['C', 'C'], ['1B', '1B'], ['2B', '2B'], ['3B', '3B'], ['SS', 'SS'], ['IF', 'Infield'], ['LF', 'LF'], ['CF', 'CF'], ['RF', 'RF'], ['OF', 'Outfield'], ['DH', 'DH'], ['pitchers', 'Pitchers'], ['SP', 'SP'], ['RP', 'RP']];
 let posFilter = 'all';
+let showUpcoming = true;
 
 function MilbCell({ p }: { p: Player }) {
   const { league } = useStore();
@@ -86,15 +87,27 @@ export default function FreeAgents() {
   const route = useRoute();
   const [pf, setPfState] = useState(posFilter);
   const setPf = (v: string) => { posFilter = v; setPfState(v); };
+  const [up, setUpState] = useState(showUpcoming);
+  const setUp = (v: boolean) => { showUpcoming = v; setUpState(v); };
   if (!league) return null;
   const tab = route.query.tab ?? 'ml';
   const fas = Object.values(league.players).filter(isFreeAgent).filter(POS_FILTERS[pf] ?? (() => true));
   // Players weighing a qualifying offer: they hit the market if they turn it down.
   const qoDay = offseasonCalendar(league).find((e) => e.key === 'qo-response')?.day;
   const qoPending = league.phase === 'offseason' ? Object.values(league.players).filter((p) => p.qoPending && p.orgId !== null && (POS_FILTERS[pf] ?? (() => true))(p)) : [];
-  const ml = fas.filter((p) => p.fa && !isMinorFA(league, p));
+  // The class that's coming: players whose contracts run out this season and who
+  // will be free agents (or are deciding on a qualifying offer). Listed with the
+  // free agents so sorting shows the whole class; they can't be signed yet.
+  const cal = offseasonCalendar(league);
+  const faOpenDay = cal.find((e) => e.key === 'fa-open')?.day;
+  const upcoming = up ? Object.values(league.players).filter((p) => p.orgId !== null && !p.retired && (POS_FILTERS[pf] ?? (() => true))(p) && (
+    (league.phase === 'offseason' && !!p.qoPending) ||
+    (p.contract.type === 'ML' && p.contract.exp === league.season && !(p.contract.option && p.contract.option.season > league.season && league.phase !== 'offseason') && !p.qoPending && !(league.phase === 'offseason' && league.events.includes('fa-open')) && (serviceYears(p.mlServiceDays, league.settings) >= 6 || (league.phase !== 'offseason' && serviceYears(p.mlServiceDays, league.settings) >= 5)) && p.level === 'MLB')
+  )) : [];
+  const upLabel = (p: Player) => p.qoPending ? `Deciding on a qualifying offer${qoDay !== undefined ? ` (answers ${dayShort(league.season, qoDay)})` : ''}` : league.phase === 'offseason' && faOpenDay !== undefined ? `Free agent ${dayShort(league.season, faOpenDay)}` : 'Free agent after the season';
+  const ml = [...fas.filter((p) => p.fa && !isMinorFA(league, p)), ...upcoming];
   const milb = fas.filter((p) => isMinorFA(league, p));
-  const mineOffers = ml.filter((p) => p.fa!.offers.some((o) => o.orgId === league.userOrgId));
+  const mineOffers = ml.filter((p) => p.fa?.offers.some((o) => o.orgId === league.userOrgId));
   const start = firstContractSeason(league);
 
   const base: Column<Player>[] = [
@@ -108,12 +121,13 @@ export default function FreeAgents() {
   ];
   const mlCols: Column<Player>[] = [
     ...base,
-    { key: 'ask', label: 'Asking', value: (p) => p.fa!.asking.aav, render: (p) => `${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)}` },
-    { key: 'offers', label: 'Offers', value: (p) => p.fa!.offers.length },
-    { key: 'dec', label: 'Decides', value: (p) => p.fa!.decideDay, render: (p) => dayShort(league.season, p.fa!.decideDay) },
-    { key: 'posted', label: 'Posted', title: 'Posted by an Asian club: must sign by the deadline or he goes back. The signing club pays his old club a posting fee (20% of the first $25M, 17.5% of the next $25M, 15% beyond).', value: (p) => p.fa!.posted?.deadline ?? 0, render: (p) => (p.fa!.posted ? `${p.fa!.posted.from}, sign by ${dayShort(league.season, p.fa!.posted.deadline)}` : '') },
-    { key: 'qo', label: 'QO', title: 'Declined a qualifying offer: signing him costs your second-round pick', value: (p) => (p.fa!.qo ? 1 : 0), render: (p) => (p.fa!.qo ? 'Yes' : '') },
-    { key: 'offer', label: 'Your offer', noSort: true, render: (p) => <OfferCell p={p} /> },
+    { key: 'team', label: 'Team', title: 'Upcoming free agents: the club he is with now', value: (p) => (p.orgId !== null ? league.orgs[p.orgId].abbrev : ''), render: (p) => (p.orgId !== null ? <span className="muted">{league.orgs[p.orgId].abbrev}</span> : '') },
+    { key: 'ask', label: 'Asking', value: (p) => p.fa?.asking.aav ?? 0, render: (p) => (p.fa ? `${p.fa.asking.years} yr × ${fmtMoney(p.fa.asking.aav)}` : <span className="muted small">{upLabel(p)}</span>) },
+    { key: 'offers', label: 'Offers', value: (p) => p.fa?.offers.length ?? -1, render: (p) => (p.fa ? p.fa.offers.length : '') },
+    { key: 'dec', label: 'Decides', value: (p) => p.fa?.decideDay ?? 9999, render: (p) => (p.fa ? dayShort(league.season, p.fa.decideDay) : '') },
+    { key: 'posted', label: 'Posted', title: 'Posted by an Asian club: must sign by the deadline or he goes back. The signing club pays his old club a posting fee (20% of the first $25M, 17.5% of the next $25M, 15% beyond).', value: (p) => p.fa?.posted?.deadline ?? 0, render: (p) => (p.fa?.posted ? `${p.fa.posted.from}, sign by ${dayShort(league.season, p.fa.posted.deadline)}` : '') },
+    { key: 'qo', label: 'QO', title: 'Declined a qualifying offer: signing him costs your second-round pick', value: (p) => (p.fa?.qo ? 1 : 0), render: (p) => (p.fa?.qo ? 'Yes' : p.qoPending ? 'Pending' : '') },
+    { key: 'offer', label: 'Your offer', noSort: true, render: (p) => (p.fa ? <OfferCell p={p} /> : <span className="muted small">Can't sign yet</span>) },
   ];
   const milbCols: Column<Player>[] = [
     ...base,
@@ -125,13 +139,18 @@ export default function FreeAgents() {
     <>
       <h1>Free Agents</h1>
       <div className="btn-group tabs">
-        <button className={`btn btn-sm${tab === 'ml' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'ml' })}>Major league ({ml.length})</button>
+        <button className={`btn btn-sm${tab === 'ml' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'ml' })}>Major league ({ml.length - upcoming.length}{upcoming.length ? ` + ${upcoming.length} upcoming` : ''})</button>
         <button className={`btn btn-sm${tab === 'milb' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'milb' })}>Minor league ({milb.length})</button>
       </div>
       <div className="form-row" style={{ margin: '6px 0' }}>
         <select value={pf} onChange={(e) => setPf(e.target.value)}>
           {POS_LABELS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
+        </select>{' '}
+        {tab === 'ml' && (
+          <label className="small" title="Players whose contracts run out this season, and anyone deciding on a qualifying offer">
+            <input type="checkbox" checked={up} onChange={(e) => setUp(e.target.checked)} /> Include upcoming free agents ({upcoming.length})
+          </label>
+        )}
       </div>
       {tab === 'ml' ? (
         <>
