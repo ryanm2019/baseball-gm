@@ -104,7 +104,9 @@ export function monthlyDevelopment(league: League): void {
 export function yearlyPotentialDrift(league: League, p: Player): void {
   const a = league.season - p.born;
   if (a > 27) return;
-  const d = normal(-0.9, 2.6) + (p.personality.workEthic - 50) / 30;
+  // Drafted high schoolers swing more (more busts and late bloomers); college players have a higher floor.
+  const vol = p.devVol ?? 1;
+  const d = normal(vol > 1 ? -1.1 : vol < 1 ? -0.6 : -0.9, 2.6 * vol) + (p.personality.workEthic - 50) / 30;
   const bump = (cur: number, pot: number) => clamp(Math.max(cur, pot + d), 15, 85);
   if (isPitcher(p)) {
     p.pot.stuff = bump(p.ratings.pit.stuff, p.pot.stuff);

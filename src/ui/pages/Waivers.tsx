@@ -2,6 +2,7 @@ import { useStore, changed } from '../../store.ts';
 import type { Player } from '../../core/types.ts';
 import { waiverClaims, posLabel } from '../../core/rules.ts';
 import { serviceLabel } from '../../core/contracts.ts';
+import { tradePlayerCols } from '../tradeCols.tsx';
 import { DataTable, OrgLink, type Column } from '../components.tsx';
 import { ContractCell, nameCol, ratingCols, optionsLeft } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
@@ -18,6 +19,8 @@ export default function Waivers() {
     { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
     { key: 'age', label: 'Age', value: (p) => league.season - p.born },
     ...ratingCols(league),
+    // This season's numbers (all levels) right beside the ratings.
+    ...tradePlayerCols(league).filter((c) => ['n', 'wrc', 'fipm', 'line'].includes(c.key)),
     { key: 'sal', label: 'Contract', value: (p) => p.contract.salary, render: (p) => <ContractCell league={league} p={p} /> },
     { key: 'svc', label: 'Svc', value: (p) => p.mlServiceDays, render: (p) => serviceLabel(p.mlServiceDays, s) },
     { key: 'opt', label: 'Opt', value: (p) => optionsLeft(league, p) },

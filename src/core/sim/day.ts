@@ -25,10 +25,12 @@ import { selectAllStars } from '../awards.ts';
 import { ensurePlayoffRosters, playoffRosterFor } from '../playoffRoster.ts';
 import { onInjury, reinjuryCheck } from '../injuries.ts';
 import { homeGate, hypeWeek } from '../finances.ts';
-import { afterStart, aiPositionMoves, gainFromGame, septemberCallups, springWork, suggestPositionMoves } from '../positions.ts';
+import { afterStart, aiPositionMoves, gainFromGame, septemberCallups, springWork, stretchOutProspects, suggestPositionMoves } from '../positions.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
 import { deptEffect } from '../depts.ts';
 import { clamp, rand } from '../random.ts';
+import { delegated } from '../staff.ts';
+import { agmVacancyNotice, staffExpiryNotice } from '../staffNotices.ts';
 
 let dayIndex: Map<number, Game[]> | null = null;
 let indexedFor: Game[] | null = null;
@@ -257,6 +259,7 @@ function dailyUpkeep(league: League): void {
   }
   if (inSeason && league.day - league.lastDevDay >= 30) {
     monthlyDevelopment(league);
+    stretchOutProspects(league);
     league.lastDevDay = league.day;
   }
 }
@@ -400,7 +403,13 @@ function beginRegularDay(league: League): string | null {
   // Amateur draft at the All-Star break.
   if (league.day === league.settings.draftDay) {
     selectAllStars(league);
-    if (!league.draft || league.draft.season !== league.season) league.draft = createDraft(league);
+    const user = league.orgs[league.userOrgId];
+    if (!league.draft || league.draft.season !== league.season) {
+      league.draft = createDraft(league);
+      // Draft day: stop before the first pick so you can follow it pick by pick.
+      const mine = league.draft.picks.find((pk) => pk.orgId === user.id);
+      if (!delegated(league, user, 'draft')) return `It's draft day. Follow it pick by pick on the Draft page, or sim to go straight to your pick (you're on the clock at #${mine?.pick ?? '?'}).`;
+    }
     if (!league.draft.done && advanceDraft(league)) return "You're on the clock in the amateur draft. Make your pick on the Draft page.";
   }
   if (league.draft && league.draft.season === league.season && league.day === league.draft.deadline) draftDeadline(league);
@@ -417,6 +426,7 @@ function beginRegularDay(league: League): string | null {
 
 // After the games: markets, upkeep, the calendar.
 function finishRegularDay(league: League): DayResult {
+  if (league.day === league.settings.seasonDays - 14) staffExpiryNotice(league);
   faDay(league);
   ifaDay(league);
   talksDay(league);
@@ -510,6 +520,7 @@ export function simOneDay(league: League): DayResult {
     const stop = runOffseasonEvents(league);
     if (stop) return { stop };
     if (league.phase === 'offseason') {
+      if (agmVacancyNotice(league)) return { stop: 'Inbox: You have no assistant GM. Hire one on the Staff page.' };
       faDay(league);
       postingDeadlines(league);
       ifaDay(league);
@@ -523,6 +534,7 @@ export function simOneDay(league: League): DayResult {
     return { stop: null };
   }
   if (league.phase === 'preseason') {
+    if (agmVacancyNotice(league)) return { stop: 'Inbox: You have no assistant GM. Hire one on the Staff page.' };
     faDay(league);
     ifaDay(league);
     const talk = talksDay(league);

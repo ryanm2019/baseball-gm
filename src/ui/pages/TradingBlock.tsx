@@ -9,19 +9,16 @@ import { orgPlayers } from '../../core/util.ts';
 import { NEED_POS, STANCE_HELP, teamNeeds } from '../../core/market.ts';
 import { DataTable, Rating, type Column } from '../components.tsx';
 import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import { tradePlayerCols } from '../tradeCols.tsx';
 import type { Player } from '../../core/types.ts';
 
-let blockView: TradeView = 'ratings';
 let leagueFilter = { org: -1, pos: '' as Pos | '' };
 
 export default function TradingBlock() {
   const { league } = useStore();
   const [offers, setOffers] = useState<TradeProposal[] | null>(null);
-  const [view, setViewState] = useState<TradeView>(blockView);
   const [lf, setLfState] = useState(leagueFilter);
   const setLf = (v: typeof lf) => { leagueFilter = v; setLfState(v); };
-  const setView = (v: TradeView) => { blockView = v; setViewState(v); };
   if (!league) return null;
   const user = league.orgs[league.userOrgId];
   const mine = orgPlayers(league, user.id)
@@ -30,17 +27,11 @@ export default function TradingBlock() {
   const window = tradeWindowOpen(league);
   const needs = teamNeeds(league, user.id);
   const watched = user.interest.pids.map((id) => league.players[id]).filter(Boolean);
-  const viewSwitch = (
-    <div className="btn-group" style={{ margin: '4px 0' }}>
-      <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
-      <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
-    </div>
-  );
   const nameCol: Column<Player> = { key: 'name', label: 'Name', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> };
   const watchCols: Column<Player>[] = [
     nameCol,
     { key: 'team', label: 'Team', value: (p) => (p.orgId !== null ? league.orgs[p.orgId].abbrev : 'FA') },
-    ...tradePlayerCols(league, view),
+    ...tradePlayerCols(league),
     {
       key: 'act', label: '', noSort: true,
       render: (p) => (
@@ -61,7 +52,7 @@ export default function TradingBlock() {
     nameCol,
     { key: 'team', label: 'Team', value: (p) => league.orgs[p.orgId!].abbrev },
     { key: 'stance', label: 'Stance', left: true, value: (p) => league.orgs[p.orgId!].stance, render: (p) => { const s = league.orgs[p.orgId!].stance; return <span title={STANCE_HELP[s]} className={s === 'Buying' ? 'pos' : s === 'Selling' ? 'neg' : ''}>{s}</span>; } },
-    ...tradePlayerCols(league, view),
+    ...tradePlayerCols(league),
     {
       key: 'act', label: '', noSort: true,
       render: (p) => (
@@ -76,7 +67,7 @@ export default function TradingBlock() {
   const blockCols: Column<Player>[] = [
     { key: 'blk', label: 'Block', value: (p) => (user.block.includes(p.id) ? 1 : 0), sortDesc: true, render: (p) => <input type="checkbox" checked={user.block.includes(p.id)} onChange={() => toggleBlock(p.id)} /> },
     nameCol,
-    ...tradePlayerCols(league, view),
+    ...tradePlayerCols(league),
   ];
 
   const toggleBlock = (id: number) => {
@@ -126,7 +117,6 @@ export default function TradingBlock() {
         ))}
       </div>
       <h3>Watch list</h3>
-      {viewSwitch}
       {watched.length === 0 ? (
         <p className="muted small">No one yet. Use "Watch" on a player's page or on the <a href={href('trade-market')}>Trade Market</a>.</p>
       ) : (
@@ -144,7 +134,6 @@ export default function TradingBlock() {
           <option value="">All positions</option>
           {NEED_POS.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        {viewSwitch}
       </div>
       {leagueBlock.length === 0
         ? <p className="muted small">Nobody matching that is on a block right now.</p>
@@ -152,7 +141,6 @@ export default function TradingBlock() {
 
       <h2>Your block</h2>
       <p className="muted small">Checked players are shopped to the league; AI clubs reach out about them, mostly before the deadline and during the winter. "Get offers now" asks every club at once.</p>
-      {viewSwitch}
       <DataTable cols={blockCols} rows={mine} rowKey={(p) => p.id} compact maxHeight={360} />
       <button className="btn btn-primary" disabled={!user.block.length || !!window} onClick={ask}>Get offers now</button>
       {offers && (

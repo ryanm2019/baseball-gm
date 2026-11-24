@@ -208,7 +208,8 @@ export function scoutSd(league: League, p: Player, isPot: boolean): number {
   const base = ACCURACY_SD[league.settings.scoutingAccuracy];
   if (base === 0) return 0;
   const area = scoutArea(league, p);
-  const lvl = area === 'amateur' ? 1.35 : area === 'intl' ? 1.6 : LEVEL_FOG[p.level ?? 'AAA'];
+  // High school amateurs are the hardest to project.
+  const lvl = area === 'amateur' ? (p.prospect && !p.prospect.college ? 1.9 : 1.35) : area === 'intl' ? 1.6 : LEVEL_FOG[p.level ?? 'AAA'];
   return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area, p) * (isPot ? 1.6 : 1);
 }
 

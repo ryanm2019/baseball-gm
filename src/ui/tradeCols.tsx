@@ -74,10 +74,11 @@ export function seasonSummary(league: League, p: Player): SeasonSummary | null {
   return out;
 }
 
-export type TradeView = 'ratings' | 'stats';
+export type TradeView = 'ratings' | 'stats' | 'both';
 
-// Pos, Age, Lvl, Ovr, Pot, then contract (ratings view) or this season's numbers (stats view).
-export function tradePlayerCols(league: League, view: TradeView): Column<Player>[] {
+// Pos, Age, Lvl, Ovr, Pot, then contract (ratings view), this season's numbers
+// (stats view) or both side by side (the default everywhere).
+export function tradePlayerCols(league: League, view: TradeView = 'both'): Column<Player>[] {
   const base: Column<Player>[] = [
     { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
     { key: 'age', label: 'Age', value: (p) => league.season - p.born },
@@ -92,6 +93,15 @@ export function tradePlayerCols(league: League, view: TradeView): Column<Player>
     }];
   }
   const sum = (p: Player) => seasonSummary(league, p);
+  if (view === 'both') {
+    return [...base,
+      { key: 'contract', label: 'Contract', title: 'Salary and how long the club controls him (hover for details)', value: (p) => contractInfo(league, p).salary, render: (p) => <ContractCell league={league} p={p} compact />, sortDesc: true },
+      { key: 'n', label: 'PA/BF', title: `${statsSeason(league)}: plate appearances (hitters) or batters faced (pitchers), all levels`, value: (p) => sum(p)?.n ?? 0, sortDesc: true },
+      { key: 'wrc', label: 'wRC+', title: 'Runs created vs each level’s average (100 = average), weighted by PA', value: (p) => sum(p)?.wrc ?? -999, render: (p) => sum(p)?.wrc ?? '', sortDesc: true },
+      { key: 'fipm', label: 'FIP-', title: 'FIP vs each level’s average (100 = average, lower is better), weighted by batters faced', value: (p) => sum(p)?.fipm ?? 999, render: (p) => sum(p)?.fipm ?? '' },
+      { key: 'line', label: `${statsSeason(league)} line`, left: true, noSort: true, render: (p) => { const s = sum(p); return s ? <span title={`${s.levels.join(', ')}: ${s.tip}`} style={{ cursor: 'help' }}>{s.levels.length > 1 ? <span className="muted">{s.levels.join('/')} </span> : null}{s.line}</span> : <span className="muted">-</span>; } },
+    ];
+  }
   return [...base,
     { key: 'lvls', label: 'Levels', title: `Levels played in ${statsSeason(league)} (hover a row's line for each level)`, value: (p) => sum(p)?.levels.join(' ') ?? '', render: (p) => sum(p)?.levels.join(', ') ?? <span className="muted">-</span> },
     { key: 'n', label: 'PA/BF', title: 'Plate appearances (hitters) or batters faced (pitchers)', value: (p) => sum(p)?.n ?? 0, sortDesc: true },

@@ -9,7 +9,7 @@ import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
 import { fortyMan, orgPlayers } from '../../core/util.ts';
 import { DataTable, OrgSelect, StatusTags, type Column, NumInput } from '../components.tsx';
-import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import { tradePlayerCols } from '../tradeCols.tsx';
 import { seasonFraction } from '../../core/value.ts';
 
 // The trade being built survives page changes.
@@ -24,13 +24,9 @@ let lastQuery = '';
 
 const LEVEL_ORDER = ['MLB', 'AAA', 'AA', 'A+', 'A', 'CPX', 'DSL'];
 
-// Ratings or stats view, shared by both sides of the trade (kept while you move around).
-let assetView: TradeView = 'ratings';
 
 function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId: number; assets: TradeAssets; onToggle: (pid: number) => void }) {
   const [lvl, setLvl] = useState('40');
-  const [view, setViewState] = useState<TradeView>(assetView);
-  const setView = (v: TradeView) => { assetView = v; setViewState(v); };
   // Players in the deal stay pinned on top (even outside the level you're viewing).
   const ps = orgPlayers(league, orgId)
     .filter((p) => assets.pids.includes(p.id) || (lvl === '40' ? p.on40 : lvl === 'all' ? true : p.level === lvl))
@@ -47,7 +43,7 @@ function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId
       key: 'name', label: 'Name', left: true, value: (p) => `${p.last} ${p.first}`,
       render: (p) => <span title={hasTenAndFive(league, p) ? '10-and-5 rights: can veto a trade' : ''}><a href={href('player', [p.id])}>{p.first} {p.last}</a><StatusTags league={league} p={p} />{hasTenAndFive(league, p) && <span className="tag">10/5</span>}</span>,
     },
-    ...tradePlayerCols(league, view),
+    ...tradePlayerCols(league),
   ];
   return (
     <>
@@ -58,10 +54,6 @@ function AssetTable({ league, orgId, assets, onToggle }: { league: League; orgId
               {l === '40' ? '40-man' : l === 'all' ? 'All' : l}
             </button>
           ))}
-        </div>
-        <div className="btn-group" style={{ margin: 0 }}>
-          <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
-          <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
         </div>
       </div>
       <DataTable cols={cols} rows={ps} rowKey={(p) => p.id} compact maxHeight={420} pinned={(p) => assets.pids.includes(p.id)} />

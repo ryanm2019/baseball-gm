@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { answerCounter } from '../../core/negotiation.ts';
 import { answerIlReady } from '../../core/farmDirector.ts';
+import { answerStaffExpiry } from '../../core/staffNotices.ts';
 import { loadTrade } from './Trade.tsx';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
@@ -91,6 +92,9 @@ export default function Inbox() {
                         if (a.key === 'revise' && t && counter) { loadTrade(t.orgId, [counter.give[0], counter.give[1]]); go('trade'); }
                       } else if (m.kind === 'il-ready') {
                         setMessage(answerIlReady(league, m, a.key));
+                      } else if (m.kind === 'staff') {
+                        setMessage(answerStaffExpiry(league, m, a.key));
+                        if (a.key === 'page') go('staff');
                       } else if (m.kind === 'position') {
                         m.resolved = a.label;
                         m.read = true;

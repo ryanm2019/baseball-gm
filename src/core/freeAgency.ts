@@ -300,7 +300,10 @@ export function faDay(league: League): void {
     const scored = valid.map((o) => ({ o, s: offerScore(league, p, o) })).sort((a, b) => b.s - a.s);
     const best = scored[0];
     const due = league.day >= fa.decideDay;
-    const early = best && best.s >= 1.12 && rand() < 0.25;
+    // Big names take their time (weeks, not days): no early decision in their
+    // first two or three weeks on the market, and a smaller daily chance after.
+    const wait = fa.asking.aav > 20e6 ? 21 : fa.asking.aav > 8e6 ? 12 : 0;
+    const early = best && best.s >= 1.12 && league.day - fa.opened >= wait && rand() < (wait ? 0.1 : 0.25);
     // The insider names the finalists a few days before a big free agent decides.
     if (notableFa(p) && (fa.scooped ?? 0) < 2 && fa.decideDay - league.day <= 3 && scored.length >= 2) {
       fa.scooped = 2;

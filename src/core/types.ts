@@ -256,6 +256,7 @@ export interface Player {
   outrightedBefore: boolean;
   draft: { year: number; round: number; pick: number; orgId: number } | null;
   prospect?: DraftInfo; // in the upcoming/active amateur draft class
+  devVol?: number; // how widely his development swings (drafted high schoolers > college players)
   ifa?: IfaInfo; // international amateur, unsigned
   fa?: FaStatus | null;
   ext?: { lastOffer?: number; stiff?: number; season?: number } | null; // extension talks this season
@@ -605,7 +606,7 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply' | 'staff';
   talkId?: number; // trade-reply: the negotiation it belongs to
   actions?: InboxAction[];
   resolved?: string; // what you chose
@@ -776,6 +777,7 @@ export interface DraftPick {
   label?: string; // e.g. 'CB-A', 'Comp'
   pid: number | null;
   signed: boolean | null;
+  bonus?: number; // what he signed for (kept here: the player can leave the game later)
 }
 
 export interface DraftState {

@@ -2,7 +2,7 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { href, go, useRoute } from '../../router.ts';
 import type { League, Player } from '../../core/types.ts';
 import { scoutedPot } from '../../core/ratings.ts';
-import { advanceDraft, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
+import { advanceDraft, advanceOnePick, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
 import { useState } from 'react';
 import type { DraftPick } from '../../core/types.ts';
 import { fmtMoney } from '../../core/contracts.ts';
@@ -59,7 +59,6 @@ export default function Draft() {
           onClick={() => {
             const err = userPick(league, p);
             setMessage(err);
-            if (!err) advanceDraft(league);
             changed();
           }}
         >
@@ -84,7 +83,6 @@ export default function Draft() {
               className="btn btn-primary"
               onClick={() => {
                 league.draft = createDraft(league);
-                advanceDraft(league);
                 changed();
               }}
             >
@@ -96,14 +94,31 @@ export default function Draft() {
       {d && !d.done && (
         <div className={`alert ${myTurn ? 'alert-warn' : 'alert-info'}`}>
           Pick #{clock?.pick} (round {clock?.round}): {clock ? league.orgs[clock.orgId].affiliates.MLB.name : ''} {myTurn ? "— you're on the clock." : ''}{' '}
-          {myTurn && (
-            <button className="btn btn-sm" onClick={() => { userAutoPick(league); advanceDraft(league); changed(); }}>
+          {myTurn ? (
+            <button className="btn btn-sm" onClick={() => { userAutoPick(league); changed(); }}>
               Let the assistant GM pick
             </button>
+          ) : (
+            <>
+              <button className="btn btn-sm btn-primary" onClick={() => { advanceOnePick(league); changed(); }}>Next pick</button>{' '}
+              <button className="btn btn-sm" onClick={() => { advanceDraft(league); changed(); }}>Sim to my pick</button>
+            </>
           )}{' '}
           <button className="btn btn-sm" onClick={() => { while (league.draft && !league.draft.done) advanceDraft(league, true); changed(); }}>
             Auto-draft the rest
           </button>
+          {d.index > 0 && (
+            <div className="small" style={{ marginTop: 4 }}>
+              Latest: {d.picks.slice(Math.max(0, d.index - 5), d.index).reverse().map((pk) => {
+                const p = pk.pid !== null ? league.players[pk.pid] : null;
+                return (
+                  <span key={pk.pick} className={pk.orgId === org.id ? 'pos' : ''} style={{ marginRight: 10 }}>
+                    #{pk.pick} {league.orgs[pk.orgId].abbrev}: {p ? <a href={href('player', [p.id])}>{p.first[0]}. {p.last}</a> : '-'} {p ? <span className="muted">{posLabel(p)}, {p.prospect?.college ? 'college' : 'HS'}</span> : ''}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       {d?.done && (
@@ -177,8 +192,27 @@ function MyPicks({ picks }: { picks: DraftPick[] }) {
   const org = league.orgs[league.userOrgId];
   const pool = poolTotal(league, org.id);
   const spent = poolSpent(league, org.id);
+  const done = !!league.draft?.done;
+  // Unsigned top-10-round picks at their slots: what the rest of the class costs if each signs at slot.
+  const atSlot = picks.filter((pk) => pk.signed === null && pk.round <= POOL_ROUNDS).reduce((t, pk) => t + pk.slot, 0);
+  const left = pool - spent;
+  const tiers = [0, 0.05, 0.1, 0.15].map((r) => pool * (1 + r) - spent);
   return (
     <>
+      <div className="kv" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', margin: '4px 0 8px' }}>
+        <span>Bonus pool <b>{fmtMoney(pool)}</b></span>
+        <span>Signed <b>{fmtMoney(spent)}</b></span>
+        <span>Left to spend <b className={left < 0 ? 'neg' : 'pos'}>{fmtMoney(left)}</b></span>
+        <span title="If every unsigned pick in rounds 1-10 signs for exactly his slot">Unsigned picks at slot <b>{fmtMoney(atSlot)}</b></span>
+        <span title="What you'd have left after signing every unsigned top-10-round pick at slot (an unsigned pick's slot leaves the pool)">Left after slots <b className={left - atSlot < 0 ? 'neg' : ''}>{fmtMoney(left - atSlot)}</b></span>
+      </div>
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Room before each penalty: {tiers[0] > 0 ? <>none until you pass the pool ({fmtMoney(tiers[0])} left)</> : 'you are over the pool'}
+        {' · '}up to 5% over (75% tax): {fmtMoney(Math.max(0, tiers[1]))}
+        {' · '}up to 10% (lose next year's 1st): {fmtMoney(Math.max(0, tiers[2]))}
+        {' · '}up to 15% (lose 1st and 2nd): {fmtMoney(Math.max(0, tiers[3]))}. Picks after round 10 count only above {fmtMoney(LATE_ROUND_FREE)}.
+      </p>
+      {!done && <p className="alert alert-info">Negotiations open once the draft is over: you can make offers to your picks then.</p>}
       <p className="muted small">
         Slide an offer to see how likely he is to sign, as your amateur scouts read it (better scouting gives a truer meter). You get one official offer per pick per day; lowballing him can raise his price. Most players come down a little as the deadline nears, but high schoolers with strong college commitments don't. Unsigned 1st and 2nd rounders bring a compensation pick next year. Pool penalties: up to 5% over, 75% tax; 5-10%, lose next year's 1st; 10-15%, 100% tax and lose a 1st and 2nd; over 15%, 100% tax and two 1sts. An unsigned top-10-round pick's slot comes out of your pool.
       </p>
@@ -188,7 +222,7 @@ function MyPicks({ picks }: { picks: DraftPick[] }) {
           {picks.map((pk) => {
             const p = pk.pid !== null ? league.players[pk.pid] : null;
             if (!p) return <tr key={pk.pick}><td>{pk.pick}</td><td>{pk.round}</td><td className="l muted" colSpan={8}>-</td></tr>;
-            const open = pk.signed === null && !!p.prospect;
+            const open = done && pk.signed === null && !!p.prospect;
             const lo = pk.round <= POOL_ROUNDS ? Math.round(pk.slot * 0.5) : 20_000;
             const hi = pk.round <= POOL_ROUNDS ? Math.round(pk.slot * 2) : 3_000_000;
             const def = pk.round <= POOL_ROUNDS ? pk.slot : LATE_ROUND_FREE;

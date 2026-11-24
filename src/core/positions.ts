@@ -300,3 +300,16 @@ export function answerSeptember(league: League, pids: number[], key: string, rec
   }
   return done.length ? `Called up ${done.join(' and ')}.` : 'No room on the active roster.';
 }
+
+// A young minor league reliever who has built a starter's stamina (and has the
+// pitches for it) moves to the rotation. Runs monthly.
+export function stretchOutProspects(league: League): void {
+  for (const p of Object.values(league.players)) {
+    if (p.orgId === null || p.pos !== 'RP' || !p.level || p.level === 'MLB' || p.il) continue;
+    if (league.season - p.born > 25 || p.ratings.pit.stamina < 45 || canStart(p)) continue;
+    changePosition(league, p, 'SP', 'built up a starter\'s stamina');
+    if (p.orgId === league.userOrgId) {
+      addInbox(league, { from: 'Farm Director', subject: `${pname(p)} moves to the rotation`, kind: 'info', pids: [p.id], text: `${pname(p)} (${p.level}) has built up a starter's stamina and has the pitches for it, so we've moved him to the rotation. He'll be stretched out over his next few starts. You can move him back on his player page.` });
+    }
+  }
+}

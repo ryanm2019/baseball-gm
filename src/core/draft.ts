@@ -3,7 +3,8 @@
 import type { DraftInfo, DraftPick, DraftState, League, Player } from './types.ts';
 import { generatePlayer } from './playerGen.ts';
 import { clamp, normal, rand, seededNormal, shuffle } from './random.ts';
-import { ovr, potOvr, scoutFactor } from './ratings.ts';
+import { ovr, pitcherOvr, potOvr, scoutFactor } from './ratings.ts';
+import { warFor } from './value.ts';
 import { milbContract, roundSalary } from './contracts.ts';
 import { addNews, addTransaction, pname, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffOf } from './staff.ts';
@@ -52,11 +53,13 @@ export function generateDraftClass(league: League, season: number): void {
       orgId: null,
       age: college ? (rand() < 0.6 ? 21 : 22) : rand() < 0.75 ? 18 : 17,
       international: false,
-      talentShift: normal(-2, 2.5),
+      // College players are more polished: more of the class's top talent is in college.
+      talentShift: college ? normal(0.8, 2.5) : normal(-2, 2.5),
     });
     p.level = null;
     p.proSeasons = 0;
     p.prospect = { year: season, college, ...amateurProfile(season - p.born, college) };
+    amateurTraits(p, college);
     milbContract(p, season, 'A');
     league.players[p.id] = p;
   }
@@ -84,9 +87,38 @@ export function generateDraftClass(league: League, season: number): void {
     best.level = null;
     best.proSeasons = 0;
     best.prospect = { year: season, college: season - best.born >= 20, ...amateurProfile(season - best.born, season - best.born >= 20) };
+    amateurTraits(best, best.prospect.college);
     milbContract(best, season, 'A');
     league.players[best.id] = best;
   }
+}
+
+// High schoolers' development swings more widely (more busts, more late
+// bloomers); college players have a higher floor. About a third of amateur
+// relievers have the frame to build a starter's stamina.
+function amateurTraits(p: Player, college: boolean): void {
+  p.devVol = college ? 0.8 : 1.5;
+  if (p.pos === 'RP' && rand() < 0.35) p.pot.stamina = Math.max(p.pot.stamina, clamp(normal(54, 6), 46, 68));
+}
+
+// What a prospect is worth to a club, in hitter-equivalent overall: a rating
+// counts for the WAR it produces (a reliever's far less than a starter's), and
+// clubs bank on only part of the projection, less for high schoolers (further
+// away, riskier). A reliever who can build stamina is valued as a starter, a
+// little discounted.
+export function draftTalent(p: Player, potRead: number, curRead: number): number {
+  const hs = !p.prospect?.college;
+  const pot = Math.max(curRead, potRead);
+  const exp = curRead + (hs ? 0.55 : 0.72) * (pot - curRead);
+  const eq = (x: number, q: Player) => 42 + warFor(q, x) / 0.22;
+  let v = 0.7 * eq(exp, p) + 0.3 * eq(pot, p);
+  if (p.pos === 'RP' && p.pot.stamina >= 45) {
+    const asSp = pitcherOvr(p.pot.stuff, p.pot.movement, p.pot.control, p.pot.stamina, 'SP') + (pot - potOvr(p));
+    const sp = { ...p, pos: 'SP' } as Player;
+    const expSp = curRead + (hs ? 0.55 : 0.72) * (asSp - curRead);
+    v = Math.max(v, 0.7 * eq(expSp, sp) + 0.3 * eq(asSp, sp) - 2);
+  }
+  return v;
 }
 
 // ---------- signability ----------
@@ -175,7 +207,7 @@ export function willingnessBand(x: number): string {
 export function offerPick(league: League, pk: DraftPick, amount: number): { signed: boolean; text: string } {
   if (pk.pid === null || pk.signed !== null) return { signed: false, text: 'Not available' };
   const p = league.players[pk.pid];
-  const info = p.prospect;
+  const info = p?.prospect;
   if (!info) return { signed: false, text: 'Not available' };
   if (info.lastOffer === league.day) return { signed: false, text: `You already made ${pname(p)} an offer today.` };
   amount = Math.max(10_000, roundSalary(amount));
@@ -205,7 +237,7 @@ export function draftSigningDay(league: League): void {
     const isUser = pk.orgId === league.userOrgId;
     if (isUser && !delegated(league, user, 'draft')) continue;
     const p = league.players[pk.pid];
-    const info = p.prospect;
+    const info = p?.prospect;
     if (!info || info.lastOffer === league.day) continue;
     // What his scouts think he wants.
     const misread = (x: Player, org: number) => Math.exp(0.14 * scoutFactor(league, league.orgs[org], 'amateur') * seededNormal(x.scoutSeed, org + 1, 5150));
@@ -244,7 +276,8 @@ function draftValue(league: League, orgId: number, p: Player): number {
   const org = league.orgs[orgId];
   const fd = staffOf(league, org, 'FD');
   const base = orgId === league.userOrgId ? agmEvalSd(league, org) : fd ? Math.max(1, ((80 - fd.evaluation) / 60) * 5) : 5;
-  const sd = base * scoutFactor(league, org, 'amateur');
+  // High schoolers are harder to project: their potential is read with more noise.
+  const sd = base * scoutFactor(league, org, 'amateur') * (p.prospect?.college ? 1 : 1.5);
   const noise = sd * seededNormal(p.scoutSeed, orgId, 4242);
   // Clubs shy away from tough signs, more so once the premium picks are gone
   // and when their pool can't cover an over-slot deal.
@@ -264,7 +297,12 @@ function draftValue(league: League, orgId: number, p: Player): number {
       if (cur && pool > 0 && cur.slot * 0.4 > pool * 0.08) tough += 3; // a big overslot would eat the pool
     }
   }
-  return 0.72 * potOvr(p) + 0.28 * ovr(p) + noise - (p.prospect?.college ? 0 : 0.5) - tough;
+  // A sensible club knows how shaky its read is and pulls it toward a typical
+  // prospect (more for high schoolers): no chasing a mirage at the top of the board.
+  const shrink = 64 / (64 + sd * sd);
+  const potRead = 50 + shrink * (potOvr(p) + noise - 50);
+  const curRead = ovr(p) + noise * 0.4 * shrink;
+  return draftTalent(p, potRead, curRead) - tough;
 }
 
 // Order teams worst to best by last season (or by roster strength for a brand-new league).
@@ -405,6 +443,17 @@ export function advanceDraft(league: League, autoUser = false): boolean {
   return false;
 }
 
+// Makes just the next pick (an AI club's), for following the draft pick by pick.
+export function advanceOnePick(league: League): void {
+  const d = league.draft;
+  if (!d || d.done) return;
+  const pk = d.picks[d.index];
+  if (!pk || pk.orgId === league.userOrgId) return;
+  const p = aiPick(league, pk.orgId);
+  if (p) { makePick(league, pk, p); d.index++; }
+  if (d.index >= d.picks.length) finishDraft(league);
+}
+
 // The assistant GM makes just the user's current pick.
 export function userAutoPick(league: League): void {
   const pk = onTheClock(league);
@@ -439,7 +488,7 @@ export function poolSpent(league: League, orgId: number): number {
   let t = 0;
   for (const pk of d.picks) {
     if (pk.orgId !== orgId || !pk.signed || pk.pid === null) continue;
-    const bonus = league.players[pk.pid].contract.bonus ?? 0;
+    const bonus = pk.bonus ?? league.players[pk.pid]?.contract.bonus ?? 0;
     t += pk.round <= POOL_ROUNDS ? bonus : Math.max(0, bonus - LATE_ROUND_FREE);
   }
   return t;
@@ -481,6 +530,7 @@ export function signPick(league: League, pk: DraftPick, p: Player, ai = false, a
   const info = p.prospect!;
   const bonus = amount ?? info.asking ?? pk.slot;
   pk.signed = true;
+  pk.bonus = bonus;
   p.orgId = pk.orgId;
   touchRosters();
   p.teamSince = league.season;
@@ -510,6 +560,7 @@ export function draftDeadline(league: League): void {
     if (pk.pid === null || pk.signed !== null) continue;
     pk.signed = false;
     const p = league.players[pk.pid];
+    if (!p) continue;
     if (pk.round <= 2 && !pk.label) {
       const inRound = d.picks.filter((x) => x.round === pk.round && !x.label);
       adj.unsigned!.push({ orgId: pk.orgId, round: pk.round, pos: inRound.indexOf(pk) });

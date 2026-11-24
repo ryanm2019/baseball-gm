@@ -32,7 +32,10 @@ const isDeadlineDay = (league: League) => league.phase === 'regular' && league.d
 function replyDelay(league: League): number {
   if (isDeadlineDay(league)) return 0;
   const toDeadline = league.settings.tradeDeadlineDay - league.day;
-  if (league.phase === 'regular' && toDeadline >= 1 && toDeadline <= 3) return 1;
+  // Near the deadline the answer always comes while you can still act on it:
+  // sent the day before, they answer tonight (you have deadline day to reply).
+  if (league.phase === 'regular' && toDeadline === 1) return 0;
+  if (league.phase === 'regular' && toDeadline >= 2 && toDeadline <= 3) return 1;
   return rand() < 0.5 ? 1 : 2;
 }
 
@@ -91,11 +94,12 @@ export function sendOffer(league: League, prop: TradeProposal): string {
   };
   league.tradeTalks.push(talk);
   if (league.tradeTalks.length > 60) league.tradeTalks.splice(0, league.tradeTalks.length - 60);
-  if (talk.respondDay === league.day) {
+  if (talk.respondDay === league.day && isDeadlineDay(league)) {
     const msg = respond(league, talk, false);
     return `It's deadline day, so they got back to you within the hour. ${msg}`;
   }
   const d = talk.respondDay - league.day;
+  if (d === 0) return `Offer sent to the ${ai.affiliates.MLB.name}. With the deadline tomorrow they'll answer tonight, so you'll have deadline day to respond; it'll land in your Inbox.`;
   return `Offer sent to the ${ai.affiliates.MLB.name}. Expect an answer in ${d === 1 ? 'a day' : `${d} days`}; it'll land in your Inbox.`;
 }
 

@@ -1,7 +1,7 @@
 // Trade Finder: get a player, shop one of yours, or fill a need.
 import { useState } from 'react';
 import { DataTable, NumInput, type Column } from '../components.tsx';
-import { tradePlayerCols, type TradeView } from '../tradeCols.tsx';
+import { tradePlayerCols } from '../tradeCols.tsx';
 import { markFloated } from '../../core/negotiation.ts';
 import { useStore, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
@@ -14,7 +14,7 @@ import { orgPlayers } from '../../core/util.ts';
 import { tradeWindowOpen, validateTrade } from '../../core/trade.ts';
 import { loadTrade } from './Trade.tsx';
 import { seasonSummary } from '../tradeCols.tsx';
-import { ContractCell } from '../fmt.tsx';
+
 
 type Mode = 'get' | 'shop' | 'need';
 const NEEDS: (Pos | 'OF' | 'LHP')[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'OF', 'DH', 'SP', 'RP', 'LHP'];
@@ -66,7 +66,6 @@ export default function TradeFinder() {
   const [deals, setDeals] = useKept<FoundDeal[] | null>('deals', null);
   const [rows, setRows] = useKept<NeedRow[] | null>('rows', null);
   const [about, setAbout] = useKept<string>('about', ''); // who the results are for
-  const [view, setView] = useKept<TradeView>('view', 'ratings');
   if (!league) return null;
   const user = league.orgs[league.userOrgId];
   const myPlayers = orgPlayers(league, user.id).filter((p) => p.on40 || p.level === 'MLB' || scoutedPot(league, p) >= 50).sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a));
@@ -85,28 +84,42 @@ export default function TradeFinder() {
   const listCols: Column<Player>[] = [
     { key: 'name', label: 'Player', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
     { key: 'team', label: 'Team', value: (p) => league.orgs[p.orgId!].abbrev },
-    ...tradePlayerCols(league, view),
+    ...tradePlayerCols(league),
     { key: 'find', label: '', noSort: true, render: (p) => <button className="btn btn-sm" disabled={busy} onClick={() => findFor(p)}>Find packages</button> },
   ];
   const open = (d: FoundDeal) => { loadTrade(d.prop.orgs[1], [d.prop.give[0], d.prop.give[1]]); go('trade'); };
+  // Each package: a header (club, your front office's read, open it) and one
+  // table of everyone in it, with ratings, contract and this season's numbers.
+  const giveSet = (d: FoundDeal) => new Set(d.prop.give[0].pids);
+  const dealCols = (d: FoundDeal): Column<Player>[] => [
+    { key: 'side', label: '', left: true, noSort: true, render: (p) => (giveSet(d).has(p.id) ? <span className="neg small">You give</span> : <span className="pos small">You get</span>) },
+    { key: 'name', label: 'Player', left: true, noSort: true, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
+    ...tradePlayerCols(league).map((c) => ({ ...c, noSort: true })),
+  ];
+  const extras = (d: FoundDeal, side: 0 | 1) => {
+    const g = d.prop.give[side];
+    const bits = [g.cbPicks.length ? `${g.cbPicks.length} competitive balance pick${g.cbPicks.length > 1 ? 's' : ''}` : '', g.pool > 0 ? `${fmtMoney(g.pool)} international pool` : '', g.cash > 0 ? `${fmtMoney(g.cash)} cash` : ''].filter(Boolean);
+    return bits.length ? <span className={side === 0 ? 'neg small' : 'pos small'}>{side === 0 ? 'You also give' : 'You also get'}: {bits.join(', ')}. </span> : null;
+  };
   const dealTable = (ds: FoundDeal[], shop: boolean) => (
-    <table className="data compact">
-      <thead><tr><th className="l">Team</th><th className="l">You give</th><th className="l">You get</th><th title="Your front office's valuation">Value to you</th><th /></tr></thead>
-      <tbody>
-        {ds.map((d, i) => {
-          const o = league.orgs[d.prop.orgs[1]];
-          return (
-            <tr key={i}>
-              <td className="l">{o.abbrev}{shop ? <span className="muted small"> {o.stance}</span> : <span className="muted small"> {d.note}</span>}</td>
-              <td className="l"><Assets league={league} side={0} d={d} /></td>
-              <td className="l"><Assets league={league} side={1} d={d} /></td>
-              <td className={d.valueToYou >= d.costToYou ? 'pos' : 'neg'}>{fmtMoney(d.valueToYou - d.costToYou)}</td>
-              <td><button className="btn btn-sm" onClick={() => open(d)}>Open in Trade</button></td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div>
+      {ds.map((d, i) => {
+        const o = league.orgs[d.prop.orgs[1]];
+        const rows = [...d.prop.give[0].pids, ...d.prop.give[1].pids].map((id) => league.players[id]).filter(Boolean);
+        return (
+          <div key={i} className="card" style={{ margin: '8px 0', padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6 }}>
+            <div className="form-row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
+              <b>{o.abbrev}</b>
+              <span className="muted small">{shop ? o.stance : d.note}</span>
+              <span className="small" title="Your front office's valuation: what you get minus what you give">Value to you <b className={d.valueToYou >= d.costToYou ? 'pos' : 'neg'}>{fmtMoney(d.valueToYou - d.costToYou)}</b></span>
+              {extras(d, 0)}{extras(d, 1)}
+              <button className="btn btn-sm" onClick={() => open(d)}>Open in Trade</button>
+            </div>
+            <DataTable cols={dealCols(d)} rows={rows} rowKey={(p) => p.id} compact />
+          </div>
+        );
+      })}
+    </div>
   );
 
   return (
@@ -145,10 +158,6 @@ export default function TradeFinder() {
         <>
           <div className="form-row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <input placeholder="Search any player in the league…" value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: 280 }} />
-            <div className="btn-group" style={{ margin: 0 }}>
-              <button className={`btn btn-sm${view === 'ratings' ? ' active' : ''}`} onClick={() => setView('ratings')}>Ratings</button>
-              <button className={`btn btn-sm${view === 'stats' ? ' active' : ''}`} onClick={() => setView('stats')} title="This season's numbers at every level he's played">Stats</button>
-            </div>
             <span className="muted small">{target.length >= 2 ? `Players matching "${target}"` : `On other clubs' trading blocks (${blockPlayers.length}). Search to find anyone else.`}</span>
           </div>
           {listed.length === 0
@@ -186,20 +195,18 @@ export default function TradeFinder() {
       {liveDeals && liveDeals.length > 0 && dealTable(liveDeals, mode === 'shop')}
       {rows && (
         rows.length === 0 ? <p className="muted">Nobody available at {need} who'd upgrade your current option under those limits.</p> : (
-          <table className="data compact">
-            <thead><tr><th className="l">Player</th><th>Team</th><th title="Salary and how long the club controls him">Contract</th><th className="l">Cheapest package</th><th /></tr></thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.p.id}>
-                  <td className="l"><PName league={league} p={r.p} /></td>
-                  <td>{league.orgs[r.p.orgId!].abbrev}</td>
-                  <td><ContractCell league={league} p={r.p} /></td>
-                  <td className="l">{r.deal ? <Assets league={league} side={0} d={r.deal} /> : <span className="muted">Nothing that works</span>}</td>
-                  <td>{r.deal && <button className="btn btn-sm" onClick={() => open(r.deal!)}>Open in Trade</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            cols={[
+              { key: 'name', label: 'Player', left: true, value: (r: NeedRow) => r.p.last, render: (r: NeedRow) => <a href={href('player', [r.p.id])}>{r.p.first} {r.p.last}</a> },
+              { key: 'team', label: 'Team', value: (r: NeedRow) => league.orgs[r.p.orgId!].abbrev },
+              ...tradePlayerCols(league).map((c) => ({ ...c, value: c.value ? (r: NeedRow) => c.value!(r.p) : undefined, render: c.render ? (r: NeedRow) => c.render!(r.p) : undefined })) as Column<NeedRow>[],
+              { key: 'pkg', label: 'Cheapest package (hover names for details)', left: true, noSort: true, render: (r: NeedRow) => (r.deal ? <Assets league={league} side={0} d={r.deal} /> : <span className="muted">Nothing that works</span>) },
+              { key: 'open', label: '', noSort: true, render: (r: NeedRow) => r.deal && <button className="btn btn-sm" onClick={() => open(r.deal!)}>Open in Trade</button> },
+            ]}
+            rows={rows}
+            rowKey={(r) => r.p.id}
+            compact
+          />
         )
       )}
       <p className="muted small">Packages are what each club would accept today, built from the same valuations they use to answer your offers. "Value to you" is your front office's read of what you get minus what you give.</p>
