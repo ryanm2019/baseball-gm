@@ -1,3 +1,5 @@
+import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
+import { useState } from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { Level, Player } from '../../core/types.ts';
@@ -17,8 +19,12 @@ const VIEWS = [
   { key: 'DFA', label: 'DFA / Waivers' },
 ];
 
+let rosterPos = 'all';
+
 export default function Roster() {
   const { league } = useStore();
+  const [pf, setPfState] = useState(rosterPos);
+  const setPf = (v: string) => { rosterPos = v; setPfState(v); };
   const route = useRoute();
   if (!league) return null;
   const orgId = route.query.org !== undefined ? Number(route.query.org) : league.userOrgId;
@@ -70,8 +76,8 @@ export default function Roster() {
     tail.push({ key: 'act', label: '', noSort: true, render: (p) => <ActionSelect league={league} p={p} /> });
   }
 
-  const pitchers = players.filter(isPitcher);
-  const hitters = players.filter((p) => !isPitcher(p));
+  const pitchers = players.filter(isPitcher).filter(posFilterFn(pf));
+  const hitters = players.filter((p) => !isPitcher(p)).filter(posFilterFn(pf));
   const pitCols = [...base, ...pitStatCols((p) => seasonPit(p, league.season, statLevel)), ...tail];
   const batCols = [...base, ...batStatCols((p) => seasonBat(p, league.season, statLevel)), ...tail];
 
@@ -116,6 +122,7 @@ export default function Roster() {
       )}
       {view === '40' && <p>40-man roster: <b>{fortyMan(league, orgId).length}</b>/{league.settings.fortyMax} (players on the 60-day IL don't count)</p>}
 
+      <div className="form-row" style={{ margin: '6px 0' }}><PosFilterSelect value={pf} onChange={setPf} /></div>
       <h2>Pitchers</h2>
       <DataTable cols={pitCols} rows={pitchers} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
       <h2>Position players</h2>

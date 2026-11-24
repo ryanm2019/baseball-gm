@@ -15,6 +15,10 @@ import { marketOvr } from './war.ts';
 import { postingFee } from './intl.ts';
 import { bookDeferred, buildContract, playerValue, shapeSchedule, type Terms } from './terms.ts';
 import { addInbox } from './morale.ts';
+import { milbBidDay } from './milbFa.ts';
+import { makeMlbRoom } from './farmDirector.ts';
+import { delegated } from './staff.ts';
+import { slotNewcomer } from './depthUpdate.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -183,8 +187,17 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   p.orgId = o.orgId;
   touchRosters();
   p.on40 = true;
-  const active = orgPlayers(league, o.orgId).filter((q) => q.level === 'MLB' && !q.il).length;
-  p.level = league.phase === 'regular' && active >= league.settings.activeMax ? 'AAA' : 'MLB';
+  // A big league free agent goes to the big leagues. With a full active roster
+  // in season, the club makes room first (an AI club, or your assistant GM if he
+  // runs the roster); otherwise you're over the limit until you make a move.
+  const active = orgPlayers(league, o.orgId).filter((q) => q.level === 'MLB' && !q.il && q.id !== p.id).length;
+  const sgOrg = league.orgs[o.orgId];
+  let overLimit = false;
+  if (league.phase === 'regular' && active >= league.settings.activeMax) {
+    if (o.orgId !== league.userOrgId || delegated(league, sgOrg, 'roster')) makeMlbRoom(league, sgOrg, isPitcher(p), true);
+    else overLimit = true;
+  }
+  p.level = 'MLB';
   p.contract = o.terms ? buildContract(o.terms, start, start) : { type: 'ML', salary: o.aav, minorSalary: 0, exp: start + o.years - 1, oneWay: true, signed: start };
   if (o.terms) bookDeferred(league.orgs[o.orgId], p, p.contract);
   p.fa = null;
@@ -211,9 +224,10 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   const deal = (x: FaOffer) => `${x.years === 1 ? '1 year' : `${x.years} years`} at ${fmtMoney(x.aav)} a year (${fmtMoney(x.aav * x.years)} total)`;
   if (o.orgId === league.userOrgId) {
     const forty = fortyMan(league, o.orgId).length;
+    const slotted = slotNewcomer(league, sgOrg, p);
     addInbox(league, {
-      from: 'Front office', subject: `${pname(p)} signed with you`, kind: 'info', pids: [p.id], stop: true,
-      text: `${posLabel(p)} ${pname(p)} accepted your offer: ${deal(o)}. He joins ${p.level === 'MLB' ? 'the major league roster' : 'Triple-A for now (your active roster is full)'}; your 40-man is at ${forty}/${league.settings.fortyMax}.${fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId ? ' He had declined a qualifying offer, so you lose a draft pick.' : ''}`,
+      from: 'Front office', subject: `${pname(p)} signed with you`, kind: 'info', pids: [p.id], stop: true, link: overLimit ? { page: 'roster-moves' } : undefined,
+      text: `${posLabel(p)} ${pname(p)} accepted your offer: ${deal(o)}. He joins the major league roster${overLimit ? ', which puts you over the active limit: option or designate someone on the Roster Moves page before the next game' : ''}.${slotted ? ` ${slotted}` : ''} Your 40-man is at ${forty}/${league.settings.fortyMax}.${fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId ? ' He had declined a qualifying offer, so you lose a draft pick.' : ''}`,
     });
   } else if (yours) {
     addInbox(league, {
@@ -258,6 +272,7 @@ export function aiTerms(league: League, org: Org, p: Player, years: number, aav:
 const notableFa = (p: Player) => ovr(p) >= 55 || p.fa!.asking.aav >= 8e6;
 
 export function faDay(league: League): void {
+  milbBidDay(league);
   const offseasonPhase = league.phase === 'offseason' || league.phase === 'preseason';
   // In season the market is thin; check it every few days.
   if (!offseasonPhase && league.day % 3 !== 0) return;

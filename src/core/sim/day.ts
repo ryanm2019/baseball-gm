@@ -529,9 +529,9 @@ export function simOneDay(league: League): DayResult {
       offseasonUpkeep(league);
       if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
       league.day++;
-      if (talk) return { stop: talk };
+      return { stop: talk ?? inboxStop(league) };
     }
-    return { stop: null };
+    return { stop: inboxStop(league) };
   }
   if (league.phase === 'preseason') {
     if (agmVacancyNotice(league)) return { stop: 'Inbox: You have no assistant GM. Hire one on the Staff page.' };
@@ -551,7 +551,7 @@ export function simOneDay(league: League): DayResult {
       league.phase = 'regular';
       addNews(league, null, `Opening Day of the ${league.season} season!`);
     }
-    return { stop: talk };
+    return { stop: talk ?? inboxStop(league) };
   }
   if (league.phase === 'regular') {
     const stop = beginRegularDay(league);
@@ -566,7 +566,7 @@ export function simOneDay(league: League): DayResult {
   playoffDay(league);
   dailyUpkeep(league);
   league.day++;
-  return { stop: null };
+  return { stop: inboxStop(league) };
 }
 
 function offseasonUpkeep(league: League): void {

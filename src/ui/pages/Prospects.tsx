@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
 import { useStore } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
 import type { Player } from '../../core/types.ts';
@@ -7,9 +9,13 @@ import { DataTable, OrgLink, type Column } from '../components.tsx';
 import { nameCol, ratingCols, seasonBat, seasonPit, statLine } from '../fmt.tsx';
 
 // Prospects: players who have not exhausted rookie status (fewer than ~45 days of MLB service).
+let prospectPos = 'all';
+
 export default function Prospects() {
   const { league } = useStore();
   const route = useRoute();
+  const [pf, setPfState] = useState(prospectPos);
+  const setPf = (v: string) => { prospectPos = v; setPfState(v); };
   if (!league) return null;
   const mine = route.query.scope === 'mine';
   const list = Object.values(league.players)
@@ -17,7 +23,8 @@ export default function Prospects() {
     .map((p) => ({ p, v: scoutedPot(league, p) * 0.75 + scoutedOvr(league, p) * 0.25 - (league.season - p.born) * 0.15 }))
     .sort((a, b) => b.v - a.v)
     .slice(0, 100)
-    .map((x, i) => ({ ...x, rank: i + 1 }));
+    .map((x, i) => ({ ...x, rank: i + 1 }))
+    .filter((r) => posFilterFn(pf)(r.p));
   type Row = (typeof list)[0];
   const nc = nameCol(league);
   const rc = ratingCols(league);
@@ -38,7 +45,7 @@ export default function Prospects() {
         <button className={`btn btn-sm${!mine ? ' active' : ''}`} onClick={() => go('prospects')}>League</button>
         <button className={`btn btn-sm${mine ? ' active' : ''}`} onClick={() => go('prospects', [], { scope: 'mine' })}>My organization</button>
       </div>
-      <p className="muted small">Ranked by your scouts' view of potential, current ability and age.</p>
+      <p className="muted small">Ranked by your scouts' view of potential, current ability and age. <PosFilterSelect value={pf} onChange={setPf} /></p>
       <DataTable cols={cols} rows={list} rowKey={(r) => r.p.id} defaultSort={{ key: 'rank', desc: false }} rowClass={(r) => (r.p.orgId === league.userOrgId ? 'user' : undefined)} compact />
     </>
   );

@@ -324,6 +324,17 @@ function baseOrder(league: League): number[] {
   return league.orgs.map((o) => o.id).sort((a, b) => strength(a) - strength(b) + (rand() - 0.5) * 30);
 }
 
+// Where the user's first-round pick should land, before the draft order is set:
+// last season's standings, worst first (the top six go by lottery among clubs
+// that missed the playoffs). Null in a league's first season.
+export function projectedPick(league: League, orgId: number): { pick: number; lottery: boolean } | null {
+  if (!league.lastStandings?.length) return null;
+  const pick = league.lastStandings.indexOf(orgId) + 1;
+  if (pick <= 0) return null;
+  const playoff = new Set(league.lastPlayoffTeams ?? league.lastStandings.slice(-12));
+  return { pick, lottery: !playoff.has(orgId) };
+}
+
 export function createDraft(league: League): DraftState {
   const order = baseOrder(league); // worst first
   const playoff = new Set(league.lastPlayoffTeams ?? order.slice(-12));

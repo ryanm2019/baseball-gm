@@ -118,6 +118,17 @@ export function pickStarter(league: League, orgId: number, level: Level, pitcher
 }
 
 
+// How much the glove counts at each spot when the manager fills the lineup:
+// a lot up the middle, little at first base or DH. A real liability at a
+// premium spot costs extra.
+const DEF_WEIGHT: Partial<Record<Pos, number>> = { C: 1.0, SS: 1.0, CF: 0.9, '2B': 0.8, '3B': 0.7, RF: 0.55, LF: 0.5, '1B': 0.35 };
+function defValue(p: Player, pos: Pos): number {
+  if (pos === 'DH' || pos === 'SP' || pos === 'RP') return 0;
+  const d = defAt(p, pos);
+  const w = DEF_WEIGHT[pos] ?? 0.6;
+  return w * (d - 50) - (w >= 0.8 && d < 40 ? (40 - d) * 0.6 : 0);
+}
+
 function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: Player; pos: Pos }[] {
   const pool = [...hitters];
   // Regulars occasionally rest when there is a bench to cover.
@@ -161,8 +172,7 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
     let bestV = -Infinity;
     for (const p of pool) {
       if (used.has(p.id)) continue;
-      const d = defAt(p, pos);
-      let v = offVs(p, oppHand) + 0.6 * (d - 50);
+      let v = offVs(p, oppHand) + defValue(p, pos);
       if (pos === 'C' && p.pos !== 'C') v -= 40;
       if (p.pos === pos) v += 4;
       if (v > bestV) {
@@ -250,7 +260,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
         if (used.has(p.id)) continue;
         let v = offVs(p, oppHand);
         if (pos !== 'DH' && pos !== 'SP' && pos !== 'RP') {
-          v += 0.6 * (defAt(p, pos) - 50);
+          v += defValue(p, pos);
           if (pos === 'C' && p.pos !== 'C') v -= 40;
           if (p.pos === pos) v += 4;
         }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { DataTable, NumInput, type Column } from '../components.tsx';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { markFloated } from '../../core/negotiation.ts';
+import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
 import { useStore, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
 import type { League, Player, Pos } from '../../core/types.ts';
@@ -63,11 +64,18 @@ export default function TradeFinder() {
   const [mlbOnly, setMlbOnly] = useKept('mlbOnly', true);
   const [untouch, setUntouch] = useKept<Set<number>>('untouch', new Set());
   const [busy, setBusy] = useState(false);
+  const [shopPos, setShopPos] = useKept('shopPos', 'all');
   const [deals, setDeals] = useKept<FoundDeal[] | null>('deals', null);
   const [rows, setRows] = useKept<NeedRow[] | null>('rows', null);
   const [about, setAbout] = useKept<string>('about', ''); // who the results are for
   if (!league) return null;
   const user = league.orgs[league.userOrgId];
+  const shopFor = (p: Player) => { setMine(p.id); run(() => { const ds = shopPlayer(league, p.id, want); found(ds, `offers for ${p.first} ${p.last}`); if (!ds.length) setMessage(want === 'picks' ? 'No offers in picks or pool money. Only clubs holding competitive balance picks can send them, and pool money trades only during the international signing period.' : 'No offers for him with that request.'); }); };
+  const shopCols: Column<Player>[] = [
+    { key: 'name', label: 'Player', left: true, value: (p) => `${p.last} ${p.first}`, render: (p) => <a href={href('player', [p.id])}>{p.first} {p.last}</a> },
+    ...tradePlayerCols(league),
+    { key: 'shop', label: '', noSort: true, render: (p) => <button className={`btn btn-sm${p.id === mine ? ' btn-primary' : ''}`} disabled={busy} onClick={() => shopFor(p)}>Ask every team</button> },
+  ];
   const myPlayers = orgPlayers(league, user.id).filter((p) => p.on40 || p.level === 'MLB' || scoutedPot(league, p) >= 50).sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a));
   const others = Object.values(league.players).filter((p) => p.orgId !== null && p.orgId !== user.id && (p.level === 'MLB' || p.on40 || p.level === 'AAA'));
   const opts = (): FinderOpts => ({ untouchable: untouch, allowPicks, kind });
@@ -167,17 +175,17 @@ export default function TradeFinder() {
       )}
 
       {mode === 'shop' && (
-        <div className="form-row">
-          <select value={mine} onChange={(e) => setMine(e.target.value === '' ? '' : Number(e.target.value))}>
-            <option value="">Choose one of your players…</option>
-            {myPlayers.map((p) => <option key={p.id} value={p.id}>{posLabel(p)} {p.first} {p.last} ({scoutedOvr(league, p)}/{scoutedPot(league, p)}{p.level !== 'MLB' ? `, ${p.level}` : ''})</option>)}
-          </select>{' '}
-          What you want back:{' '}
-          <select value={want} onChange={(e) => setWant(e.target.value as Want)}>
-            <option value="best">Best offer</option><option value="prospects">Prospects</option><option value="mlb">MLB talent</option><option value="picks">Picks and pool money</option>
-          </select>{' '}
-          <button className="btn btn-primary btn-sm" disabled={mine === '' || busy} onClick={() => run(() => { const ds = shopPlayer(league, Number(mine), want); const sp = league.players[Number(mine)]; found(ds, `offers for ${sp.first} ${sp.last}`); if (!ds.length) setMessage(want === 'picks' ? 'No offers in picks or pool money. Only clubs holding competitive balance picks can send them, and pool money trades only during the international signing period.' : 'No offers for him with that request.'); })}>Ask every team</button>
-        </div>
+        <>
+          <div className="form-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            What you want back:{' '}
+            <select value={want} onChange={(e) => setWant(e.target.value as Want)}>
+              <option value="best">Best offer</option><option value="prospects">Prospects</option><option value="mlb">MLB talent</option><option value="picks">Picks and pool money</option>
+            </select>
+            <PosFilterSelect value={shopPos} onChange={setShopPos} />
+            <span className="muted small">Pick one of your players and ask every team what they'd give.</span>
+          </div>
+          <DataTable cols={shopCols} rows={myPlayers.filter(posFilterFn(shopPos))} rowKey={(p) => p.id} compact maxHeight={380} pinned={(p) => p.id === mine} />
+        </>
       )}
 
       {mode === 'need' && (

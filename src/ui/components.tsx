@@ -1,3 +1,4 @@
+import { posOrder } from './posFilter.tsx';
 import { useLayoutEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import type { League, Level, Player } from '../core/types.ts';
 import { LEVELS } from '../core/types.ts';
@@ -80,9 +81,12 @@ export function DataTable<T>({
     const col = cols.find((c) => c.key === sort.key);
     if (!col || !col.value) return rows;
     const v = col.value;
+    // Position columns sort around the diamond, not alphabetically.
+    const isPos = sort.key === 'pos';
     const out = [...rows].sort((a, b) => {
       const x = v(a);
       const y = v(b);
+      if (isPos) return posOrder(String(x)) - posOrder(String(y)) || String(x).localeCompare(String(y));
       if (typeof x === 'number' && typeof y === 'number') return x - y;
       return String(x).localeCompare(String(y));
     });
@@ -106,7 +110,7 @@ export function DataTable<T>({
                   onClick={() => {
                     if (!sortable) return;
                     if (isSorted) setSort({ key: c.key, desc: !sort!.desc });
-                    else setSort({ key: c.key, desc: c.sortDesc ?? !c.left });
+                    else setSort({ key: c.key, desc: c.sortDesc ?? (c.key === 'pos' ? false : !c.left) });
                   }}
                 >
                   {c.label}

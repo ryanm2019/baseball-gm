@@ -3,7 +3,7 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
 import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
-import { signFreeAgent, posLabel } from '../../core/rules.ts';
+import { posLabel } from '../../core/rules.ts';
 import { fmtMoney, serviceLabel, serviceYears } from '../../core/contracts.ts';
 import { interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
@@ -12,42 +12,49 @@ import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
 import { fortyMan } from '../../core/util.ts';
 import { faStage, offseasonCalendar } from '../../core/offseason.ts';
-import { isPitcher } from '../../core/ratings.ts';
+
+import { POS_FILTERS, PosFilterSelect } from '../posFilter.tsx';
+import { delegated } from '../../core/staff.ts';
+import { milbDecideDay, milbOffers, offerMilb, withdrawMilb } from '../../core/milbFa.ts';
 
 // Position filter (kept while you browse other pages).
-const POS_FILTERS: Record<string, (p: Player) => boolean> = {
-  all: () => true,
-  hitters: (p) => !isPitcher(p),
-  C: (p) => p.pos === 'C', '1B': (p) => p.pos === '1B', '2B': (p) => p.pos === '2B', '3B': (p) => p.pos === '3B', SS: (p) => p.pos === 'SS',
-  IF: (p) => ['1B', '2B', '3B', 'SS'].includes(p.pos),
-  LF: (p) => p.pos === 'LF', CF: (p) => p.pos === 'CF', RF: (p) => p.pos === 'RF',
-  OF: (p) => ['LF', 'CF', 'RF'].includes(p.pos),
-  DH: (p) => p.pos === 'DH',
-  pitchers: isPitcher, SP: (p) => p.pos === 'SP', RP: (p) => p.pos === 'RP',
-};
-const POS_LABELS: [string, string][] = [['all', 'All positions'], ['hitters', 'Hitters'], ['C', 'C'], ['1B', '1B'], ['2B', '2B'], ['3B', '3B'], ['SS', 'SS'], ['IF', 'Infield'], ['LF', 'LF'], ['CF', 'CF'], ['RF', 'RF'], ['OF', 'Outfield'], ['DH', 'DH'], ['pitchers', 'Pitchers'], ['SP', 'SP'], ['RP', 'RP']];
 let posFilter = 'all';
 let showUpcoming = true;
 
 function MilbCell({ p }: { p: Player }) {
   const { league } = useStore();
   const [lvl, setLvl] = useState<Level>('AAA');
+  const [invite, setInvite] = useState(false);
   if (!league) return null;
+  const mine = milbOffers(p).find((o) => o.orgId === league.userOrgId);
+  const rivals = milbOffers(p).filter((o) => o.orgId !== league.userOrgId).length;
+  const dec = milbDecideDay(p);
+  if (mine) {
+    return (
+      <span className="nowrap small">
+        Your offer: <b>{mine.level}{mine.invite ? ' + camp invite' : ''}</b> · {rivals ? `${rivals} other club${rivals === 1 ? '' : 's'}` : 'no other bids yet'}{dec !== undefined ? ` · decides ${dayShort(league.season, dec)}` : ''}{' '}
+        <button className="btn btn-sm" onClick={() => { withdrawMilb(p, league.userOrgId); changed(); }}>Withdraw</button>
+      </span>
+    );
+  }
   return (
     <span className="nowrap">
       <select value={lvl} onChange={(e) => setLvl(e.target.value as Level)}>
         {MINOR_LEVELS.map((l) => <option key={l}>{l}</option>)}
       </select>{' '}
+      <label className="small" title="An invite to big league spring training: veterans like it"><input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} /> Camp invite</label>{' '}
       <button
         className="btn btn-sm"
+        title={dec !== undefined ? `Other clubs are bidding; he decides ${dayShort(league.season, dec)}` : 'Starts a short bidding window: he decides in a few days'}
         onClick={() => {
-          const err = signFreeAgent(league, p, league.userOrgId, lvl, false);
-          setMessage(err ? `Can't sign ${p.first} ${p.last}: ${err}` : null);
+          const err = offerMilb(league, league.userOrgId, p, lvl, invite);
+          setMessage(err ? `Can't offer ${p.first} ${p.last}: ${err}` : `Offer made to ${p.first} ${p.last}. He decides ${dayShort(league.season, milbDecideDay(p)!)}; other clubs may bid too.`);
           changed();
         }}
       >
-        Sign MiLB deal
+        Offer MiLB deal
       </button>
+      {rivals > 0 && <span className="muted small"> {rivals} club{rivals === 1 ? '' : 's'} bidding</span>}
     </span>
   );
 }
@@ -160,9 +167,7 @@ export default function FreeAgents() {
         <button className={`btn btn-sm${tab === 'milb' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'milb' })}>Minor league ({milb.length})</button>
       </div>
       <div className="form-row" style={{ margin: '6px 0' }}>
-        <select value={pf} onChange={(e) => setPf(e.target.value)}>
-          {POS_LABELS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>{' '}
+        <PosFilterSelect value={pf} onChange={setPf} />{' '}
         {tab === 'ml' && (
           <label className="small" title="Players whose contracts run out this season, and anyone deciding on a qualifying offer">
             <input type="checkbox" checked={up} onChange={(e) => setUp(e.target.checked)} /> Include upcoming free agents ({upcoming.length})
@@ -201,8 +206,8 @@ export default function FreeAgents() {
         </>
       ) : (
         <>
-          <p className="muted small">Minor league deals sign immediately and go to the affiliate you pick.</p>
-          <DataTable cols={milbCols} rows={milb} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
+          <p className="muted small">Minor league deals have a short bidding window: make an offer (affiliate level, plus an optional invite to big league camp), other clubs may bid, and in a few days (a day or two in season) he picks the best fit: a higher level, a camp invite and a clear path to the majors all help.{delegated(league, league.orgs[league.userOrgId], 'milbfa') ? ' Your assistant GM also bids for you each week in the winter and spring to fill thin spots at Triple-A.' : ''}</p>
+          <DataTable cols={milbCols} rows={milb} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact pinned={(p) => milbOffers(p).some((o) => o.orgId === league.userOrgId)} />
         </>
       )}
     </>

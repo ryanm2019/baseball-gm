@@ -50,6 +50,6 @@ export function agmVacancyNotice(league: League): boolean {
     from: 'Front office', kind: 'info', pids: [], stop: true, link: { page: 'staff' },
     subject: 'You have no assistant GM',
     text: "Your assistant GM job is empty, so the duties you handed him (roster moves, injuries, the draft and so on) aren't being done. Hire one on the Staff page, or take those duties back yourself.",
-  });
+  }).stopped = true; // the caller returns the pause
   return true;
 }

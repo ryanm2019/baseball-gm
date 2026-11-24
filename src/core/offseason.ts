@@ -661,7 +661,7 @@ function faNotice(league: League, key: string): string | null {
     subject = 'Late free agent market';
     text = `${faHeadline(league)} Asking prices keep coming down as spring training nears.`;
   } else return null;
-  addInbox(league, { from: 'Front office', subject, kind: 'info', pids: [], stop: true, link: { page: 'free-agents' }, text: `${st ? `${st.stage}: ` : ''}${text}` });
+  addInbox(league, { from: 'Front office', subject, kind: 'info', pids: [], stop: true, link: { page: 'free-agents' }, text: `${st ? `${st.stage}: ` : ''}${text}` }).stopped = true; // this return is the pause
   return `Inbox: ${subject}. ${st ? st.detail : ''}`;
 }
 

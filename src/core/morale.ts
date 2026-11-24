@@ -254,7 +254,7 @@ function agentMessages(league: League): void {
         text: `${pname(p)} has nothing left to prove in Triple-A. He wants a shot in the majors, or a trade to a team that will give him one.`,
         actions: [{ key: 'promise-callup', label: 'Promise a call-up within 30 days' }, { key: 'explain', label: 'Tell him to keep working' }, { key: 'block', label: 'Put him on the trading block' }],
       });
-    } else if (league.phase !== 'regular' && serviceYears(p.mlServiceDays, league.settings) >= 2 && ovr(p) >= 60 && m.value >= 60 && !hasOpen(league, p.id, 'extension') && rand() < 0.08) {
+    } else if (league.phase !== 'regular' && serviceYears(p.mlServiceDays, league.settings) >= 2 && ovr(p) >= 60 && m.value >= 60 && (p.contract.type !== 'ML' || p.contract.exp <= league.season + 2) && !hasOpen(league, p.id, 'extension') && rand() < 0.08) {
       addInbox(league, {
         from, subject: `${pname(p)} open to an extension`, kind: 'extension', pids: [p.id],
         text: `${pname(p)} loves it here. If you want to talk about a long-term deal, we're listening.`,
@@ -334,9 +334,12 @@ export function moraleWeek(league: League): void {
 }
 
 // The sim pauses for important Inbox messages (once each).
+// Runs every day in every phase, so a message pauses the sim when it arrives;
+// one that somehow waited more than a few days is not raised later as news.
 export function inboxStop(league: League): string | null {
+  for (const x of league.inbox ?? []) if (x.stop && !x.stopped && (x.season !== league.season || league.day - x.day > 3)) x.stopped = true;
   const m = (league.inbox ?? []).find((x) => x.stop && !x.stopped && !x.resolved);
   if (!m) return null;
   m.stopped = true;
-  return `Inbox: ${m.subject}. Answer it on the Inbox page, then press Play to continue.`;
+  return m.actions?.length ? `Inbox: ${m.subject}. Answer it on the Inbox page, then press Play to continue.` : `Inbox: ${m.subject}. Details on the Inbox page; press Play to continue.`;
 }

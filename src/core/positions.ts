@@ -31,6 +31,14 @@ export function ovrAt(p: Player, pos: Pos): number {
   return hitterOvrAt(offense(blendSplits(p)), def, p.ratings.run.speed, pos);
 }
 
+// For deciding who plays where: the position value plus extra weight on the
+// glove up the middle (and a bit less at first base).
+const DEF_EXTRA: Partial<Record<Pos, number>> = { C: 0.3, SS: 0.3, CF: 0.25, '2B': 0.2, '3B': 0.15, RF: 0.05, '1B': -0.1 };
+export function fieldValue(p: Player, pos: Pos): number {
+  if (isPitcher(p) || pos === 'DH') return ovrAt(p, pos);
+  return ovrAt(p, pos) + (DEF_EXTRA[pos] ?? 0) * (defAt(p, pos as FieldPos) - 50);
+}
+
 // ---------- the scouts' read ----------
 
 export type Fit = 'Natural' | 'Good fit' | 'Can handle it' | 'Stretch' | 'Not a fit';
@@ -220,17 +228,17 @@ function rosterMove(league: League, org: Org, p: Player): { pos: Pos; text: stri
     return null;
   }
   if (p.pos === 'DH') return null;
-  const here = ovrAt(p, p.pos);
-  const blocker = mlb.filter((x) => x.pos === p.pos).sort((a, b) => ovrAt(b, p.pos) - ovrAt(a, p.pos))[0];
-  if (!blocker || ovrAt(blocker, p.pos) < here + 2) return null;
-  const bestAt = (pos: Pos) => mlb.filter((x) => x.pos === pos).map((x) => ovrAt(x, pos)).sort((a, b) => b - a)[0] ?? 0;
+  const here = fieldValue(p, p.pos);
+  const blocker = mlb.filter((x) => x.pos === p.pos).sort((a, b) => fieldValue(b, p.pos) - fieldValue(a, p.pos))[0];
+  if (!blocker || fieldValue(blocker, p.pos) < here + 2) return null;
+  const bestAt = (pos: Pos) => mlb.filter((x) => x.pos === pos).map((x) => fieldValue(x, pos)).sort((a, b) => b - a)[0] ?? 0;
   const dest = positionReads(league, org, p)
     .filter((r) => r.pos !== p.pos && r.pos !== 'DH' && (r.fit === 'Natural' || r.fit === 'Good fit' || r.fit === 'Can handle it'))
-    .map((r) => ({ r, upgrade: r.projected - bestAt(r.pos) }))
+    .map((r) => ({ r, upgrade: r.projected + (DEF_EXTRA[r.pos] ?? 0) * (defAt(p, r.pos as FieldPos) - 50) - bestAt(r.pos) }))
     .filter((x) => x.upgrade >= 2.5)
     .sort((a, b) => b.upgrade - a.upgrade)[0];
   if (!dest) return null;
-  const incumbent = mlb.filter((x) => x.pos === dest.r.pos).sort((a, b) => ovrAt(b, dest.r.pos) - ovrAt(a, dest.r.pos))[0];
+  const incumbent = mlb.filter((x) => x.pos === dest.r.pos).sort((a, b) => fieldValue(b, dest.r.pos) - fieldValue(a, dest.r.pos))[0];
   return {
     pos: dest.r.pos,
     gain: dest.upgrade,

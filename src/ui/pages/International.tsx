@@ -7,11 +7,16 @@ import { willingnessBand } from '../../core/draft.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { DataTable, type Column, NumInput } from '../components.tsx';
+import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
+
+let ifaPos = 'all';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { delegated } from '../../core/staff.ts';
 
 export default function International() {
   const { league } = useStore();
+  const [pf, setPfState] = useState(ifaPos);
+  const setPf = (v: string) => { ifaPos = v; setPfState(v); };
   const [sel, setSel] = useState<number | null>(null);
   const [amt, setAmt] = useState<Record<number, number>>({});
   if (!league) return null;
@@ -21,7 +26,7 @@ export default function International() {
   const spent = league.intl.spent[org.id] ?? 0;
   const verbal = verbalTotal(league, org.id);
   const left = poolLeft(league, org.id);
-  const cls = Object.values(league.players).filter(isIfa);
+  const cls = Object.values(league.players).filter(isIfa).filter(posFilterFn(pf));
   const signed = Object.values(league.players).filter((p) => p.orgId === org.id && p.contract.bonus && p.signAge !== undefined && p.teamSince === league.season && (p.signAge <= 17 || p.level === 'AAA') && p.contract.bonus >= 10_000 && !p.draft);
   const mine = cls.filter((p) => p.ifa!.verbal?.orgId === org.id);
   const status = (p: Player) => {
@@ -126,7 +131,11 @@ export default function International() {
           <b>Your verbal agreements:</b> {mine.map((q) => `${q.first} ${q.last} (${fmtMoney(q.ifa!.verbal!.amount)})`).join(', ')}
         </p>
       )}
-      <DataTable cols={cols} rows={cls} rowKey={(q) => q.id} defaultSort={{ key: 'ask', desc: true }} compact />
+      <div className="form-row" style={{ margin: '6px 0' }}>
+        <PosFilterSelect value={pf} onChange={setPf} />{' '}
+        <span className="muted small">Players you've made offers to (or agreed with) stay at the top.</span>
+      </div>
+      <DataTable cols={cols} rows={cls} rowKey={(q) => q.id} defaultSort={{ key: 'ask', desc: true }} compact pinned={(q) => q.ifa?.lastOffer?.[org.id] !== undefined || q.ifa?.verbal?.orgId === org.id} />
       {signed.length > 0 && (
         <>
           <h2>Signed</h2>

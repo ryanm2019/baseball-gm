@@ -1,4 +1,5 @@
 // Trades: rules, evaluation, AI negotiation, AI-to-AI deals and offers to the user.
+import { slotNewcomer } from './depthUpdate.ts';
 import type { League, Org, Player, Pos, TradeAssets, TradeOffer, TradeProposal } from './types.ts';
 import { isPitcher, ovr } from './ratings.ts';
 import { orgPayroll, roundSalary, serviceYears } from './contracts.ts';
@@ -202,6 +203,7 @@ export function executeTrade(league: League, prop: TradeProposal): string | null
       p.joined = { season: league.season, day: league.day };
       p.dfa = null;
       if (p.level === null) p.level = 'AAA';
+      if (to === league.userOrgId) slotNewcomer(league, league.orgs[to], p);
       parts.push(`${posLabel(p)} ${pname(p)}`);
     }
     if (g.cash) {

@@ -122,6 +122,8 @@ export interface FaStatus {
   posted?: { from: string; deadline: number }; // posted by his Asian club: sign by the deadline or he goes back
   scooped?: number; // how far the insider feed has followed him (1 = meetings reported, 2 = finalists)
   passed?: number[]; // clubs that pulled their offer and moved on
+  milbOffers?: { orgId: number; level: Level; invite: boolean; day: number }[]; // minor league bids (bidding window)
+  milbDecide?: number; // day he picks among minor league offers
 }
 
 export interface IfaInfo {

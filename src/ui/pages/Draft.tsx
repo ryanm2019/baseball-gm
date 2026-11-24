@@ -2,7 +2,7 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { href, go, useRoute } from '../../router.ts';
 import type { League, Player } from '../../core/types.ts';
 import { scoutedPot } from '../../core/ratings.ts';
-import { advanceDraft, advanceOnePick, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
+import { advanceDraft, advanceOnePick, projectedPick, availableProspects, createDraft, isProspect, offerPick, onTheClock, overageTier, poolSpent, poolTotal, signabilityLabel, userAutoPick, userPick, willingness, willingnessBand, POOL_ROUNDS, LATE_ROUND_FREE } from '../../core/draft.ts';
 import { useState } from 'react';
 import type { DraftPick } from '../../core/types.ts';
 import { fmtMoney } from '../../core/contracts.ts';
@@ -75,6 +75,18 @@ export default function Draft() {
   return (
     <>
       <h1>{league.season} Amateur Draft</h1>
+      {d ? (() => {
+        const next = myPicks.find((pk) => pk.pick > d.index);
+        return (
+          <p className="small">
+            <b>Your picks:</b> {myPicks.length ? myPicks.map((pk) => `#${pk.pick}${pk.label ? ` (${pk.label})` : ` (R${pk.round})`}`).join(', ') : 'none (traded away or forfeited)'}
+            {!d.done && next && <> · <b>{next.pick - 1 === d.index ? "You're on the clock" : `Next up: #${next.pick}, in ${next.pick - 1 - d.index} pick${next.pick - 1 - d.index === 1 ? '' : 's'}`}</b></>}
+          </p>
+        );
+      })() : (() => {
+        const pr = projectedPick(league, org.id);
+        return <p className="small"><b>Your first-round pick:</b> {pr ? <>#{pr.pick} by last season's standings{pr.lottery ? '; as a non-playoff club you are in the lottery for the top six picks, so it could move up' : ''}.</> : 'set on draft day (this league has no prior standings, so the order follows club strength, with a lottery for the top six).'} Competitive balance and compensation picks are added when the order is set.</p>;
+      })()}
       {!d && (
         <p>
           The draft is {dayLabel(league.season, league.settings.draftDay)} (All-Star break), {league.settings.draftRounds} rounds. The top six picks go by lottery among non-playoff teams. Scout the class below.{' '}

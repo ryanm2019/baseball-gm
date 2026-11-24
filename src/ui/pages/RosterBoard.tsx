@@ -28,8 +28,10 @@ import { PlayerCard } from '../PlayerCard.tsx';
 import { avg, era, fmt3, ipStr, obp, seasonBat, seasonPit, slg, whip } from '../fmt.tsx';
 import { batAdvanced, pitAdvanced, seasonCtx } from '../../core/war.ts';
 import { isPitcher } from '../../core/ratings.ts';
+import { PosFilterSelect, posFilterFn, posOrder } from '../posFilter.tsx';
 
 type View = 'ratings' | 'hit' | 'pit';
+let boardPos = 'all';
 interface Col { key: string; label: string; title?: string; left?: boolean; value: (p: Player) => number | string; render?: (p: Player) => React.ReactNode; asc?: boolean }
 
 // This season's stats at the level he's at now (last season's in the winter).
@@ -130,6 +132,8 @@ export default function RosterBoard() {
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [views, setViews] = useState<View[]>(['ratings', 'ratings', 'ratings', 'ratings', 'ratings', 'ratings']);
+  const [pf, setPfState] = useState(boardPos);
+  const setPf = (v: string) => { boardPos = v; setPfState(v); };
   const [sorts, setSorts] = useState<({ key: string; desc: boolean } | null)[]>([null, null, null, null, null, null]);
   if (!league) return null;
   const s = league.settings;
@@ -170,7 +174,7 @@ export default function RosterBoard() {
   const pit = (p: Player) => seasonPit(p, season, p.level ?? undefined);
   const ctx = (p: Player) => seasonCtx(league, season, p.level ?? 'AAA');
   const base: Col[] = [
-    { key: 'pos', label: 'Pos', value: (p) => posLabel(p) },
+    { key: 'pos', label: 'Pos', value: (p) => posLabel(p), asc: true },
     {
       key: 'name', label: 'Player', left: true, value: (p) => p.last,
       render: (p) => <><span className={p.injury ? 'neg' : ''}>{p.first[0]}. {p.last}</span> <span className="muted small">{flags(p)}</span></>,
@@ -202,8 +206,12 @@ export default function RosterBoard() {
     return [...base, tag40,
       { key: 'ovr', label: 'Ovr', value: (p) => scoutedOvr(league, p) },
       { key: 'pot', label: 'Pot', value: (p) => scoutedPot(league, p) },
+      // This season's numbers at his level, right beside the ratings.
+      { key: 'n', label: 'PA/IP', title: `${season} at his current level: plate appearances (hitters) or innings (pitchers)`, value: (p) => (isPitcher(p) ? pit(p).outs / 3 : bat(p).pa), render: (p) => (isPitcher(p) ? (pit(p).outs ? ipStr(pit(p).outs) : '-') : bat(p).pa || '-') },
+      { key: 'perf', label: 'wRC+/ERA', title: `${season} at his current level: wRC+ for hitters (100 = average for the level), ERA for pitchers`, value: (p) => (isPitcher(p) ? (pit(p).outs ? -era(pit(p)) : -99) : bat(p).pa ? batAdvanced(bat(p), ctx(p)).wrcPlus : -999), render: (p) => (isPitcher(p) ? (pit(p).outs ? era(pit(p)).toFixed(2) : '-') : bat(p).pa ? batAdvanced(bat(p), ctx(p)).wrcPlus : '-') },
       { key: 'mood', label: 'Mood', title: 'Morale (50 = content)', value: (p) => p.morale?.value ?? 55, render: (p) => (p.morale ? <span className={p.morale.value < 35 ? 'neg' : p.morale.value >= 65 ? 'pos' : ''}>{Math.round(p.morale.value)}</span> : '-') },
-      { key: 'opt', label: 'Opt', title: 'Option years left', value: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : -1), render: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-') },
+      { key: 'opt', label: 'Opt yrs', title: 'Option years left', value: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : -1), render: (p) => (p.on40 || p.contract.type === 'ML' ? optionsLeft(league, p) : '-') },
+      { key: 'opts', label: 'Opts', title: `Times optioned this season, out of the ${s.maxOptionsPerSeason} allowed per season`, value: (p) => p.optionsThisSeason ?? 0, render: (p) => (p.on40 || p.contract.type === 'ML' ? <span className={(p.optionsThisSeason ?? 0) >= s.maxOptionsPerSeason ? 'neg' : ''}>{p.optionsThisSeason ?? 0}/{s.maxOptionsPerSeason}</span> : '-') },
       { key: 'svc', label: 'Svc', title: 'MLB service time (years.days)', value: (p) => p.mlServiceDays, render: (p) => serviceLabel(p.mlServiceDays, s) },
       {
         key: 'status', label: 'Status', left: true, value: (p) => (p.injury ? p.injury.daysLeft : 0),
@@ -218,7 +226,7 @@ export default function RosterBoard() {
     return [...ps].sort((a, b) => {
       const x = c.value(a);
       const y = c.value(b);
-      const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+      const r = sort.key === 'pos' ? posOrder(String(x)) - posOrder(String(y)) : typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
       return sort.desc ? -r : r;
     });
   };
@@ -231,9 +239,13 @@ export default function RosterBoard() {
         Drag a player from one box to another to make the move: onto the active roster to recall, select or activate him; onto a minor league box to option or assign; onto the 40-man box to add him; onto an injured list; onto Designated to DFA him (or send a DFA'd player to outright waivers); or onto the release bar. Pick what each box shows from its drop-down. Tap a player to see his ratings; on a phone, tap him and then "Move here" on the box you want.
       </p>
       <p className="muted small">Switch a box to Hitting or Pitching to compare this season's stats at each player's level (wRC+ and FIP are relative to that level); click a column to sort. <span className="flag" title="Can refuse an option to the minors (5+ years of MLB service)">^</span> can refuse an option (5+ years of service) · <span className="flag" title="Out of options: must clear waivers to be sent down">°</span> out of options · <span className="flag" title="Rule 5 pick: must stay on the MLB active roster all season or be offered back">R5</span> Rule 5 pick (must stay active) · <span className="flag" title="Option years left">Opt</span> = option years left · <span className="flag" title="MLB service years (years.days)">Svc</span> = MLB service years</p>
+      <div className="form-row" style={{ margin: '4px 0 8px' }}>
+        <PosFilterSelect value={pf} onChange={setPf} /> <span className="muted small">Filter every box by position; click Pos in any box to sort around the diamond.</span>
+      </div>
       <div className="board">
         {boxes.map((b, i) => {
-          const all = boxPlayers(league, b);
+          const full = boxPlayers(league, b);
+          const all = full.filter(posFilterFn(pf));
           const v = views[i];
           const ps = v === 'hit' ? all.filter((p) => !isPitcher(p)) : v === 'pit' ? all.filter(isPitcher) : all;
           const cols = colsFor(v, b);
@@ -252,9 +264,9 @@ export default function RosterBoard() {
                 </select>
                 <span className="nowrap">
                   <select className="small" value={v} onChange={(e) => { setViews(views.map((x, j) => (j === i ? (e.target.value as View) : x))); setSorts(sorts.map((x, j) => (j === i ? null : x))); }}>
-                    <option value="ratings">Ratings</option><option value="hit">Hitting {season}</option><option value="pit">Pitching {season}</option>
+                    <option value="ratings">Ratings + stats</option><option value="hit">Hitting {season}</option><option value="pit">Pitching {season}</option>
                   </select>{' '}
-                  <span className="small muted">{boxCount(league, b, all.length)}</span>
+                  <span className="small muted">{boxCount(league, b, full.length)}</span>
                   {sel !== null && !all.some((p) => p.id === sel) && <button className="btn btn-sm btn-primary" style={{ marginLeft: 6 }} onClick={() => { void drop(b, sel); setSel(null); }}>Move here</button>}
                 </span>
               </div>

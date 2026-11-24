@@ -170,6 +170,21 @@ export function canOfferIfa(league: League, orgId: number, p: Player, amount?: n
 
 // One official offer. Before signing day an accepted offer is a verbal
 // agreement; from signing day on he signs on the spot.
+// The user hears about it when someone he's after goes elsewhere (or backs out of his deal).
+function ifaLostNotice(league: League, p: Player, toOrg: number, amount: number, hadVerbal: boolean, why = ''): void {
+  const u = league.userOrgId;
+  if (toOrg === u) return;
+  const info = p.ifa;
+  const wasBidding = hadVerbal || info?.lastOffer?.[u] !== undefined || (info?.bids?.[u] ?? 0) > 0;
+  if (!wasBidding) return;
+  const team = league.orgs[toOrg].affiliates.MLB.name;
+  addInbox(league, {
+    from: 'International scouting', kind: 'info', pids: [p.id], stop: true, link: { page: 'international' },
+    subject: hadVerbal ? `${pname(p)} backed out of his deal with you` : `${pname(p)} went to the ${team}`,
+    text: `${why}${p.pos} ${pname(p)} (${p.country}) ${hadVerbal ? 'backed out of his agreement with you and ' : ''}agreed to terms with the ${team} for ${fmtMoney(amount)}${ifaPhase(league) === 'open' ? '' : ', to sign January 15'}.${info?.bids?.[u] ? ` Your best offer was ${fmtMoney(info.bids[u])}.` : ''}`,
+  });
+}
+
 export function offerIfa(league: League, orgId: number, p: Player, amount: number): { ok: boolean; text: string } {
   amount = Math.max(10_000, roundSalary(amount));
   const why = canOfferIfa(league, orgId, p, amount);
@@ -183,6 +198,7 @@ export function offerIfa(league: League, orgId: number, p: Player, amount: numbe
   const org = league.orgs[orgId];
   if (rand() < acceptChance(amount, target)) {
     const prev = info.verbal;
+    ifaLostNotice(league, p, orgId, amount, prev?.orgId === league.userOrgId);
     if (ifaPhase(league) === 'open') {
       info.verbal = null;
       signIfa(league, orgId, p, amount);
@@ -284,12 +300,14 @@ export function negotiationDay(league: League): void {
       const amt = roundSalary(v.amount * (1.2 + rand() * 0.15));
       info.bids ??= {};
       info.bids[swoop.id] = amt;
+      if (v.orgId === league.userOrgId) ifaLostNotice(league, p, swoop.id, amt, true, 'Negotiation day: ');
       info.verbal = { orgId: swoop.id, amount: amt, day: league.day };
       broke++;
       addNews(league, v.orgId === league.userOrgId ? v.orgId : null, `Negotiation day: ${pname(p)} backed out of his agreement with the ${league.orgs[v.orgId].affiliates.MLB.name} and will sign with the ${swoop.affiliates.MLB.name} for ${fmtMoney(amt)}.`, [p.id]);
     } else if (info.asking > v.amount * 1.3 && rand() < 0.3) {
       info.verbal = null;
       broke++;
+      if (v.orgId === league.userOrgId) addInbox(league, { from: 'International scouting', kind: 'info', pids: [p.id], stop: true, link: { page: 'international' }, subject: `${pname(p)} backed out of his deal with you`, text: `Negotiation day: after a strong late showcase, ${p.pos} ${pname(p)} (${p.country}) backed out of his ${fmtMoney(v.amount)} agreement with you. He's back on the market, now asking more.` });
       addNews(league, v.orgId === league.userOrgId ? v.orgId : null, `Negotiation day: after a strong late showcase, ${pname(p)} backed out of his ${fmtMoney(v.amount)} agreement with the ${league.orgs[v.orgId].affiliates.MLB.name}. He's back on the market.`, [p.id]);
     }
   }
