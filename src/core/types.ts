@@ -125,6 +125,8 @@ export interface FaStatus {
   milbOffers?: { orgId: number; level: Level; invite: boolean; day: number }[]; // minor league bids (bidding window)
   milbDecide?: number; // day he picks among minor league offers
   pending?: { orgId: number; day: number; offer: FaOffer }; // agreed with you; waits for a 40-man/active spot
+  talk?: { respondDay: number; counter?: FaOffer; noted?: number }; // his agent's reply to your latest offer is due; his counter; last rival alert day
+  extended?: boolean; // pushed his date back once for a bidding war
 }
 
 export interface IfaInfo {
@@ -133,6 +135,7 @@ export interface IfaInfo {
   verbal?: { orgId: number; amount: number; day: number } | null; // agreed, not yet signed (breakable)
   bids?: Record<number, number>; // clubs in on him -> their latest offer
   lastOffer?: Record<number, number>; // org -> league day of its last offer
+  lostNotified?: boolean; // you've been told he went elsewhere
   stiff?: number; // lowballs make him dig in
   posted?: string; // a young pro posted from NPB/KBO/CPBL, signed with pool money
 }
@@ -613,7 +616,8 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply' | 'staff' | 'dfa-offer';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply' | 'staff' | 'dfa-offer' | 'fa-reply';
+  faPid?: number; // fa-reply: the free agent
   dfaDeal?: { orgId: number; pid: number; cash: number; prospect: number | null }; // dfa-offer: what they'd give for him
   talkId?: number; // trade-reply: the negotiation it belongs to
   actions?: InboxAction[];
@@ -767,6 +771,8 @@ export interface Settings {
   aiTradeFactor: number;
   extraInningRunner: boolean;
   allowFiring: boolean;
+  salaryScale?: number; // league-wide salary inflation since the league began (1 = start)
+  cbaScale?: number; // salaryScale when the current CBA set the tax threshold
   storylines?: 'off' | 'rare' | 'normal' | 'frequent';
   careerEndingStories?: boolean;
 }

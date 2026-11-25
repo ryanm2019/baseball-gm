@@ -50,7 +50,7 @@ export function defaultSettings(): Settings {
     tradeDifficulty: 'Normal',
     aiTradeFactor: 1,
     extraInningRunner: true,
-    allowFiring: true,
+    allowFiring: false,
     storylines: 'normal',
     careerEndingStories: true,
   };

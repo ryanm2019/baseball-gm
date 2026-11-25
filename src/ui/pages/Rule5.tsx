@@ -99,7 +99,7 @@ export default function Rule5() {
         </ol>
       )}
       <h2>Eligible players in other organizations</h2>
-      <DataTable cols={otherCols} rows={others.filter((p) => age(p) <= 28)} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
+      <DataTable cols={otherCols} rows={others.filter((p) => age(p) <= 28)} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact maxHeight={560} />
     </>
   );
 }

@@ -13,7 +13,7 @@ import { willingnessBand } from '../../core/draft.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutFactor } from '../../core/ratings.ts';
 import { seededNormal } from '../../core/random.ts';
-import { fortyMan } from '../../core/util.ts';
+import { dayShort } from '../../core/settings.ts';
 
 type OptType = 'none' | ContractOption['type'];
 
@@ -92,8 +92,8 @@ export default function Negotiate() {
     const sc = offerScore(league, p, { orgId: org.id, years: yrs, aav: cbtAav(terms), day: league.day, terms });
     meter = Math.max(0, Math.min(1, (sc - 0.8) / 0.35));
     meterText = interestLabel(sc);
-    askLine = `Asking: ${p.fa.asking.years} yr × ${fmtMoney(p.fa.asking.aav)}. Decides around day ${p.fa.decideDay}. ${p.fa.offers.length} offer(s) on the table.`;
-    if (fortyMan(league, org.id).length >= league.settings.fortyMax) block = `Your 40-man roster is full (${league.settings.fortyMax}). Clear a spot before making an offer: he has to go on it when he signs.`;
+    askLine = `Asking: ${p.fa.asking.years} yr × ${fmtMoney(p.fa.asking.aav)}. Decides by ${dayShort(league.season, p.fa.decideDay)} (strong offers can speed that up). ${p.fa.offers.length} offer(s) on the table.`;
+    if (p.fa.pending) block = p.fa.pending.orgId === org.id ? 'He has agreed to terms with you; the deal waits on your roster move.' : 'He has agreed to terms elsewhere.';
   } else block = 'Not a free agent';
 
   const sched = terms.sched;
@@ -119,6 +119,24 @@ export default function Negotiate() {
       <p className="small">Current contract: {describeContract(league, p.contract)}</p>
       {p.arb && p.arb.settled === null && kind === 'ext' && <p className="small"><b>Arbitration case pending</b> (projected {fmtMoney(p.arb.projected)}). An extension settles it: no hearing, and he'll appreciate it.</p>}
       <p className="small">{askLine}</p>
+      {kind === 'fa' && p.fa && !p.fa.pending && (() => {
+        const mine = p.fa.offers.find((o) => o.orgId === org.id);
+        const t = p.fa.talk;
+        const rivals = p.fa.offers.filter((o) => o.orgId !== org.id).map((o) => offerScore(league, p, o));
+        const top = rivals.length ? Math.max(...rivals) : 0;
+        const ms = mine ? offerScore(league, p, mine) : 0;
+        return (
+          <div className="agent-box">
+            <b>His agent:</b>{' '}
+            {!mine ? `No offer from you yet. ${rivals.length ? `${rivals.length} other club${rivals.length === 1 ? ' has' : 's have'} made offers.` : 'Nobody has made an offer yet.'}`
+              : t && t.respondDay >= 0 ? `Reviewing your offer; you'll hear back by ${dayShort(league.season, t.respondDay)}.`
+              : t?.counter ? <>He'd sign for <b>{t.counter.years} yr × {fmtMoney(t.counter.aav)}</b> ({fmtMoney(t.counter.aav * t.counter.years)}), same structure.{' '}
+                  <button className="btn btn-sm" onClick={() => { const c = t.counter!; setD({ ...cur, years: c.years, total: c.aav * c.years, custom: c.terms?.sched ?? null }); }}>Load his counter</button></>
+              : top > ms ? 'Another club has offered more. Improve your offer to get back in front.' : 'Your offer leads right now.'}
+            <div className="muted small">Each offer you send gets an answer in a day or three: he signs, counters with what it would take, or tells you you're not close. You'll also hear if another club tops you.</div>
+          </div>
+        );
+      })()}
       {block && <div className="alert alert-warn">{block}</div>}
 
       <div className="form-row">
@@ -128,7 +146,7 @@ export default function Negotiate() {
           <option value="flat">Flat</option><option value="front">Front-loaded</option><option value="back">Back-loaded</option><option value="ramp">Arb-style ramp (+20%/yr)</option>
         </select></label>
       </div>
-      <table className="data compact" style={{ width: 'auto' }}>
+      <table className="data compact" style={{ width: 'auto', minWidth: 0 }}>
         <thead><tr><th>Season</th>{statuses && <th className="l">Would be</th>}{statuses && <th>Est. value</th>}<th>Salary ($M)</th></tr></thead>
         <tbody>
           {sched.map((x, i) => (
@@ -179,7 +197,10 @@ export default function Negotiate() {
       <p className="muted small">
         {kind === 'ext'
           ? 'One offer a week. Each year is valued by what he would otherwise earn (pre-arb, arbitration or free agency); younger players give up more for security. Player options, opt-outs and no-trade clauses are worth money to him; club and mutual options aren\'t. Lowballs (under ~80% of his ask) make him dig in.'
-          : 'Free agents compare all offers when they decide. Clauses and deferrals change what your offer is worth to him.'}
+          : 'Free agents compare all offers (AI clubs use options, opt-outs and no-trade clauses too). Clauses and deferrals change what your offer is worth to him.'}
+      </p>
+      <p className="muted small">
+        <b>How the clauses work.</b> <b>Full no-trade:</b> he must approve any trade; he usually agrees to go to a contender, rarely to a rebuilding club, and an unhappy player waives it more readily. It's worth about 3% of the deal to him (more if he's loyal). <b>Partial no-trade:</b> he lists teams he can block. <b>10-and-5:</b> 10 years of service with 5 on one club gives the same right as a full no-trade. <b>Opt-out:</b> after that season he can void the rest and re-enter free agency (worth more to younger players). <b>Player option:</b> his choice to add a year; <b>club option:</b> yours; <b>vesting:</b> guaranteed if he hits the playing-time mark. <b>Deferrals:</b> part of each year's salary is paid over 10 years after the deal ends; it lowers your luxury tax number but is worth less to him.
       </p>
     </>
   );

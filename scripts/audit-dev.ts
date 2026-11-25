@@ -64,5 +64,10 @@ console.log(`Never shuttled, 21+ (n ${st.length}): +${avg(st.map((t) => end(t).o
 const big = tr.filter((t) => t.pot0 >= 65);
 console.log(`\nTop upside (pot 65+ at start, n ${big.length}): start ${avg(big.map((t) => t.ovr0)).toFixed(1)}/${avg(big.map((t) => t.pot0)).toFixed(1)} -> now ${avg(big.map((t) => end(t).ovr)).toFixed(1)}/${avg(big.map((t) => end(t).pot)).toFixed(1)}`);
 console.log('examples:', big.slice(0, 8).map((t) => { const p = L.players[t.id]; return `${p.last} ${isPitcher(p) ? p.pos : 'H'} ${t.age0}y ${t.snaps.map((s) => `${s.ovr.toFixed(0)}/${s.pot.toFixed(0)}`).join('>')}>${end(t).ovr.toFixed(0)}/${end(t).pot.toFixed(0)}`; }).join(' | '));
+{
+  const act = Object.values(L.players).filter((p) => p.orgId !== null && !p.retired);
+  const by = (lo: number, hi: number, min: number) => act.filter((p) => { const a = L.season - p.born; return a >= lo && a <= hi && ovr(p) >= min; }).length;
+  console.log(`Young stars now: age <=21 with 60+ ${by(0, 21, 60)} (55+ ${by(0, 21, 55)}); 22-24 with 60+ ${by(22, 24, 60)}; MLB 60+ total ${act.filter((p) => p.level === 'MLB' && ovr(p) >= 60).length}, 70+ ${act.filter((p) => p.level === 'MLB' && ovr(p) >= 70).length}`);
+}
 console.log(`ended ${L.season} ${L.phase} day ${L.day}, guard ${guard}, last stop: ${lastStop}`);
 console.log(`devAdj now ${(L.devAdj ?? 1).toFixed(2)}`);

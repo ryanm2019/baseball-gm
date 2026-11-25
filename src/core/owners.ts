@@ -9,6 +9,7 @@ import { addNews, orgPlayers } from './util.ts';
 import { cbtTax, fmtMoney, orgPayroll } from './contracts.ts';
 import { updateStances } from './market.ts';
 import { deptSpend } from './depts.ts';
+import { salaryScale, sharedBase } from './economy.ts';
 
 const OWNER_MULT: Record<OwnerType, number> = { Cheap: 0.75, Moderate: 1, 'Big spender': 1.3, 'Win-now': 1.12 };
 
@@ -31,7 +32,11 @@ const FLEX_CAP: Record<OwnerType, number> = { Cheap: 1.04, Moderate: 1.1, 'Big s
 // arbitration raises are coming: committed payroll (including projected arb
 // salaries) raises the budget up to the owner's flex cap.
 export function computeBudget(org: Org, league?: League, committed?: number): number {
-  let b = baseBudget(org) * OWNER_MULT[org.owner.type];
+  // Revenue sharing narrows the gap between big and small markets a little;
+  // inflation lifts everyone.
+  const avgBase = league ? league.orgs.reduce((t, o) => t + baseBudget(o), 0) / league.orgs.length : baseBudget(org);
+  const scale = league ? salaryScale(league) : 1;
+  let b = sharedBase(baseBudget(org), avgBase) * scale * OWNER_MULT[org.owner.type];
   if (org.owner.type === 'Win-now' && org.strategy === 'Contend') b *= 1.08;
   if (org.strategy === 'Rebuild') b *= 0.85;
   // Budgets follow revenue (attendance, merchandise, playoff gates) once
@@ -46,7 +51,8 @@ export function computeBudget(org: Org, league?: League, committed?: number): nu
     b = Math.max(b, committed * 0.92);
   }
   // Even the richest owners balk past ~$375M.
-  if (b > 375e6) b = 375e6 + (b - 375e6) * 0.25;
+  const top = 375e6 * scale;
+  if (b > top) b = top + (b - top) * 0.25;
   return Math.round(b / 1e6) * 1e6;
 }
 

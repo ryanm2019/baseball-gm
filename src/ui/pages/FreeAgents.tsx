@@ -5,9 +5,9 @@ import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
 import { posLabel } from '../../core/rules.ts';
 import { fmtMoney, serviceLabel, serviceYears } from '../../core/contracts.ts';
-import { finalizePending, interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, pendingBlock, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
+import { finalizePending, interestLabel, isFreeAgent, isMinorFA, offerScore, pendingBlock, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
-import { DataTable, type Column, NumInput } from '../components.tsx';
+import { DataTable, type Column } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
 import { fortyMan } from '../../core/util.ts';
@@ -61,31 +61,16 @@ function MilbCell({ p }: { p: Player }) {
 
 function OfferCell({ p }: { p: Player }) {
   const { league } = useStore();
-  const mine = p.fa?.offers.find((o) => o.orgId === league?.userOrgId);
-  const [years, setYears] = useState(mine?.years ?? p.fa?.asking.years ?? 1);
-  const [aav, setAav] = useState(((mine?.aav ?? p.fa?.asking.aav ?? 0) / 1e6).toFixed(2));
   if (!league || !p.fa) return null;
   if (p.fa.pending) return p.fa.pending.orgId === league.userOrgId ? <b className="pos small">Agreed with you: waiting on a roster move</b> : <span className="muted small">Agreed elsewhere</span>;
-  const preview = offerScore(league, p, { orgId: league.userOrgId, years, aav: Number(aav) * 1e6, day: league.day });
+  const mine = p.fa.offers.find((o) => o.orgId === league.userOrgId);
+  // Every bid goes through the contract builder: year-by-year salary, options,
+  // opt-outs, no-trade and deferrals, with his interest shown as you build it.
   return (
     <span className="nowrap">
-      <select value={years} onChange={(e) => setYears(Number(e.target.value))}>
-        {Array.from({ length: 10 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1} yr</option>)}
-      </select>{' '}
-      $<NumInput  step="0.25" style={{ width: 70 }} value={aav} onChange={(_n, raw) => setAav(raw)} />M{' '}
-      <button
-        className="btn btn-sm"
-        onClick={() => {
-          const err = makeOffer(league, p, league.userOrgId, years, Number(aav) * 1e6);
-          setMessage(err ? `Offer not made: ${err}` : null);
-          changed();
-        }}
-      >
-        {mine ? 'Update' : 'Offer'}
-      </button>{' '}
-      {mine && <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId); changed(); }}>Withdraw</button>}{' '}
-      <a className="small" href={href('negotiate', ['fa', p.id])} title="Year-by-year salaries, options, opt-outs, no-trade, deferrals">Full terms</a>{' '}
-      <span className="small muted">{interestLabel(preview)}</span>
+      <a className={`btn btn-sm${mine ? '' : ' btn-primary'}`} href={href('negotiate', ['fa', p.id])}>{mine ? 'Revise offer' : 'Make offer'}</a>{' '}
+      {mine && <span className="small">{mine.years} yr × {fmtMoney(mine.aav)} <span className="muted">· {interestLabel(offerScore(league, p, mine))}</span></span>}{' '}
+      {mine && <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Withdraw</button>}
     </span>
   );
 }
@@ -150,6 +135,14 @@ export default function FreeAgents() {
     { key: 'ask', label: 'Asking', value: (p) => p.fa!.asking.aav, render: (p) => `${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)}` },
     { key: 'interest', label: 'His interest', title: 'How your offer stacks up against what he wants (money, years, your club)', value: (p) => offerScore(league, p, yourOffer(p)), render: (p) => interestLabel(offerScore(league, p, yourOffer(p))) },
     { key: 'rivals', label: 'Other offers', value: (p) => p.fa!.offers.length - 1 },
+    { key: 'talks', label: 'Talks', title: "Where things stand with his agent", noSort: true, render: (p) => {
+      const t = p.fa!.talk;
+      if (p.fa!.pending) return '';
+      if (t && t.respondDay >= 0) return <span className="muted">Reply by {dayShort(league.season, t.respondDay)}</span>;
+      if (t?.counter) return <a href={href('negotiate', ['fa', p.id])} className="pos">Countered: {t.counter.years} yr × {fmtMoney(t.counter.aav)}</a>;
+      const rival = p.fa!.offers.filter((o) => o.orgId !== league.userOrgId).some((o) => offerScore(league, p, o) > offerScore(league, p, yourOffer(p)));
+      return rival ? <span className="neg">Topped by another club</span> : <span className="muted">Your offer leads</span>;
+    } },
     { key: 'dec', label: 'Decides', value: (p) => (p.fa!.pending ? -1 : p.fa!.decideDay), render: (p) => (p.fa!.pending ? <b className="pos" title="He accepted; the deal waits on your corresponding roster move">Agreed: needs a {pendingBlock(league, league.userOrgId) ?? 'roster'} spot</b> : dayShort(league.season, p.fa!.decideDay)) },
     { key: 'wd', label: '', noSort: true, render: (p) => p.fa!.pending ? (
       <span className="nowrap">
@@ -157,7 +150,7 @@ export default function FreeAgents() {
         <a className="btn btn-sm" href={href('roster-moves')}>Roster Moves</a>{' '}
         <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Back out</button>
       </span>
-    ) : <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Withdraw</button> },
+    ) : <span className="nowrap"><a className="btn btn-sm" href={href('negotiate', ['fa', p.id])}>Revise</a>{' '}<button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Withdraw</button></span> },
   ];
   const milbCols: Column<Player>[] = [
     ...base,

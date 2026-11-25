@@ -159,7 +159,11 @@ function vetoes(league: League, prop: TradeProposal): { p: Player; why: string }
       if (!tenFive && !ntc) continue;
       // Players waive more readily to join a contender.
       const contender = dest.strategy === 'Contend' && p.personality.winning >= 50;
-      const chance = ntc && p.contract.ntc !== 'full' ? 0.75 : contender ? 0.25 : 0.55;
+      let chance = ntc && p.contract.ntc !== 'full' ? 0.75 : contender ? 0.25 : 0.55;
+      // An unhappy player is readier to waive it and leave; a happy one digs in.
+      const mood = p.morale?.value ?? 50;
+      chance *= mood < 40 ? 0.5 : mood >= 65 ? 1.2 : 1;
+      chance = Math.min(0.9, chance);
       if (rand() < chance) return { p, why: tenFive ? '10-and-5 rights' : 'no-trade clause' };
     }
   }

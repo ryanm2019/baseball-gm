@@ -128,7 +128,7 @@ export function ifaTarget(p: Player, exceptOrg: number): number {
   for (const [org, amt] of Object.entries(info.bids ?? {})) if (Number(org) !== exceptOrg) rival = Math.max(rival, amt);
   let t = Math.max(info.asking * (info.stiff ?? 1), rival * 1.02);
   // Breaking a verbal takes a clearly better offer.
-  if (info.verbal && info.verbal.orgId !== exceptOrg) t = Math.max(t, info.verbal.amount * 1.15);
+  if (info.verbal && info.verbal.orgId !== exceptOrg) t = Math.max(t, info.verbal.amount * 1.25);
   return t;
 }
 
@@ -177,9 +177,15 @@ function ifaLostNotice(league: League, p: Player, toOrg: number, amount: number,
   const info = p.ifa;
   const wasBidding = hadVerbal || info?.lastOffer?.[u] !== undefined || (info?.bids?.[u] ?? 0) > 0;
   if (!wasBidding) return;
+  // One heads-up per player (unless he walks away from a deal with you).
+  if (info && !hadVerbal) {
+    if (info.lostNotified) return;
+    info.lostNotified = true;
+  }
   const team = league.orgs[toOrg].affiliates.MLB.name;
+  // Pause the sim only if you're doing the bidding yourself (your assistant GM's misses are just noted).
   addInbox(league, {
-    from: 'International scouting', kind: 'info', pids: [p.id], stop: true, link: { page: 'international' },
+    from: 'International scouting', kind: 'info', pids: [p.id], stop: hadVerbal || !delegated(league, league.orgs[u], 'ifa'), link: { page: 'international' },
     subject: hadVerbal ? `${pname(p)} backed out of his deal with you` : `${pname(p)} went to the ${team}`,
     text: `${why}${p.pos} ${pname(p)} (${p.country}) ${hadVerbal ? 'backed out of his agreement with you and ' : ''}agreed to terms with the ${team} for ${fmtMoney(amount)}${ifaPhase(league) === 'open' ? '' : ', to sign January 15'}.${info?.bids?.[u] ? ` Your best offer was ${fmtMoney(info.bids[u])}.` : ''}`,
   });
@@ -275,8 +281,8 @@ function aiRound(league: League, org: Org): void {
     if (made >= 3) break;
     const info = p.ifa!;
     // Poaching a verbal needs a clearly bigger offer; clubs rarely try.
-    if (info.verbal && rand() > 0.15) continue;
-    const want = Math.max(est, info.verbal ? info.verbal.amount * 1.15 : 0, (info.lastOffer?.[org.id] !== undefined ? (info.bids?.[org.id] ?? 0) * 1.06 : 0));
+    if (info.verbal && rand() > 0.04) continue;
+    const want = Math.max(est, info.verbal ? info.verbal.amount * 1.25 : 0, (info.lastOffer?.[org.id] !== undefined ? (info.bids?.[org.id] ?? 0) * 1.06 : 0));
     const offer = roundSalary(Math.min(room, want * (0.97 + rand() * 0.11)));
     if (offer < want * 0.85) continue;
     const r = offerIfa(league, org.id, p, offer);

@@ -29,9 +29,9 @@ export function serviceLabel(days: number, s: Settings): string {
 // free agency pass one blended with recent stats).
 export function marketValue(p: Player, s: Settings, o = ovr(p)): number {
   const sig = 1 / (1 + Math.exp(-(o - 58) / 6));
-  let v = 0.78e6 + 45e6 * sig;
+  let v = (0.78e6 + 45e6 * sig) * (s.salaryScale ?? 1);
   // MVP-level players command a premium the curve alone would flatten.
-  if (o > 67) v += 1.0e6 * (o - 67);
+  if (o > 67) v += 1.0e6 * (o - 67) * (s.salaryScale ?? 1);
   if (p.pos === 'RP') v *= 0.55;
   if (p.pos === 'C') v *= 0.8; // catchers wear down early; clubs pay for fewer good years
   return Math.max(s.minSalary, v);

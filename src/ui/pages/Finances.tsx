@@ -38,6 +38,7 @@ export default function Finances() {
             <div>Local media</div><div>{fmtMoney(rev.media)}</div>
             <div>National revenue</div><div>{fmtMoney(rev.national)}</div>
             <div>Playoff gates</div><div>{fmtMoney(rev.playoffs)}</div>
+            <div>Revenue sharing</div><div className={rev.sharing >= 0 ? 'pos' : 'neg'} title="48% of every club's local revenue (gate, merchandise, local media) goes into a pool split evenly: big markets pay in, small markets receive">{rev.sharing >= 0 ? '+' : '−'}{fmtMoney(Math.abs(rev.sharing))} {rev.sharing >= 0 ? 'received' : 'paid in'}</div>
             <div><b>Total</b></div><div><b>{fmtMoney(rev.total)}</b> <span className="muted small">(a typical season in your market: {fmtMoney(expectedRevenue(org, league))})</span></div>
           </div>
         </div>
@@ -52,6 +53,9 @@ export default function Finances() {
               ? 'Your owner will set next year\'s budget from your revenue once a season of books is closed.'
               : `Last season you brought in ${fmtMoney(finOf(league, org).last!.revenue)} against ${fmtMoney(finOf(league, org).last!.expected)} expected for your market, so your owner's budget moves ×${rf.toFixed(2)}.`}{' '}
             Current budget: <b>{fmtMoney(org.budget)}</b>.
+          </p>
+          <p className="small muted">
+            League economy: salaries are up {Math.round(((league.settings.salaryScale ?? 1) - 1) * 1000) / 10}% since {league.startYear} (about 3% a year), and budgets, media money and free agent prices follow. Minimum salary {fmtMoney(league.settings.minSalary)}; luxury tax threshold {fmtMoney(league.settings.cbtThreshold)}, reset by a new CBA every three seasons.
           </p>
         </div>
       </div>

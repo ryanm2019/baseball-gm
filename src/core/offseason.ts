@@ -32,6 +32,7 @@ import { logMove, side } from './moves.ts';
 import { marketOvr, seasonCtx } from './war.ts';
 import { setDeptBudgets } from './depts.ts';
 import { shiftPendingDays } from './dayShift.ts';
+import { yearlyEconomy } from './economy.ts';
 import { salaryIn, syncContract } from './terms.ts';
 import { addInbox } from './morale.ts';
 import { dayShort } from './settings.ts';
@@ -85,6 +86,7 @@ export function onSeasonEnd(league: League): void {
   seasonAwards(league);
   archiveSeason(league);
   closeBooks(league);
+  yearlyEconomy(league);
   // Hold the run environment near 4.45 runs per game as talent shifts.
   {
     const rg = seasonCtx(league, league.season).ra9;

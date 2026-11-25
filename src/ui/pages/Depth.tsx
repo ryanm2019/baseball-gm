@@ -259,7 +259,7 @@ export default function Depth() {
         </span>
       </div>
       <table className="stable lineup-tbl">
-        <thead><tr><th /><th /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th><th title="Defense at the position he's playing">Def</th>{HIT_HEAD(vs)}</tr></thead>
+        <thead><tr><th /><th className="grip" /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th><th title="Defense at the position he's playing">Def</th>{HIT_HEAD(vs)}</tr></thead>
         <tbody>
           {cur.map((s, i) => {
             const p = league.players[s.pid];
@@ -312,7 +312,7 @@ export default function Depth() {
       {bench.length === 0 ? <p className="help">No other hitters.</p> : (
         <div style={{ overflowX: 'auto' }}>
         <table className="stable bench-tbl">
-          <thead><tr><th /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th>{HIT_HEAD(vs)}</tr></thead>
+          <thead><tr><th className="grip" /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th>{HIT_HEAD(vs)}</tr></thead>
           <tbody>
             {bench.map((h) => (
               <tr key={h.id} {...dragRow('bench', -1, h.id)} onClick={() => setSel(h.id)} className={`${drag?.pid === h.id ? 'dragging' : ''}${shown?.id === h.id ? ' sel' : ''}`}>
@@ -344,7 +344,7 @@ export default function Depth() {
       </div>
       <div style={{ overflowX: 'auto' }}>
       <table className="stable">
-        <thead><tr><th /><th /><th className="l">Starters</th><th>T</th><th>Ovr</th><th title="Days since his last start (ready at 5)">Rest</th><th className="l">{season0}</th><th /></tr></thead>
+        <thead><tr><th /><th className="grip" /><th className="l">Starters</th><th>T</th><th>Ovr</th><th title="Days since his last start (ready at 5)">Rest</th><th className="l">{season0}</th><th /></tr></thead>
         <tbody>
           {d.rotation.map((pid, i) => {
             const bp = (d.bullpenDays ?? []).includes(i);
@@ -391,7 +391,7 @@ export default function Depth() {
     <div className="spanel">
       <div className="spanel-head"><span>Bullpen</span></div>
       <table className="stable">
-        <thead><tr><th /><th className="l">Relievers</th><th>Role</th><th>T</th><th>Ovr</th><th title="Appearances in the last 7 days">7d</th><th>G</th><th>ERA</th><th>SV/HLD</th></tr></thead>
+        <thead><tr><th className="grip" /><th className="l">Relievers</th><th>Role</th><th>T</th><th>Ovr</th><th title="Appearances in the last 7 days">7d</th><th>G</th><th>ERA</th><th>SV/HLD</th></tr></thead>
         <tbody>
           {ROLE_ORDER.flatMap((role) => {
             const group = relievers.filter((p) => roleOf(p.id) === role).sort((a, b) => (role === 'SU' ? d.setup.indexOf(a.id) - d.setup.indexOf(b.id) : scoutedOvr(league, b) - scoutedOvr(league, a)));

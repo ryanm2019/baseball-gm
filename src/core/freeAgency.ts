@@ -19,6 +19,8 @@ import { milbBidDay } from './milbFa.ts';
 import { makeMlbRoom } from './farmDirector.ts';
 import { delegated } from './staff.ts';
 import { slotNewcomer } from './depthUpdate.ts';
+import { dayShort } from './settings.ts';
+import { agentReplies, offerMade, rivalAlert } from './faTalks.ts';
 
 // Signing a player who declined a qualifying offer costs picks (and pool money)
 // based on the signing club's status; his old club gets a compensation pick.
@@ -68,12 +70,14 @@ export function openFreeAgent(league: League, p: Player, formerOrg: number | nul
   const asking = askingFor(league, p);
   // How long he takes is his own business, like real life: a few sign within
   // days, most take weeks, some drag into January. Bigger names lean later.
+  // Talks move faster now: his date moves with the market (strong offers pull
+  // it in, a bidding war pushes it back a little), so the first date is short.
   const timeline = () => {
     const u = rand();
-    const late = asking.aav > 20e6 ? 0.05 : 0;
-    return u < 0.15 - late ? randInt(2, 8) : u < 0.55 - late ? randInt(9, 30) : u < 0.88 - late ? randInt(31, 60) : randInt(61, 90);
+    const late = asking.aav > 20e6 ? 0.08 : 0;
+    return u < 0.2 - late ? randInt(3, 7) : u < 0.65 - late ? randInt(8, 18) : u < 0.92 - late ? randInt(19, 30) : randInt(31, 45);
   };
-  const big = asking.aav > 8e6 ? timeline() : randInt(3, 20);
+  const big = asking.aav > 8e6 ? timeline() : randInt(3, 12);
   p.orgId = null;
   touchRosters();
   p.level = null;
@@ -173,6 +177,7 @@ export function makeOffer(league: League, p: Player, orgId: number, years: numbe
   if (p.fa.pending) return 'He has already agreed to terms';
   p.fa.offers = p.fa.offers.filter((o) => o.orgId !== orgId);
   p.fa.offers.push({ orgId, years, aav: roundSalary(aav), day: league.day, terms });
+  if (orgId === league.userOrgId) offerMade(league, p);
   return null;
 }
 
@@ -308,15 +313,41 @@ export function aiTerms(league: League, org: Org, p: Player, years: number, aav:
   return t;
 }
 
+// He's taking your deal. With room on your roster he signs; without it the
+// deal is agreed and waits on your corresponding move (like real life), unless
+// your assistant GM runs the roster and makes room himself.
+export function closeWithUser(league: League, p: Player, o: FaOffer): 'signed' | 'pending' {
+  const fa = p.fa!;
+  const block = pendingBlock(league, league.userOrgId);
+  fa.pending = { orgId: league.userOrgId, day: league.day, offer: o };
+  fa.offers = fa.offers.filter((x) => x.orgId === league.userOrgId);
+  fa.talk = undefined;
+  if (!block || delegated(league, league.orgs[league.userOrgId], 'roster')) {
+    finalizePending(league);
+    if (!p.fa?.pending) return 'signed';
+  }
+  const now = pendingBlock(league, league.userOrgId);
+  const what = now === '40-man'
+    ? `your 40-man roster is full (${fortyMan(league, league.userOrgId).length}/${league.settings.fortyMax}): designate, release or trade someone on it`
+    : `your active roster is full: option, designate or place someone on the IL`;
+  addInbox(league, {
+    from: 'Front office', subject: `${pname(p)} agreed to terms: a roster move is needed`, kind: 'info', pids: [p.id], stop: true, link: { page: 'roster-moves' },
+    text: `${posLabel(p)} ${pname(p)} accepted your offer (${o.years === 1 ? '1 year' : `${o.years} years`} at ${fmtMoney(o.aav)} a year), pending a corresponding move: ${what}. The signing becomes official as soon as there's room. He's off the market in the meantime; you can back out on the Free Agents page.`,
+  });
+  if (notableFa(p)) addScoop(league, `Agreed: ${posLabel(p)} ${pname(p)} to the ${league.orgs[league.userOrgId].affiliates.MLB.name}, pending a roster move.`, [p.id]);
+  return 'pending';
+}
+
 // Big enough that the insiders cover him.
 const notableFa = (p: Player) => ovr(p) >= 55 || p.fa!.asking.aav >= 8e6;
 
 export function faDay(league: League): void {
   milbBidDay(league);
   finalizePending(league);
+  agentReplies(league);
   const offseasonPhase = league.phase === 'offseason' || league.phase === 'preseason';
-  // In season the market is thin; check it every few days.
-  if (!offseasonPhase && league.day % 3 !== 0) return;
+  // In season the market is thin: clubs make offers every few days, but players still decide on their dates.
+  const quiet = !offseasonPhase && league.day % 3 !== 0;
   // A free agent with no market status (an old generation bug) gets one.
   for (const p of Object.values(league.players)) if (!p.fa && isFreeAgent(p) && ovr(p) >= 45) openFreeAgent(league, p, null);
   const fas = Object.values(league.players).filter((p) => p.fa && isFreeAgent(p) && !isMinorFA(league, p));
@@ -358,7 +389,7 @@ export function faDay(league: League): void {
   const pending = new Map<number, number>();
   for (const p of fas) for (const o of p.fa!.offers) pending.set(o.orgId, (pending.get(o.orgId) ?? 0) + o.aav);
   for (const org of league.orgs) {
-    if (org.id === league.userOrgId) continue;
+    if (quiet || org.id === league.userOrgId) continue;
     if (rand() > (offseason ? 0.35 : 0.2)) continue;
     const fullForty = (fortyCount.get(org.id) ?? 0) >= league.settings.fortyMax;
     const overNow = orgPayroll(league, org).cbt > org.budget;
@@ -384,6 +415,7 @@ export function faDay(league: League): void {
       const years = clamp(p.fa!.asking.years + (rand() < 0.3 ? -1 : 0) + (rand() < 0.15 ? 1 : 0), 1, 8);
       const terms = aiTerms(league, org, p, years, aav);
       p.fa!.offers.push({ orgId: org.id, years, aav, day: league.day, terms });
+      rivalAlert(league, p, p.fa!.offers[p.fa!.offers.length - 1]);
       if (notableFa(p) && rand() < 0.4) {
         const how = rand() < 0.5 ? 'met with' : rand() < 0.5 ? 'made an offer to' : 'have checked in on';
         addScoop(league, `Sources: the ${org.affiliates.MLB.name} ${how} free agent ${posLabel(p)} ${pname(p)}.`, [p.id]);
@@ -411,33 +443,28 @@ export function faDay(league: League): void {
       const names = scored.slice(0, 3).map((x) => league.orgs[x.o.orgId].affiliates.MLB.name);
       addScoop(league, `${pname(p)} is nearing a decision. Finalists: the ${names.join(', the ')}.`, [p.id]);
     }
-    if (!due && !early) continue;
-    // He picked you, but there's no roster spot yet: the deal is agreed and
-    // waits on your corresponding move (like real life), unless your assistant
-    // GM runs the roster and makes room himself.
-    if (best && best.s >= 0.85 && best.o.orgId === league.userOrgId) {
-      const block = pendingBlock(league, league.userOrgId);
-      if (block && !delegated(league, league.orgs[league.userOrgId], 'roster')) {
-        fa.pending = { orgId: league.userOrgId, day: league.day, offer: best.o };
-        fa.offers = fa.offers.filter((o) => o.orgId === league.userOrgId);
-        const what = block === '40-man'
-          ? `your 40-man roster is full (${fortyMan(league, league.userOrgId).length}/${league.settings.fortyMax}): designate, release or trade someone on it`
-          : `your active roster is full: option, designate or place someone on the IL`;
+    // A fluid market: a strong offer pulls his date in; a near-tie at the top
+    // buys a few more days for the clubs to outbid each other.
+    if (best && best.s >= 1.0 && fa.decideDay - league.day > 8) fa.decideDay = league.day + randInt(3, 8);
+    if (due && !fa.extended && scored.length >= 2 && best.s >= 0.95 && scored[1].s >= best.s - 0.04) {
+      fa.extended = true;
+      fa.decideDay = league.day + randInt(2, 4);
+      const mine = scored.findIndex((x) => x.o.orgId === league.userOrgId);
+      if (mine === 0 || mine === 1) {
+        const other = league.orgs[scored[mine === 0 ? 1 : 0].o.orgId].affiliates.MLB.name;
         addInbox(league, {
-          from: 'Front office', subject: `${pname(p)} agreed to terms: a roster move is needed`, kind: 'info', pids: [p.id], stop: true, link: { page: 'roster-moves' },
-          text: `${posLabel(p)} ${pname(p)} accepted your offer (${best.o.years === 1 ? '1 year' : `${best.o.years} years`} at ${fmtMoney(best.o.aav)} a year), pending a corresponding move: ${what}. The signing becomes official as soon as there's room. He's off the market in the meantime; you can back out on the Free Agents page.`,
+          from: `Agent for ${pname(p)}`, subject: `${pname(p)}: it's close`, kind: 'info', pids: [p.id], stop: true, link: { page: 'negotiate', args: ['fa', p.id] },
+          text: `It's between you and the ${other}, and it's close. ${p.first} is taking a few more days (until ${dayShort(league.season, fa.decideDay)}). ${mine === 0 ? 'You have the edge right now; a little more would lock it up.' : 'They have the edge right now; a better offer could swing it.'}`,
         });
-        if (notableFa(p)) addScoop(league, `Agreed: ${posLabel(p)} ${pname(p)} to the ${league.orgs[league.userOrgId].affiliates.MLB.name}, pending a roster move.`, [p.id]);
-        continue;
       }
-      if (block) {
-        // Your assistant GM clears the spot.
-        fa.pending = { orgId: league.userOrgId, day: league.day, offer: best.o };
-        finalizePending(league);
-        if (p.fa?.pending) continue; // couldn't clear one: stays pending
-        fortyCount.set(league.userOrgId, fortyMan(league, league.userOrgId).length);
-        continue;
-      }
+      continue;
+    }
+    if (!due && !early) continue;
+    // He picked you (see closeWithUser: signs now, or agrees and waits on your roster move).
+    if (best && best.s >= 0.85 && best.o.orgId === league.userOrgId) {
+      closeWithUser(league, p, best.o);
+      fortyCount.set(league.userOrgId, fortyMan(league, league.userOrgId).length);
+      continue;
     }
     if (best && best.s >= 0.85) {
       // AI club with a full 40-man: designate its least valuable player off the 40-man first.

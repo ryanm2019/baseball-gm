@@ -10,6 +10,7 @@ import type { League, Org } from './types.ts';
 import { activeAt } from './util.ts';
 import { ovr } from './ratings.ts';
 import { clamp } from './random.ts';
+import { salaryScale, shareTransfer } from './economy.ts';
 
 export interface Fin {
   hype: number; // 0-100
@@ -71,19 +72,33 @@ export function homeGate(league: League, homeId: number, playoff: boolean): void
   }
 }
 
-export function revenueSoFar(league: League, org: Org): { gate: number; merch: number; media: number; national: number; playoffs: number; total: number } {
+// Local revenue so far: gate, merchandise and local media (what revenue sharing is figured on).
+function localSoFar(league: League, org: Org): number {
   const f = finOf(league, org);
   const share = Math.min(1, f.games / (league.settings.gamesPerSeason.MLB / 2));
-  const media = localMedia(org) * share;
-  const national = NATIONAL * share;
-  return { gate: f.gate, merch: f.merch, media, national, playoffs: f.playoffs, total: f.gate + f.merch + media + national + f.playoffs };
+  return f.gate + f.merch + localMedia(org) * share * salaryScale(league);
+}
+
+export function revenueSoFar(league: League, org: Org): { gate: number; merch: number; media: number; national: number; playoffs: number; sharing: number; total: number } {
+  const f = finOf(league, org);
+  const share = Math.min(1, f.games / (league.settings.gamesPerSeason.MLB / 2));
+  const scale = salaryScale(league);
+  const media = localMedia(org) * share * scale;
+  const national = NATIONAL * share * scale;
+  // Revenue sharing: 48% of every club's local revenue goes into a pool split evenly.
+  const sharing = shareTransfer(league.orgs.map((o) => localSoFar(league, o)), localSoFar(league, org));
+  return { gate: f.gate, merch: f.merch, media, national, playoffs: f.playoffs, sharing, total: f.gate + f.merch + media + national + f.playoffs + sharing };
 }
 
 // What a club in this market makes in a .500 season with average hype at the default price.
-export function expectedRevenue(org: Org, league: League): number {
+function expectedLocal(org: Org, league: League): number {
   const games = league.settings.gamesPerSeason.MLB / 2;
   const att = capacity(org) * clamp(0.42 + 0.25, 0.2, 1);
-  return games * att * (baseTicket(org) + 6 + 1.2) + localMedia(org) + NATIONAL;
+  return games * att * (baseTicket(org) + 6 + 1.2) + localMedia(org) * salaryScale(league);
+}
+export function expectedRevenue(org: Org, league: League): number {
+  const sharing = shareTransfer(league.orgs.map((o) => expectedLocal(o, league)), expectedLocal(org, league));
+  return expectedLocal(org, league) + NATIONAL * salaryScale(league) + sharing;
 }
 
 // Weekly: hype drifts toward what the club is giving fans.

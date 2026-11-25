@@ -12,7 +12,7 @@ import { setOvrBaseline } from './offseason.ts';
 import { shiftPendingDays } from './dayShift.ts';
 import { dayToDate } from './settings.ts';
 
-export const CURRENT_VERSION = 7;
+export const CURRENT_VERSION = 8;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -131,6 +131,13 @@ export function migrate(league: League): League {
       shiftPendingDays(l, delta, (d) => d > cut);
     }
     l.version = 7;
+  }
+  if (l.version < 8) {
+    // Owners no longer fire the GM; the economy starts tracking inflation.
+    l.settings.allowFiring = false;
+    l.settings.salaryScale ??= 1;
+    l.settings.cbaScale ??= l.settings.salaryScale;
+    l.version = 8;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

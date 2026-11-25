@@ -61,7 +61,7 @@ export default function Waivers() {
     <>
       <h1>Waivers</h1>
       <p className="muted small">
-        Claims are awarded in reverse order of MLB winning percentage. A claiming team takes on the contract and must have an open 40-man spot. Players who clear outright waivers are outrighted to Triple-A; those with {s.outrightRefuseServiceYears}+ years of service or a previous outright can elect free agency instead.
+        Claims are awarded in reverse order of MLB winning percentage. A claiming team takes on the contract and needs a 40-man spot: you need an open one when the claim is awarded; AI clubs drop their weakest 40-man player to make room for a clear upgrade. Before a player reaches waivers, a club that really wants him may call you with a small trade instead. Players who clear outright waivers are outrighted to Triple-A; those with {s.outrightRefuseServiceYears}+ years of service or a previous outright can elect free agency instead.
       </p>
       <h2>On waivers</h2>
       <DataTable cols={wCols} rows={onWaivers} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />

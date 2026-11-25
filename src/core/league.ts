@@ -168,7 +168,7 @@ export function createLeague(opts: NewLeagueOptions): League {
   }
 
   const league: League = {
-    version: 7,
+    version: 8,
     id: `l${Date.now().toString(36)}${Math.floor(rand() * 1e4).toString(36)}`,
     name: opts.name,
     created: Date.now(),

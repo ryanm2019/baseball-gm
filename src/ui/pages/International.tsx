@@ -79,7 +79,7 @@ export default function International() {
         <span className="muted small"> (hard cap: you can't commit more than your pool)</span>
       </p>
       <p className="muted small">
-        {phase === 'negotiation' && 'Negotiation window: an accepted offer is a verbal agreement that becomes a contract on signing day, January 15. Verbals can fall apart: a club offering at least 15% more can steal a player, and on negotiation day (January 1) late reports move prices. '}
+        {phase === 'negotiation' && 'Negotiation window: an accepted offer is a verbal agreement that becomes a contract on signing day, January 15. Verbals can fall apart: a club offering at least 25% more can steal a player (rare), and on negotiation day (January 1) late reports move prices. '}
         {phase === 'open' && 'The signing period is open: an accepted offer signs the player on the spot. Unsigned players lower their asks every week. '}
         {phase === 'closed' && 'The next class is revealed December 15; negotiations run until signing day, January 15. '}
         One official offer per player per week. Lowballs (under ~80% of his price) make him dig in. Competition raises the price: he wants at least what the best other club has offered. Players posted from Asian leagues who are under 25 sign here too, out of the pool, and report to AAA.

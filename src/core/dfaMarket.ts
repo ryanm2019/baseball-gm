@@ -90,6 +90,7 @@ export function waiverFlags(league: League): string | null {
   if (!delegated(league, userOrg, 'waivers')) return null;
   const needs = teamNeeds(league, userOrg.id);
   const flagged: Player[] = [];
+  let urgent = false;
   for (const p of Object.values(league.players)) {
     const w = p.waivers;
     if (!w || w.flagged || w.fromOrg === userOrg.id) continue;
@@ -98,7 +99,13 @@ export function waiverFlags(league: League): string | null {
     // Worth it: better than what you have there now (or a real prospect).
     const mine = orgPlayers(league, userOrg.id).filter((q) => q.pos === p.pos && (q.level === 'MLB' || q.on40)).map(ovr).sort((a, b) => b - a);
     const bar = p.pos === 'SP' ? mine[4] : p.pos === 'RP' ? mine[5] : mine[0];
-    if (ovr(p) >= (bar ?? 0) + 1 || (league.season - p.born <= 24 && potOvr(p) >= 55)) flagged.push(p);
+    // Only clear upgrades (or real prospects) are worth a note; the big ones pause the sim.
+    const gain = ovr(p) - (bar ?? 0);
+    const young = league.season - p.born <= 24;
+    if (gain >= 3 || (young && potOvr(p) >= 60)) {
+      flagged.push(p);
+      if (gain >= 5 || (young && potOvr(p) >= 62)) urgent = true;
+    }
   }
   if (!flagged.length) return null;
   const until = dayShort(league.season, league.day + league.settings.waiverDays);
@@ -107,9 +114,9 @@ export function waiverFlags(league: League): string | null {
     subject: flagged.length === 1 ? `Waiver wire: ${pname(flagged[0])} fits a need` : `Waiver wire: ${flagged.length} players who fit our needs`,
     kind: 'info',
     pids: flagged.map((p) => p.id),
-    stop: true,
     link: { page: 'waivers' },
+    stop: urgent,
     text: `${flagged.map((p) => `${posLabel(p)} ${pname(p)} (from the ${league.orgs[p.waivers!.fromOrg].affiliates.MLB.name}${p.contract.type === 'ML' ? `, ${fmtMoney(p.contract.salary)}` : ''})`).join('; ')} ${flagged.length === 1 ? 'is' : 'are'} on waivers at a spot where we're thin (${needs.join(', ')}). Your call: put in a claim on the Waivers page by ${until}. I won't claim anyone without you.`,
   });
-  return 'Inbox: your assistant GM flagged a waiver claim.';
+  return urgent ? 'Inbox: your assistant GM flagged a waiver claim.' : null;
 }

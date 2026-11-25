@@ -81,7 +81,7 @@ function Goals({ league, org }: { league: League; org: Org }) {
   return (
     <>
       <h3>Owner's goals for {g.season}</h3>
-      <table className="data compact">
+      <table className="data compact goals-tbl">
         <tbody>
           {g.items.map((x) => {
             const s = status(x.type, x.target);
@@ -176,7 +176,14 @@ export default function Dashboard() {
         </div>
         <div className="kpis">
           <div className="kpi"><span>Run differential</span><b className={st.rs - st.ra > 0 ? 'pos' : st.rs - st.ra < 0 ? 'neg' : ''}>{st.rs - st.ra > 0 ? '+' : ''}{st.rs - st.ra}</b><i>{st.rs} scored · {st.ra} allowed</i></div>
-          <div className="kpi"><span>Projected wins</span><b>{Math.round(expectedWins(league, org.id))}</b><i>{st.w + st.l >= 10 ? `${Math.round((st.w / (st.w + st.l)) * 162)}-win pace` : 'from the roster'}</i></div>
+          {(() => {
+            // Wins so far plus what the roster projects for the games left.
+            const played = st.w + st.l;
+            const total = league.settings.gamesPerSeason.MLB;
+            const left = league.phase === 'regular' ? Math.max(0, total - played) : total;
+            const proj = Math.round((league.phase === 'regular' ? st.w : 0) + (expectedWins(league, org.id) / total) * left);
+            return <div className="kpi"><span>Projected wins</span><b>{proj}</b><i>{league.phase === 'regular' && played >= 10 ? `${st.w}-${st.l} now · ${Math.round((st.w / played) * total)}-win pace` : 'from the roster'}</i></div>;
+          })()}
           <div className="kpi"><span>CBT payroll</span><b className={pay.cbt > org.budget ? 'neg' : ''}>{fmtMoney(pay.cbt)}</b><i>budget {fmtMoney(org.budget)}{tax.tax > 0 ? ` · tax ${fmtMoney(tax.tax)}` : ''}</i></div>
           <div className="kpi"><span>Active / 40-man</span><b>{mlb.length} / {fortyMan(league, org.id).length}</b><i>max {league.settings.activeMax} / {league.settings.fortyMax}</i></div>
           <div className="kpi"><span>Revenue</span><b>{fmtMoney(revenueSoFar(league, org).total)}</b><i>hype {Math.round(finOf(league, org).hype)}</i></div>

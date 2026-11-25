@@ -48,8 +48,10 @@ export function developPlayer(league: League, p: Player): void {
   const a = league.season - p.born;
   const we = 0.7 + (0.6 * (p.personality.workEthic - 20)) / 60;
   const fdm = devMultiplier(league, p);
-  const e = p.stats.find((s) => s.season === league.season && s.orgId === p.orgId && s.level === p.level);
-  const playing = e && (e.bat.pa > 25 || e.pit.outs > 30) ? 1 : 0.6;
+  // Playing time this season at any level (a call-up or demotion doesn't reset it).
+  let pa = 0, outs = 0;
+  for (const s of p.stats) if (s.season === league.season) { pa += s.bat.pa; outs += s.pit.outs; }
+  const playing = pa > 25 || outs > 30 ? 1 : 0.6;
   const rate = ageRate(a) * we * fdm * playing * moraleDev(p) * crushBoost(league, p, a) * (a >= 22 && a <= 28 ? (league.devAdj ?? 1) : 1);
   const dec = decline(a, p);
   const tcr = 0.45;
@@ -106,7 +108,8 @@ export function yearlyPotentialDrift(league: League, p: Player): void {
   if (a > 27) return;
   // Drafted high schoolers swing more (more busts and late bloomers); college players have a higher floor.
   const vol = p.devVol ?? 1;
-  const d = normal(vol > 1 ? -1.1 : vol < 1 ? -0.6 : -0.9, 2.6 * vol) + (p.personality.workEthic - 50) / 30;
+  // About half the downward drift it used to have: more prospects get close to their grade.
+  const d = normal(vol > 1 ? -0.55 : vol < 1 ? -0.3 : -0.45, 2.6 * vol) + (p.personality.workEthic - 50) / 30;
   const bump = (cur: number, pot: number) => clamp(Math.max(cur, pot + d), 15, 85);
   if (isPitcher(p)) {
     p.pot.stuff = bump(p.ratings.pit.stuff, p.pot.stuff);

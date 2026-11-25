@@ -30,7 +30,7 @@ export default function Departments() {
         <div>Operating budget</div><div><b>{fmtMoney(org.opBudget)}</b> ({org.owner.first} {org.owner.last}, {org.owner.type.toLowerCase()})</div>
         <div>Budgeted</div><div className={over > 0 ? 'neg' : 'pos'}>{fmtMoney(spend)} {over > 0 ? `(${fmtMoney(over)} over: the owner will notice)` : `(${fmtMoney(-over)} under)`}</div>
       </div>
-      <table className="data" style={{ maxWidth: 1000 }}>
+      <table className="data" style={{ maxWidth: 1100 }}>
         <thead>
           <tr><th className="l">Department</th><th>Budget</th><th /><th>League avg</th><th>Rank</th><th className="l">Effect</th></tr>
         </thead>
@@ -40,7 +40,7 @@ export default function Departments() {
             const e = deptEffect(org, d.key);
             return (
               <tr key={d.key}>
-                <td className="l" title={d.help}><b>{d.label}</b><div className="muted small">{d.help}</div></td>
+                <td className="l" title={d.help} style={{ whiteSpace: 'normal', minWidth: 200, maxWidth: 340 }}><b>{d.label}</b><div className="muted small">{d.help}</div></td>
                 <td className="nowrap">
                   <button className="btn btn-sm" onClick={() => set(d.key, v - 1e6)}>−</button>{' '}
                   <NumInput
