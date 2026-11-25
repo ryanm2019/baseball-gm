@@ -85,11 +85,19 @@ export default function Draft() {
         );
       })() : (() => {
         const pr = projectedPick(league, org.id);
-        return <p className="small"><b>Your first-round pick:</b> {pr ? <>#{pr.pick} by last season's standings{pr.lottery ? '; as a non-playoff club you are in the lottery for the top six picks, so it could move up' : ''}.</> : 'set on draft day (this league has no prior standings, so the order follows club strength, with a lottery for the top six).'} Competitive balance and compensation picks are added when the order is set.</p>;
+        if (pr?.drawn) {
+          return (
+            <p className="small">
+              <b>{pr.drawn.season} draft lottery:</b> {pr.drawn.lottery.map((l) => `#${l.pick} ${league.orgs[l.orgId].abbrev}${l.from !== l.pick ? ` (from ${l.from})` : ''}`).join(' · ')}.{' '}
+              <b>{pr.pick ? `Your first-round pick: #${pr.pick}.` : 'Your first-round pick is forfeited (over last year\'s bonus pool).'}</b> Competitive balance and compensation picks are added, and clubs far over the tax threshold drop 10 spots, when the order is set on draft day.
+            </p>
+          );
+        }
+        return <p className="small"><b>Your first-round pick:</b> {pr ? <>#{pr.pick} by last season's standings{pr.lottery ? '; as a non-playoff club you are in the lottery for the top six picks (held in December at the Winter Meetings), so it could move up' : ''}.</> : 'set on draft day (this league has no prior standings, so the order follows club strength, with a lottery for the top six).'} Competitive balance and compensation picks are added when the order is set.</p>;
       })()}
       {!d && (
         <p>
-          The draft is {dayLabel(league.season, league.settings.draftDay)} (All-Star break), {league.settings.draftRounds} rounds. The top six picks go by lottery among non-playoff teams. Scout the class below.{' '}
+          The draft is {dayLabel(league.season, league.settings.draftDay)} (All-Star break), {league.settings.draftRounds} rounds. The top six picks go by a lottery among non-playoff teams, held each December at the Winter Meetings. Scout the class below.{' '}
           {league.phase === 'regular' && league.day === league.settings.draftDay && (
             <button
               className="btn btn-primary"

@@ -25,7 +25,7 @@ import { clamp, normal, rand } from './random.ts';
 import { developPlayer, recenterRatings, yearlyPotentialDrift } from './development.ts';
 import { buildSchedule } from './schedule.ts';
 import { emptyStanding } from './league.ts';
-import { generateCbPicks, generateDraftClass } from './draft.ts';
+import { runDraftLottery, generateCbPicks, generateDraftClass } from './draft.ts';
 import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
 import { generateIfaClass, isIfa, negotiationDay, openIfaPeriod, postPlayers, setupIfaPools } from './intl.ts';
 import { logMove, side } from './moves.ts';
@@ -59,6 +59,7 @@ export function offseasonCalendar(league: League): CalEvent[] {
     { key: 'r5-protect', label: 'Rule 5 protection deadline', day: dayOfDate(league, 10, 18), decision: { duty: 'rule5protect', page: 'rule5', text: 'Add any prospects you want to protect to the 40-man roster on the Rule 5 page.' } },
     { key: 'tender', label: 'Non-tender deadline', day: dayOfDate(league, 10, 22), decision: { duty: 'tender', page: 'tenders', text: 'Choose who to tender on the Tenders & Arbitration page.' } },
     { key: 'posting', label: 'International pros posted', day: dayOfDate(league, 10, 25) },
+    { key: 'draft-lottery', label: 'Draft lottery (Winter Meetings)', day: dayOfDate(league, 11, 6) },
     { key: 'winter-meetings', label: 'Winter Meetings (trade market heats up)', day: dayOfDate(league, 11, 7) },
     { key: 'fa-late', label: 'Late free agent market', day: dayOfDate(league, 0, 2) },
     { key: 'r5-draft', label: 'Rule 5 draft', day: dayOfDate(league, 11, 10), decision: { duty: 'rule5draft', page: 'rule5', text: 'Pick your Rule 5 targets on the Rule 5 page.' } },
@@ -707,6 +708,7 @@ export function runOffseasonEvents(league: League): string | null {
       case 'qo-response': runQoResponses(league); break;
       case 'r5-protect': runProtection(league); break;
       case 'tender': runTenders(league); break;
+      case 'draft-lottery': runDraftLottery(league); break; // its inbox notice pauses the sim
       case 'winter-meetings': addNews(league, null, 'The Winter Meetings are underway. Expect the trade market to heat up.'); break;
       case 'fa-late': break;
       case 'r5-draft': runRule5Draft(league); break;

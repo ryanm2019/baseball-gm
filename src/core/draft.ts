@@ -327,7 +327,11 @@ function baseOrder(league: League): number[] {
 // Where the user's first-round pick should land, before the draft order is set:
 // last season's standings, worst first (the top six go by lottery among clubs
 // that missed the playoffs). Null in a league's first season.
-export function projectedPick(league: League, orgId: number): { pick: number; lottery: boolean } | null {
+export function projectedPick(league: League, orgId: number): { pick: number; lottery: boolean; drawn?: { season: number; lottery: DraftState['lottery'] } } | null {
+  // December's lottery already set the order for the next draft.
+  const next = league.phase === 'offseason' ? league.season + 1 : league.season;
+  const dl = league.draftLottery;
+  if (dl && dl.season === next) return { pick: firstRoundPick(league, dl.round1, dl.season, orgId) ?? 0, lottery: false, drawn: { season: dl.season, lottery: dl.lottery } };
   if (!league.lastStandings?.length) return null;
   const pick = league.lastStandings.indexOf(orgId) + 1;
   if (pick <= 0) return null;
@@ -335,7 +339,10 @@ export function projectedPick(league: League, orgId: number): { pick: number; lo
   return { pick, lottery: !playoff.has(orgId) };
 }
 
-export function createDraft(league: League): DraftState {
+// The lottery for the top six picks among clubs that missed the playoffs
+// (worst record = best odds). Held in December at the Winter Meetings; the
+// result sets next summer's first-round order.
+function drawLottery(league: League): { round1: number[]; lottery: DraftState['lottery'] } {
   const order = baseOrder(league); // worst first
   const playoff = new Set(league.lastPlayoffTeams ?? order.slice(-12));
   const nonPlayoff = order.filter((id) => !playoff.has(id));
@@ -358,7 +365,53 @@ export function createDraft(league: League): DraftState {
     winners.push(pick);
     lottery.push({ orgId: pick, pick: k + 1, from: nonPlayoff.indexOf(pick) + 1 });
   }
-  let round1 = [...winners, ...nonPlayoff.filter((t) => !winners.includes(t)), ...order.filter((t) => playoff.has(t))];
+  return { round1: [...winners, ...nonPlayoff.filter((t) => !winners.includes(t)), ...order.filter((t) => playoff.has(t))], lottery };
+}
+
+// Clubs that already lost next summer's first-round pick (over the bonus pool).
+function r1Forfeits(league: League, season: number): Set<number> {
+  const adj = normalizeAdjust(league.draftAdjust);
+  return new Set([...adj.forfeit.filter((f) => f.round === 1).map((f) => f.orgId), ...(league.futureForfeits ?? []).filter((f) => f.season === season && f.round === 1).map((f) => f.orgId)]);
+}
+// A club's first-round pick number once forfeited picks drop out.
+export function firstRoundPick(league: League, round1: number[], season: number, orgId: number): number | null {
+  const gone = r1Forfeits(league, season);
+  if (gone.has(orgId)) return null;
+  return round1.filter((id) => !gone.has(id)).indexOf(orgId) + 1 || null;
+}
+
+// Run in the offseason: draws next summer's lottery and tells the user.
+export function runDraftLottery(league: League): void {
+  const drawn = drawLottery(league);
+  const season = league.season + 1;
+  league.draftLottery = { season, ...drawn };
+  const gone = r1Forfeits(league, season);
+  const u = league.userOrgId;
+  const odds = (orgId: number) => {
+    const order = baseOrder(league);
+    const playoff = new Set(league.lastPlayoffTeams ?? order.slice(-12));
+    const i = order.filter((id) => !playoff.has(id)).indexOf(orgId);
+    return i >= 0 && i < LOTTERY_ODDS.length ? LOTTERY_ODDS[i] : 0;
+  };
+  const name = (id: number) => league.orgs[id].affiliates.MLB.name;
+  const ord = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 10 > 3 || [11, 12, 13].includes(n % 100) ? 0 : n % 10]}`;
+  const top = drawn.lottery.map((l) => `#${l.pick} ${name(l.orgId)}${l.from !== l.pick ? ` (${l.from === 1 ? 'worst' : `${ord(l.from)} worst`} record)` : ''}${gone.has(l.orgId) ? ' (pick forfeited: went over last year\'s bonus pool)' : ''}`);
+  const mine = firstRoundPick(league, drawn.round1, season, u);
+  const won = drawn.lottery.find((l) => l.orgId === u);
+  const myOdds = odds(u);
+  addNews(league, null, `Draft lottery: the ${name(drawn.lottery[0].orgId)} won the first pick in the ${league.season + 1} draft.`);
+  addInbox(league, {
+    from: 'Front office', kind: 'info', pids: [], stop: true, link: { page: 'draft' },
+    subject: mine === null ? 'Draft lottery results (your first-round pick is forfeited)' : won && won.from > won.pick ? `Draft lottery: you moved up to #${mine}` : `Draft lottery results: you pick #${mine}`,
+    text: `The ${season} draft lottery is in: ${top.join(', ')}.${myOdds ? ` You had a ${myOdds}% chance at the first pick.` : ' You were not in the lottery (playoff club).'} ${mine === null ? 'You forfeited your first-round pick for going over last year\'s bonus pool.' : `Your first-round pick is #${mine}.`} Picks after the lottery follow the standings, worst first; clubs far over the tax threshold drop 10 spots when the order is set on draft day.`,
+  });
+}
+
+export function createDraft(league: League): DraftState {
+  // Use December's lottery if there was one; otherwise (a league's first season) draw it now.
+  const drawn = league.draftLottery?.season === league.season ? league.draftLottery : drawLottery(league);
+  const lottery = drawn.lottery;
+  let round1 = [...drawn.round1];
   // Clubs $40M+ over the tax threshold last season drop their first-round pick 10 spots (top 6 exempt).
   for (const orgId of [...round1]) {
     const idx = round1.indexOf(orgId);

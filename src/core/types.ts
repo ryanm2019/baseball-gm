@@ -833,6 +833,7 @@ export interface League {
   lastStandings?: number[]; // org ids, worst record first
   lastPlayoffTeams?: number[];
   draftAdjust?: DraftAdjust;
+  draftLottery?: { season: number; round1: number[]; lottery: { orgId: number; pick: number; from: number }[] }; // December's lottery for next summer's draft
   cbPicks: CbPick[];
   tradeOffers: TradeOffer[];
   tradeTalks?: TradeTalk[];
