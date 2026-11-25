@@ -281,12 +281,9 @@ export function faDay(league: League): void {
   const fas = Object.values(league.players).filter((p) => p.fa && isFreeAgent(p) && !isMinorFA(league, p));
   if (!fas.length) return;
   const depth = buildDepth(league);
+  // 40-man counts as the rules (and the Free Agents page) count them: the 60-day IL doesn't.
   const fortyCount = new Map<number, number>();
-  for (const [orgId, d] of depth) {
-    let n = 0;
-    for (const arr of d.values()) n += arr.length;
-    fortyCount.set(orgId, n);
-  }
+  for (const org of league.orgs) fortyCount.set(org.id, fortyMan(league, org.id).length);
   const nextSeason = firstContractSeason(league);
   const offseason = offseasonPhase;
 
@@ -374,6 +371,14 @@ export function faDay(league: League): void {
       addScoop(league, `${pname(p)} is nearing a decision. Finalists: the ${names.join(', the ')}.`, [p.id]);
     }
     if (!due && !early) continue;
+    // He'd take your offer, but you have no 40-man spot for him.
+    const yours = fa.offers.find((o) => o.orgId === league.userOrgId);
+    if (due && yours && !valid.includes(yours) && offerScore(league, p, yours) >= Math.max(0.85, best?.s ?? 0)) {
+      addInbox(league, {
+        from: 'Front office', subject: `${pname(p)} is ready to sign, but your 40-man is full`, kind: 'info', pids: [p.id], stop: true, link: { page: 'roster-moves' },
+        text: `${posLabel(p)} ${pname(p)} wants to take your offer, but your 40-man roster is full (${fortyCount.get(league.userOrgId)}/${league.settings.fortyMax}). Clear a spot on the Roster Moves page and he signs on his next decision day, unless someone else's offer wins him over first.`,
+      });
+    }
     if (best && best.s >= 0.85) {
       // AI club with a full 40-man: designate its least valuable player off the 40-man first.
       if (best.o.orgId !== league.userOrgId && fortyMan(league, best.o.orgId).length >= league.settings.fortyMax) {

@@ -177,15 +177,22 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
       }
     }
   }
+  const locked = new Set(chosen.map((c) => c.p.id)); // top prospects placed above
+  const value = (p: Player, pos: Pos) => {
+    let v = offVs(p, oppHand) + devBonus(league, p, level);
+    if (pos === 'DH') return v;
+    v += defValue(p, pos);
+    if (pos === 'C' && p.pos !== 'C') v -= 40;
+    if (p.pos === pos) v += 4;
+    return v;
+  };
   for (const pos of FILL_ORDER) {
     if (chosen.some((c) => c.pos === pos)) continue;
     let best: Player | null = null;
     let bestV = -Infinity;
     for (const p of pool) {
       if (used.has(p.id)) continue;
-      let v = offVs(p, oppHand) + defValue(p, pos) + devBonus(league, p, level);
-      if (pos === 'C' && p.pos !== 'C') v -= 40;
-      if (p.pos === pos) v += 4;
+      const v = value(p, pos);
       if (v > bestV) {
         bestV = v;
         best = p;
@@ -200,6 +207,34 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
   if (dh) {
     used.add(dh.id);
     chosen.push({ p: dh, pos: 'DH' });
+  }
+  // Filling spot by spot can strand a real shortstop at first base because a
+  // better bat grabbed short first. Clean up: swap any two starters' positions,
+  // or a starter for a bench player, whenever the team comes out ahead.
+  const bench = pool.filter((p) => !used.has(p.id));
+  for (let pass = 0; pass < 6; pass++) {
+    let improved = false;
+    for (let i = 0; i < chosen.length; i++) {
+      for (let j = i + 1; j < chosen.length; j++) {
+        const a = chosen[i], b = chosen[j];
+        if (locked.has(a.p.id) || locked.has(b.p.id)) continue;
+        if (value(a.p, b.pos) + value(b.p, a.pos) > value(a.p, a.pos) + value(b.p, b.pos) + 0.5) {
+          [a.pos, b.pos] = [b.pos, a.pos];
+          improved = true;
+        }
+      }
+      const c = chosen[i];
+      if (locked.has(c.p.id)) continue;
+      for (let k = 0; k < bench.length; k++) {
+        if (value(bench[k], c.pos) > value(c.p, c.pos) + 0.5) {
+          const out = c.p;
+          c.p = bench[k];
+          bench[k] = out;
+          improved = true;
+        }
+      }
+    }
+    if (!improved) break;
   }
   return battingOrder(chosen, oppHand);
 }
