@@ -9,8 +9,10 @@ import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners
 import { updateStances } from './market.ts';
 import { aiDepts, opBudgetFor } from './depts.ts';
 import { setOvrBaseline } from './offseason.ts';
+import { shiftPendingDays } from './dayShift.ts';
+import { dayToDate } from './settings.ts';
 
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -119,6 +121,16 @@ export function migrate(league: League): League {
     }
     if (l.phase !== 'offseason') setOvrBaseline(l);
     l.version = 6;
+  }
+  if (l.version < 7) {
+    // Pending free agent decisions, waivers, trade answers etc. weren't moved
+    // when the new season's day count started, so they sat a year in the future.
+    if (l.phase === 'preseason' || (l.phase === 'regular' && l.day < 120)) {
+      const delta = Math.round((dayToDate(l.season - 1, 0).getTime() - dayToDate(l.season, 0).getTime()) / 86400000);
+      const cut = Math.max(150, l.day + 100);
+      shiftPendingDays(l, delta, (d) => d > cut);
+    }
+    l.version = 7;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

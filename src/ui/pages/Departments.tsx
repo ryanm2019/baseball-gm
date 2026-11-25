@@ -1,7 +1,7 @@
 import { useStore, changed } from '../../store.ts';
 import { NumInput } from '../components.tsx';
 import { href } from '../../router.ts';
-import { DEPTS, deptEffect, deptSpend, effectText } from '../../core/depts.ts';
+import { DEPTS, deptEffect, deptSpend, effectText, facilitiesIn, facilitiesLabel, facilitiesTarget } from '../../core/depts.ts';
 import { fmtMoney } from '../../core/contracts.ts';
 
 export default function Departments() {
@@ -24,7 +24,7 @@ export default function Departments() {
     <>
       <h1>Departments</h1>
       <p className="muted small">
-        Annual budgets for each department, paid from the operating budget your owner sets separately from payroll. Spending about twice the normal amount gets the full benefit; half or less hurts. Changes take effect right away. Your staff hires (<a href={href('staff')}>Staff</a>) still matter on top of this: the budget sets how well the department runs, the staff set how good the people in it are.
+        Annual budgets for each department, paid from the operating budget your owner sets separately from payroll. Spending about twice the normal amount gets the full benefit; half or less hurts. Changes take effect right away, except facilities, which build up week by week. Your staff hires (<a href={href('staff')}>Staff</a>) still matter on top of this: the budget sets how well the department runs, the staff set how good the people in it are.
       </p>
       <div className="kv" style={{ maxWidth: 520 }}>
         <div>Operating budget</div><div><b>{fmtMoney(org.opBudget)}</b> ({org.owner.first} {org.owner.last}, {org.owner.type.toLowerCase()})</div>
@@ -61,7 +61,7 @@ export default function Departments() {
                 <td>{rank(d.key)}</td>
                 <td className={`l small ${e > 0.05 ? "pos" : e < -0.05 ? "neg" : ""}`} style={{ whiteSpace: "normal", minWidth: 220 }}>
                   {effectText(org, d.key)}
-                  {d.key === 'facilities' && <div className="muted">Moves about a third of the way toward your spending level each season.</div>}
+                  {d.key === 'facilities' && <FacilitiesOutlook org={org} />}
                 </td>
               </tr>
             );
@@ -70,5 +70,18 @@ export default function Departments() {
       </table>
       <p className="muted small">AI clubs budget by owner type and direction: rebuilding clubs lean into scouting and development, contenders into medical. Operating budgets are reset each spring.</p>
     </>
+  );
+}
+
+function FacilitiesOutlook({ org }: { org: Parameters<typeof facilitiesTarget>[0] }) {
+  const pct = (x: number) => `${x >= 0 ? '+' : ''}${(6 * x).toFixed(1)}%`;
+  const now = org.facilities ?? 0;
+  const target = facilitiesTarget(org);
+  const gap = target - now;
+  if (Math.abs(gap) < 0.02) return <div className="muted">Holding steady at this spending level.</div>;
+  return (
+    <div className="muted">
+      At this budget they're {gap > 0 ? 'improving' : 'wearing down'} toward {facilitiesLabel(target)} ({pct(target)}): {pct(facilitiesIn(org, 4))} in a month, {pct(facilitiesIn(org, 13))} in 3 months, {pct(facilitiesIn(org, 26))} in 6 months.
+    </div>
   );
 }

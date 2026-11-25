@@ -30,7 +30,8 @@ import { ownerSales, reviewGm, setBudgets, setOwnerGoals, updateStrategies } fro
 import { generateIfaClass, isIfa, negotiationDay, openIfaPeriod, postPlayers, setupIfaPools } from './intl.ts';
 import { logMove, side } from './moves.ts';
 import { marketOvr, seasonCtx } from './war.ts';
-import { setDeptBudgets, updateFacilities } from './depts.ts';
+import { setDeptBudgets } from './depts.ts';
+import { shiftPendingDays } from './dayShift.ts';
 import { salaryIn, syncContract } from './terms.ts';
 import { addInbox } from './morale.ts';
 import { dayShort } from './settings.ts';
@@ -100,7 +101,6 @@ export function onSeasonEnd(league: League): void {
     org.rule5Targets = [];
   }
   reviewGm(league);
-  updateFacilities(league);
   const user = league.orgs[league.userOrgId];
   const expiring = league.staff.filter((s) => s.orgId === user.id && s.exp <= league.season);
   if (expiring.length) {
@@ -558,7 +558,9 @@ function runRollover(league: League): void {
   league.season = prevSeason + 1;
   const open = dayToDate(league.season, 0).getTime();
   const cur = dayToDate(prevSeason, league.day).getTime();
+  const oldDay = league.day;
   league.day = Math.round((cur - open) / 86400000);
+  shiftPendingDays(league, league.day - oldDay);
   league.phase = 'preseason';
 
   for (const p of Object.values(league.players)) {

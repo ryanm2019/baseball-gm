@@ -27,7 +27,7 @@ import { onInjury, reinjuryCheck } from '../injuries.ts';
 import { homeGate, hypeWeek } from '../finances.ts';
 import { afterStart, aiPositionMoves, gainFromGame, septemberCallups, springWork, stretchOutProspects, suggestPositionMoves } from '../positions.ts';
 import { isPitcher, potOvr } from '../ratings.ts';
-import { deptEffect } from '../depts.ts';
+import { deptEffect, weeklyFacilities } from '../depts.ts';
 import { clamp, rand } from '../random.ts';
 import { delegated } from '../staff.ts';
 import { agmVacancyNotice, staffExpiryNotice } from '../staffNotices.ts';
@@ -438,7 +438,7 @@ function finishRegularDay(league: League): DayResult {
   septemberCallups(league);
   reinjuryCheck(league);
   dailyUpkeep(league);
-  if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); hypeWeek(league); }
+  if (league.day % 7 === 0) { weeklyFacilities(league); moraleWeek(league); storylinesWeek(league); hypeWeek(league); }
   league.day++;
   const remaining = league.schedule.some((g) => g.level === 'MLB' && !g.result && !g.playoff);
   if (!remaining && league.day >= league.settings.seasonDays - 1) startPlayoffs(league);
@@ -527,7 +527,7 @@ export function simOneDay(league: League): DayResult {
       const talk = talksDay(league);
       tradeDay(league);
       offseasonUpkeep(league);
-      if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
+      if (league.day % 7 === 0) { weeklyFacilities(league); moraleWeek(league); storylinesWeek(league); }
       league.day++;
       return { stop: talk ?? inboxStop(league) };
     }
@@ -544,7 +544,7 @@ export function simOneDay(league: League): DayResult {
     aiPositionMoves(league);
     suggestPositionMoves(league);
     dailyUpkeep(league);
-    if (league.day % 7 === 0) { moraleWeek(league); storylinesWeek(league); }
+    if (league.day % 7 === 0) { weeklyFacilities(league); moraleWeek(league); storylinesWeek(league); }
     league.day++;
     if (league.day >= 0) {
       league.day = 0;

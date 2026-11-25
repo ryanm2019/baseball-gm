@@ -8,7 +8,7 @@ export const DEPTS: { key: Dept; label: string; base: number; help: string }[] =
   { key: 'scouting', label: 'Scouting', base: 12e6, help: 'Sharper ratings everywhere: other teams, the draft, international amateurs and your own players.' },
   { key: 'development', label: 'Player development', base: 18e6, help: 'Faster progress toward potential for everyone in the organization.' },
   { key: 'medical', label: 'Medical / training', base: 12e6, help: 'Fewer injuries and quicker recoveries, majors and minors.' },
-  { key: 'facilities', label: 'Facilities', base: 25e6, help: 'Builds up (or decays) slowly over seasons. Better facilities make free agents like you more.' },
+  { key: 'facilities', label: 'Facilities', base: 25e6, help: 'Builds up (or wears down) a little every week toward your spending level: most of the way within a season. Better facilities make free agents like you more.' },
 ];
 
 const DEPT_BASE = Object.fromEntries(DEPTS.map((d) => [d.key, d.base])) as Record<Dept, number>;
@@ -48,13 +48,18 @@ export function deptEffect(org: Org | undefined, d: Dept): number {
   return clamp(Math.log2(Math.max(0.01, org.depts[d]) / DEPT_BASE[d]), -1, 1);
 }
 
-// Facilities move slowly toward what you spend: about a third of the way each season.
-export function updateFacilities(league: League): void {
-  for (const org of league.orgs) {
-    const e = clamp(Math.log2(Math.max(0.01, org.depts.facilities) / DEPT_BASE.facilities), -1, 1);
-    org.facilities = (org.facilities ?? 0) * 0.67 + e * 0.33;
-  }
+// Where your facilities are heading at your current spending level.
+export const facilitiesTarget = (org: Org): number => clamp(Math.log2(Math.max(0.01, org.depts.facilities) / DEPT_BASE.facilities), -1, 1);
+
+// Facilities build (or wear down) a little every week toward what you spend:
+// about a third of the way in two months, most of the way within a season.
+export const FACILITY_WEEKLY = 0.045;
+export function weeklyFacilities(league: League): void {
+  for (const org of league.orgs) org.facilities = (org.facilities ?? 0) + (facilitiesTarget(org) - (org.facilities ?? 0)) * FACILITY_WEEKLY;
 }
+
+// Facilities level after n more weeks at today's spending.
+export const facilitiesIn = (org: Org, weeks: number): number => facilitiesTarget(org) + ((org.facilities ?? 0) - facilitiesTarget(org)) * Math.pow(1 - FACILITY_WEEKLY, weeks);
 
 // Winter: owners set operating budgets; AI clubs re-split theirs.
 export function setDeptBudgets(league: League): void {
@@ -64,6 +69,8 @@ export function setDeptBudgets(league: League): void {
   }
 }
 
+export const facilitiesLabel = (e: number): string => (e >= 0.5 ? 'excellent' : e >= 0.15 ? 'good' : e > -0.15 ? 'average' : e > -0.5 ? 'worn' : 'poor');
+
 export function effectText(org: Org, d: Dept): string {
   const e = deptEffect(org, d);
   const pct = (x: number) => `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`;
@@ -71,6 +78,6 @@ export function effectText(org: Org, d: Dept): string {
     case 'scouting': return `${pct(-0.2 * e)} scouting error`;
     case 'development': return `${pct(0.08 * e)} development speed`;
     case 'medical': return `${pct(-0.18 * e)} injury rate, ${pct(0.25 * e)} recovery speed`;
-    case 'facilities': return `Facilities ${e >= 0.5 ? 'excellent' : e >= 0.15 ? 'good' : e > -0.15 ? 'average' : e > -0.5 ? 'worn' : 'poor'}: ${pct(0.06 * e)} free agent appeal`;
+    case 'facilities': return `Facilities ${facilitiesLabel(e)}: ${(e >= 0 ? '+' : '') + (6 * e).toFixed(1)}% free agent appeal`;
   }
 }
