@@ -137,7 +137,7 @@ export default function Dashboard() {
   if (!league) return null;
   const org = league.orgs[league.userOrgId];
   const issues = league.phase === 'regular' ? userRosterIssues(league) : [];
-  const warnings = league.phase === 'regular' || league.phase === 'playoffs' ? userRosterWarnings(league) : [];
+  const warnings = userRosterWarnings(league);
   const st = league.standings.MLB[org.id];
   const div = divStandings(league, org);
   const myGames = league.schedule.filter((g) => g.level === 'MLB' && (g.home === org.id || g.away === org.id));

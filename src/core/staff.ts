@@ -190,5 +190,5 @@ export function agmEvalSd(league: League, org: Org): number {
 
 export function delegated(league: League, org: Org, duty: AgmDuty): boolean {
   if (org.id !== league.userOrgId) return true;
-  return !!org.agm[duty] && org.staff.AGM !== undefined;
+  return !!(org.agm[duty] ?? AGM_DUTIES.find((d) => d.key === duty)?.def) && org.staff.AGM !== undefined;
 }

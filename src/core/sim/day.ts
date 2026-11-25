@@ -12,7 +12,8 @@ import { weeklyFarmReport } from '../farmReport.ts';
 import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
-import { faDay } from '../freeAgency.ts';
+import { faDay, pendingBlock } from '../freeAgency.ts';
+import { dfaOffersDay, waiverFlags } from '../dfaMarket.ts';
 import { recordBatForm, recordPitForm } from '../form.ts';
 import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
@@ -58,7 +59,13 @@ export function invalidateScheduleIndex(): void {
 export function userRosterWarnings(league: League): string[] {
   const active = activeAt(league, league.userOrgId, 'MLB');
   const c = active.filter((p) => p.pos === 'C' && !p.injury).length;
-  return c < 2 ? [`Only ${c} healthy catcher${c === 1 ? '' : 's'} on the active roster. Teams carry two: your starter will wear down without a backup.`] : [];
+  const out = c < 2 && (league.phase === 'regular' || league.phase === 'playoffs') ? [`Only ${c} healthy catcher${c === 1 ? '' : 's'} on the active roster. Teams carry two: your starter will wear down without a backup.`] : [];
+  for (const p of Object.values(league.players)) {
+    if (p.fa?.pending?.orgId !== league.userOrgId || p.orgId !== null) continue;
+    const block = pendingBlock(league, league.userOrgId);
+    out.push(`${pname(p)} agreed to terms with you${block ? ` and is waiting on a ${block} roster spot: make a corresponding move to finalize it` : ': it becomes official on the next sim day'}.`);
+  }
+  return out;
 }
 
 export function userRosterIssues(league: League): string[] {
@@ -434,6 +441,8 @@ function beginRegularDay(league: League): string | null {
 function finishRegularDay(league: League): DayResult {
   if (league.day === league.settings.seasonDays - 14) staffExpiryNotice(league);
   faDay(league);
+  dfaOffersDay(league);
+  waiverFlags(league);
   ifaDay(league);
   talksDay(league);
   tradeDay(league);
@@ -528,6 +537,8 @@ export function simOneDay(league: League): DayResult {
     if (league.phase === 'offseason') {
       if (agmVacancyNotice(league)) return { stop: 'Inbox: You have no assistant GM. Hire one on the Staff page.' };
       faDay(league);
+      dfaOffersDay(league);
+      waiverFlags(league);
       postingDeadlines(league);
       ifaDay(league);
       const talk = talksDay(league);
@@ -542,6 +553,8 @@ export function simOneDay(league: League): DayResult {
   if (league.phase === 'preseason') {
     if (agmVacancyNotice(league)) return { stop: 'Inbox: You have no assistant GM. Hire one on the Staff page.' };
     faDay(league);
+    dfaOffersDay(league);
+    waiverFlags(league);
     ifaDay(league);
     const talk = talksDay(league);
     tradeDay(league);

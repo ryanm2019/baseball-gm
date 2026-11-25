@@ -124,6 +124,7 @@ export interface FaStatus {
   passed?: number[]; // clubs that pulled their offer and moved on
   milbOffers?: { orgId: number; level: Level; invite: boolean; day: number }[]; // minor league bids (bidding window)
   milbDecide?: number; // day he picks among minor league offers
+  pending?: { orgId: number; day: number; offer: FaOffer }; // agreed with you; waits for a 40-man/active spot
 }
 
 export interface IfaInfo {
@@ -247,8 +248,8 @@ export interface Player {
   contract: Contract;
   il: IlStatus | null;
   injury: Injury | null;
-  dfa: { day: number } | null;
-  waivers: { day: number; fromOrg: number; type: 'outright' | 'release' } | null;
+  dfa: { day: number; offered?: boolean } | null;
+  waivers: { day: number; fromOrg: number; type: 'outright' | 'release'; flagged?: boolean } | null;
   optionsUsed: number; // option years used
   optionDaysThisSeason: number;
   optionsThisSeason: number; // times optioned this season (max 5)
@@ -448,6 +449,7 @@ export type AgmDuty =
   | 'rule5protect'
   | 'rule5draft'
   | 'milbfa'
+  | 'waivers'
   | 'draft'
   | 'ifa'
   | 'trades';
@@ -462,6 +464,7 @@ export const AGM_DUTIES: { key: AgmDuty; label: string; def: boolean }[] = [
   { key: 'rule5protect', label: 'Rule 5 protection (40-man adds)', def: false },
   { key: 'rule5draft', label: 'Rule 5 draft picks', def: false },
   { key: 'milbfa', label: 'Minor league free agent signings', def: true },
+  { key: 'waivers', label: 'Flag waiver players who fill a team need (you make the claim)', def: true },
   { key: 'draft', label: 'Amateur draft picks and signings', def: false },
   { key: 'ifa', label: 'International amateur signings', def: false },
   { key: 'trades', label: 'Answer trade offers from other teams', def: false },
@@ -610,7 +613,8 @@ export interface InboxMsg {
   subject: string;
   text: string;
   pids: number[];
-  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply' | 'staff';
+  kind: 'role' | 'trade-request' | 'callup' | 'extension' | 'info' | 'story' | 'position' | 'september' | 'injury' | 'il-ready' | 'trade-reply' | 'staff' | 'dfa-offer';
+  dfaDeal?: { orgId: number; pid: number; cash: number; prospect: number | null }; // dfa-offer: what they'd give for him
   talkId?: number; // trade-reply: the negotiation it belongs to
   actions?: InboxAction[];
   resolved?: string; // what you chose

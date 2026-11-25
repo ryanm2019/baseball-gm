@@ -1,3 +1,4 @@
+import { shoppingFor } from '../../core/market.ts';
 // Trade Finder: get a player, shop one of yours, or fill a need.
 import { useState } from 'react';
 import { DataTable, NumInput, type Column } from '../components.tsx';
@@ -119,6 +120,7 @@ export default function TradeFinder() {
             <div className="form-row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
               <b>{o.abbrev}</b>
               <span className="muted small">{shop ? o.stance : d.note}</span>
+              {shoppingFor(league, o).length > 0 && <span className="needs-tag" title="A buying club pays a little extra for a big-league-ready player at these spots">Shopping for: <b>{shoppingFor(league, o).join(', ')}</b></span>}
               <span className="small" title="Your front office's valuation: what you get minus what you give">Value to you <b className={d.valueToYou >= d.costToYou ? 'pos' : 'neg'}>{fmtMoney(d.valueToYou - d.costToYou)}</b></span>
               {extras(d, 0)}{extras(d, 1)}
               <button className="btn btn-sm" onClick={() => open(d)}>Open in Trade</button>

@@ -515,3 +515,4 @@ tr.totals td { font-weight: 700; border-top: 2px solid var(--border); }
   .show-tabs { flex-wrap: wrap; }
   .spanel-head { flex-wrap: wrap; font-size: 17px; }
 }
+.needs-tag { font-size: 12px; background: #fff4e5; color: #8a4b00; border: 1px solid #f5c98b; border-radius: 4px; padding: 1px 7px; }

@@ -170,14 +170,54 @@ export function makeOffer(league: League, p: Player, orgId: number, years: numbe
   if (!p.fa) return 'Not a free agent';
   if (aav < league.settings.minSalary) return `Below the MLB minimum`;
   if (years < 1 || years > 10) return 'Contract length must be 1-10 years';
-  if (fortyMan(league, orgId).length >= league.settings.fortyMax) return '40-man roster is full';
+  if (p.fa.pending) return 'He has already agreed to terms';
   p.fa.offers = p.fa.offers.filter((o) => o.orgId !== orgId);
   p.fa.offers.push({ orgId, years, aav: roundSalary(aav), day: league.day, terms });
   return null;
 }
 
-export function withdrawOffer(p: Player, orgId: number): void {
-  if (p.fa) p.fa.offers = p.fa.offers.filter((o) => o.orgId !== orgId);
+export function withdrawOffer(p: Player, orgId: number, league?: League): void {
+  if (!p.fa) return;
+  p.fa.offers = p.fa.offers.filter((o) => o.orgId !== orgId);
+  // Backing out of an agreement still waiting on a roster move: he's back on the market.
+  if (p.fa.pending?.orgId === orgId) {
+    p.fa.pending = undefined;
+    if (league) p.fa.decideDay = league.day + randInt(3, 8);
+  }
+}
+
+// What's stopping an agreed signing from going through: a 40-man spot, and in
+// season an active roster spot (he joins the big league club).
+export function pendingBlock(league: League, orgId: number): string | null {
+  if (fortyMan(league, orgId).length >= league.settings.fortyMax) return '40-man';
+  if (league.phase === 'regular' && orgPlayers(league, orgId).filter((q) => q.level === 'MLB' && !q.il).length >= league.settings.activeMax) return 'active';
+  return null;
+}
+
+// Agreed deals waiting on a roster move go through as soon as there's room
+// (your assistant GM makes the move himself if he runs the roster).
+export function finalizePending(league: League): string[] {
+  const done: string[] = [];
+  for (const p of Object.values(league.players)) {
+    const pend = p.fa?.pending;
+    if (!pend || p.orgId !== null) continue;
+    const org = league.orgs[pend.orgId];
+    let block = pendingBlock(league, org.id);
+    if (block && delegated(league, org, 'roster')) {
+      if (block === '40-man') {
+        const cut = fortyMan(league, org.id).filter((q) => q.level !== 'MLB' && !q.il).sort((x, y) => ovr(x) + 0.5 * potOvr(x) - (ovr(y) + 0.5 * potOvr(y)))[0];
+        if (cut) designate(league, cut);
+      }
+      block = pendingBlock(league, org.id);
+      if (block === 'active') { makeMlbRoom(league, org, isPitcher(p), true); block = pendingBlock(league, org.id); }
+    }
+    if (block) continue;
+    const o = pend.offer;
+    p.fa!.pending = undefined;
+    signFreeAgentOffer(league, p, o);
+    done.push(pname(p));
+  }
+  return done;
 }
 
 export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void {
@@ -273,6 +313,7 @@ const notableFa = (p: Player) => ovr(p) >= 55 || p.fa!.asking.aav >= 8e6;
 
 export function faDay(league: League): void {
   milbBidDay(league);
+  finalizePending(league);
   const offseasonPhase = league.phase === 'offseason' || league.phase === 'preseason';
   // In season the market is thin; check it every few days.
   if (!offseasonPhase && league.day % 3 !== 0) return;
@@ -327,7 +368,7 @@ export function faDay(league: League): void {
     let made = 0;
     for (const p of ranked) {
       if (made >= 3 || budget <= 0) break;
-      if (p.fa!.offers.some((o) => o.orgId === org.id) || p.fa!.passed?.includes(org.id)) continue;
+      if (p.fa!.pending || p.fa!.offers.some((o) => o.orgId === org.id) || p.fa!.passed?.includes(org.id)) continue;
       const ageNext = nextSeason - p.born;
       if (org.strategy === 'Rebuild' && (ageNext >= 30 || p.fa!.asking.years > 2) && p.fa!.asking.aav > 5e6) continue;
       const cheap = p.fa!.asking.aav <= 4e6;
@@ -355,8 +396,8 @@ export function faDay(league: League): void {
   // Decisions
   for (const p of fas) {
     const fa = p.fa!;
-    const valid = fa.offers.filter((o) => o.orgId !== league.userOrgId || (fortyCount.get(o.orgId) ?? 0) < league.settings.fortyMax);
-    const scored = valid.map((o) => ({ o, s: offerScore(league, p, o) })).sort((a, b) => b.s - a.s);
+    if (fa.pending) continue;
+    const scored = fa.offers.map((o) => ({ o, s: offerScore(league, p, o) })).sort((a, b) => b.s - a.s);
     const best = scored[0];
     const due = league.day >= fa.decideDay;
     // A blowaway offer can end it early, but a big name sticks to at least part
@@ -371,13 +412,32 @@ export function faDay(league: League): void {
       addScoop(league, `${pname(p)} is nearing a decision. Finalists: the ${names.join(', the ')}.`, [p.id]);
     }
     if (!due && !early) continue;
-    // He'd take your offer, but you have no 40-man spot for him.
-    const yours = fa.offers.find((o) => o.orgId === league.userOrgId);
-    if (due && yours && !valid.includes(yours) && offerScore(league, p, yours) >= Math.max(0.85, best?.s ?? 0)) {
-      addInbox(league, {
-        from: 'Front office', subject: `${pname(p)} is ready to sign, but your 40-man is full`, kind: 'info', pids: [p.id], stop: true, link: { page: 'roster-moves' },
-        text: `${posLabel(p)} ${pname(p)} wants to take your offer, but your 40-man roster is full (${fortyCount.get(league.userOrgId)}/${league.settings.fortyMax}). Clear a spot on the Roster Moves page and he signs on his next decision day, unless someone else's offer wins him over first.`,
-      });
+    // He picked you, but there's no roster spot yet: the deal is agreed and
+    // waits on your corresponding move (like real life), unless your assistant
+    // GM runs the roster and makes room himself.
+    if (best && best.s >= 0.85 && best.o.orgId === league.userOrgId) {
+      const block = pendingBlock(league, league.userOrgId);
+      if (block && !delegated(league, league.orgs[league.userOrgId], 'roster')) {
+        fa.pending = { orgId: league.userOrgId, day: league.day, offer: best.o };
+        fa.offers = fa.offers.filter((o) => o.orgId === league.userOrgId);
+        const what = block === '40-man'
+          ? `your 40-man roster is full (${fortyMan(league, league.userOrgId).length}/${league.settings.fortyMax}): designate, release or trade someone on it`
+          : `your active roster is full: option, designate or place someone on the IL`;
+        addInbox(league, {
+          from: 'Front office', subject: `${pname(p)} agreed to terms: a roster move is needed`, kind: 'info', pids: [p.id], stop: true, link: { page: 'roster-moves' },
+          text: `${posLabel(p)} ${pname(p)} accepted your offer (${best.o.years === 1 ? '1 year' : `${best.o.years} years`} at ${fmtMoney(best.o.aav)} a year), pending a corresponding move: ${what}. The signing becomes official as soon as there's room. He's off the market in the meantime; you can back out on the Free Agents page.`,
+        });
+        if (notableFa(p)) addScoop(league, `Agreed: ${posLabel(p)} ${pname(p)} to the ${league.orgs[league.userOrgId].affiliates.MLB.name}, pending a roster move.`, [p.id]);
+        continue;
+      }
+      if (block) {
+        // Your assistant GM clears the spot.
+        fa.pending = { orgId: league.userOrgId, day: league.day, offer: best.o };
+        finalizePending(league);
+        if (p.fa?.pending) continue; // couldn't clear one: stays pending
+        fortyCount.set(league.userOrgId, fortyMan(league, league.userOrgId).length);
+        continue;
+      }
     }
     if (best && best.s >= 0.85) {
       // AI club with a full 40-man: designate its least valuable player off the 40-man first.

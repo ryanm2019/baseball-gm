@@ -31,6 +31,13 @@ export function teamNeeds(league: League, orgId: number): Pos[] {
   return out.sort((a, b) => b.gap - a.gap).slice(0, 3).map((x) => x.pos);
 }
 
+// What a buying club tells other teams it's shopping for (its biggest needs),
+// and how much extra it will pay for a player who fills one.
+export const NEED_PREMIUM = 1.1;
+export function shoppingFor(league: League, org: Org): Pos[] {
+  return org.stance === 'Buying' ? teamNeeds(league, org.id) : [];
+}
+
 function yearsLeft(league: League, p: Player): number {
   if (p.contract.type !== 'ML') return 0;
   const next = league.phase === 'offseason' ? league.season + 1 : league.season;

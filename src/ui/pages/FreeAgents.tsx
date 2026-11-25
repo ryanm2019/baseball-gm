@@ -5,7 +5,7 @@ import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
 import { posLabel } from '../../core/rules.ts';
 import { fmtMoney, serviceLabel, serviceYears } from '../../core/contracts.ts';
-import { interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
+import { finalizePending, interestLabel, isFreeAgent, isMinorFA, makeOffer, offerScore, pendingBlock, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { DataTable, type Column, NumInput } from '../components.tsx';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
@@ -65,6 +65,7 @@ function OfferCell({ p }: { p: Player }) {
   const [years, setYears] = useState(mine?.years ?? p.fa?.asking.years ?? 1);
   const [aav, setAav] = useState(((mine?.aav ?? p.fa?.asking.aav ?? 0) / 1e6).toFixed(2));
   if (!league || !p.fa) return null;
+  if (p.fa.pending) return p.fa.pending.orgId === league.userOrgId ? <b className="pos small">Agreed with you: waiting on a roster move</b> : <span className="muted small">Agreed elsewhere</span>;
   const preview = offerScore(league, p, { orgId: league.userOrgId, years, aav: Number(aav) * 1e6, day: league.day });
   return (
     <span className="nowrap">
@@ -149,8 +150,14 @@ export default function FreeAgents() {
     { key: 'ask', label: 'Asking', value: (p) => p.fa!.asking.aav, render: (p) => `${p.fa!.asking.years} yr × ${fmtMoney(p.fa!.asking.aav)}` },
     { key: 'interest', label: 'His interest', title: 'How your offer stacks up against what he wants (money, years, your club)', value: (p) => offerScore(league, p, yourOffer(p)), render: (p) => interestLabel(offerScore(league, p, yourOffer(p))) },
     { key: 'rivals', label: 'Other offers', value: (p) => p.fa!.offers.length - 1 },
-    { key: 'dec', label: 'Decides', value: (p) => p.fa!.decideDay, render: (p) => dayShort(league.season, p.fa!.decideDay) },
-    { key: 'wd', label: '', noSort: true, render: (p) => <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId); changed(); }}>Withdraw</button> },
+    { key: 'dec', label: 'Decides', value: (p) => (p.fa!.pending ? -1 : p.fa!.decideDay), render: (p) => (p.fa!.pending ? <b className="pos" title="He accepted; the deal waits on your corresponding roster move">Agreed: needs a {pendingBlock(league, league.userOrgId) ?? 'roster'} spot</b> : dayShort(league.season, p.fa!.decideDay)) },
+    { key: 'wd', label: '', noSort: true, render: (p) => p.fa!.pending ? (
+      <span className="nowrap">
+        <button className="btn btn-sm btn-primary" disabled={!!pendingBlock(league, league.userOrgId)} title={pendingBlock(league, league.userOrgId) ? 'Open a spot first (Roster Moves)' : 'Make it official now'} onClick={() => { finalizePending(league); changed(); }}>Finalize</button>{' '}
+        <a className="btn btn-sm" href={href('roster-moves')}>Roster Moves</a>{' '}
+        <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Back out</button>
+      </span>
+    ) : <button className="btn btn-sm" onClick={() => { withdrawOffer(p, league.userOrgId, league); changed(); }}>Withdraw</button> },
   ];
   const milbCols: Column<Player>[] = [
     ...base,
@@ -186,7 +193,7 @@ export default function FreeAgents() {
             </div>
           )}
           <p className="muted small">
-            Make an offer and the player weighs it against everyone else's when he decides: money, years, how good the team is and, for his old club, loyalty. "Interest" previews how your offer stacks up against what he's asking. Contracts start in {start}. You need an open 40-man spot when he signs ({fortyMan(league, league.userOrgId).length}/{league.settings.fortyMax} now).
+            Make an offer and the player weighs it against everyone else's when he decides: money, years, how good the team is and, for his old club, loyalty. "Interest" previews how your offer stacks up against what he's asking. Contracts start in {start}. If your 40-man (or, in season, the active roster) is full when he says yes, the deal is agreed and becomes official once you make a corresponding move ({fortyMan(league, league.userOrgId).length}/{league.settings.fortyMax} on the 40-man now).
           </p>
           {(mineOffers.length > 0 || bidResults.length > 0) && (
             <div className="box" style={{ margin: '6px 0 10px' }}>

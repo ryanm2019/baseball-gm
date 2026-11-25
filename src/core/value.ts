@@ -7,6 +7,7 @@ import { isPitcher, ovr, perceivedOvr, potOvr, scoutFactor } from './ratings.ts'
 import { marketValue, serviceYears } from './contracts.ts';
 import { agmEvalSd, staffOf } from './staff.ts';
 import { orgPlayers } from './util.ts';
+import { NEED_PREMIUM, shoppingFor } from './market.ts';
 import { marketOvr, minorPerfAdj } from './war.ts';
 
 export const DOLLARS_PER_WAR = 8e6;
@@ -119,6 +120,8 @@ export function tradeValue(league: League, org: Org, p: Player, receiving: boole
     const depth = orgPlayers(league, org.id).filter((q) => q.level === 'MLB' && q.pos === p.pos && q !== p).map(ovr).sort((a, b) => b - a);
     const slot = isPitcher(p) ? (p.pos === 'SP' ? 4 : 6) : 0;
     if (p.level === 'MLB' && depth[slot] !== undefined && depth[slot] > ovr(p) + 3) v *= 0.85;
+    // A buyer pays a little extra for a big-league-ready player at a position it's shopping for.
+    else if (org.stance === 'Buying' && (p.level === 'MLB' || p.level === 'AAA') && ovr(p) >= 45 && shoppingFor(league, org).includes(p.pos)) v *= NEED_PREMIUM;
   }
   return v;
 }

@@ -7,7 +7,8 @@ import { salaryIn } from './terms.ts';
 import { temp } from './storylines.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname, touchRosters } from './util.ts';
-import { isPitcher, ovr } from './ratings.ts';
+import { isPitcher, ovr, potOvr } from './ratings.ts';
+import { addInbox } from './morale.ts';
 import { MILB_SALARY, roundSalary, serviceYears } from './contracts.ts';
 import { rand } from './random.ts';
 import { firstContractSeason, openFreeAgent } from './freeAgency.ts';
@@ -311,20 +312,43 @@ function winPct(league: League, orgId: number): number {
   return g ? r.w / g : 0.5;
 }
 
-export function aiWantsClaim(league: League, orgId: number, p: Player): boolean {
+// What a claiming club sees in him: current ability, plus some credit for
+// upside in a young player.
+export function claimWorth(league: League, p: Player): number {
+  const age = league.season - p.born;
+  return ovr(p) + (age <= 25 ? 0.4 * Math.max(0, potOvr(p) - ovr(p)) : 0);
+}
+
+// The 40-man player a club would drop to make room (never a big leaguer).
+export function fortyCut(league: League, orgId: number): Player | null {
+  return fortyMan(league, orgId).filter((q) => q.level !== 'MLB' && !q.il).sort((a, b) => claimWorth(league, a) - claimWorth(league, b))[0] ?? null;
+}
+
+// Would this club put in a claim? Deterministic interest (is he a clear
+// upgrade on the back of its 40-man?) plus a roll for whether it bothers.
+export function claimInterest(league: League, orgId: number, p: Player): boolean {
   const forty = fortyMan(league, orgId);
-  if (forty.length >= league.settings.fortyMax) return false;
-  const value = ovr(p);
-  const worst = Math.min(...forty.map(ovr));
-  if (value < worst + 3) return false;
+  const worth = claimWorth(league, p);
+  // A full 40-man means dropping someone, so the bar is higher.
+  const full = forty.length >= league.settings.fortyMax;
+  const cut = full ? fortyCut(league, orgId) : null;
+  if (full && !cut) return false;
+  const floor = full ? claimWorth(league, cut!) + 7 : Math.min(...forty.map((q) => claimWorth(league, q))) + 3;
+  if (worth < floor) return false;
   // Expensive contracts get claimed far less often.
   const cost = p.contract.type === 'ML' ? p.contract.salary : 0;
-  if (cost > 8e6 && rand() < 0.85) return false;
+  if (cost > 8e6) return false;
   if (!optionYearAvailable(league, p)) {
     const active = activeAt(league, orgId, 'MLB');
-    if (active.length >= activeLimit(league)) return false;
+    if (active.length >= activeLimit(league) && ovr(p) < Math.min(...active.map(ovr)) + 2) return false;
   }
-  return rand() < 0.7;
+  return true;
+}
+
+export function aiWantsClaim(league: League, orgId: number, p: Player): boolean {
+  if (!claimInterest(league, orgId, p)) return false;
+  const cost = p.contract.type === 'ML' ? p.contract.salary : 0;
+  return rand() < (cost > 4e6 ? 0.08 : 0.15);
 }
 
 export function waiverClaims(league: League): Record<number, number[]> {
@@ -351,6 +375,10 @@ export function resolveWaivers(league: League, p: Player): void {
   delete waiverClaims(league)[p.id];
   if (claimer !== null) {
     const fromName = orgById(league, from)?.affiliates.MLB.name ?? '';
+    if (claimer !== league.userOrgId && fortyMan(league, claimer).length >= league.settings.fortyMax) {
+      const cut = fortyCut(league, claimer);
+      if (cut) designate(league, cut);
+    }
     p.orgId = claimer;
     touchRosters();
     p.teamSince = league.season;
@@ -368,6 +396,8 @@ export function resolveWaivers(league: League, p: Player): void {
     addTransaction(league, claimer, 'Claim', `Claimed ${posLabel(p)} ${pname(p)} off waivers from the ${fromName}`, [p.id]);
     logMove(league, 'Waiver claim', [side(claimer, [p.id]), side(from, [])], `${orgById(league, claimer)!.abbrev} claimed ${posLabel(p)} ${pname(p)} from ${orgById(league, from)!.abbrev}`, p.contract.type === 'ML' ? p.contract.salary : 0);
     if (claimer === league.userOrgId || from === league.userOrgId) addNews(league, claimer, `${pname(p)} was claimed off waivers by the ${orgById(league, claimer)!.affiliates.MLB.name}.`, [p.id]);
+    if (from === league.userOrgId) addInbox(league, { from: 'Front office', subject: `${pname(p)} was claimed on waivers`, kind: 'info', pids: [p.id], text: `The ${orgById(league, claimer)!.affiliates.MLB.name} claimed ${posLabel(p)} ${pname(p)} off waivers. He joins their 40-man roster${p.contract.type === 'ML' ? ' and they take on his contract' : ''}.` });
+    if (claimer === league.userOrgId) addInbox(league, { from: 'Front office', subject: `You claimed ${pname(p)}`, kind: 'info', pids: [p.id], link: { page: 'roster-moves' }, text: `Your claim on ${posLabel(p)} ${pname(p)} went through (from the ${fromName}). He's on your 40-man roster, assigned to ${p.level}.` });
     return;
   }
   // Cleared waivers.
@@ -392,9 +422,13 @@ export function resolveWaivers(league: League, p: Player): void {
   const canRefuse = serviceYears(p.mlServiceDays, s) >= s.outrightRefuseServiceYears || p.outrightedBefore;
   if (canRefuse && rand() < 0.65) {
     makeFreeAgent(league, p, 'Released (elected free agency after clearing waivers)');
-    if (from === league.userOrgId) addNews(league, from, `${pname(p)} cleared waivers and elected free agency.`, [p.id]);
+    if (from === league.userOrgId) {
+      addNews(league, from, `${pname(p)} cleared waivers and elected free agency.`, [p.id]);
+      addInbox(league, { from: 'Front office', subject: `${pname(p)} cleared waivers and left`, kind: 'info', pids: [p.id], text: `Nobody claimed ${posLabel(p)} ${pname(p)}. He had the right to refuse an outright assignment and elected free agency.` });
+    }
     return;
   }
+  if (from === league.userOrgId) addInbox(league, { from: 'Front office', subject: `${pname(p)} cleared waivers`, kind: 'info', pids: [p.id], text: `Nobody claimed ${posLabel(p)} ${pname(p)}. He's been outrighted to ${lvlName(league, from, 'AAA')} and is off the 40-man roster.` });
   p.waivers = null;
   p.dfa = null;
   p.on40 = false;

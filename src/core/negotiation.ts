@@ -9,6 +9,8 @@ import { posLabel } from './rules.ts';
 import { fmtMoney, orgPayroll } from './contracts.ts';
 import { agmEvalSd } from './staff.ts';
 import { tradeValue } from './value.ts';
+import { shoppingFor } from './market.ts';
+import { pname } from './util.ts';
 import { normal, rand, seededNormal } from './random.ts';
 
 const ROUNDS = 3; // rounds without a deal before they stop taking calls
@@ -66,6 +68,14 @@ export function markFloated(league: League, prop: TradeProposal): void {
 export function isFloated(league: League, prop: TradeProposal): boolean {
   const s = sig(prop);
   return (league.tradeFloated ?? []).some((f) => f.sig === s && league.day - f.day <= FLOAT_DAYS) && aiAccepts(league, league.orgs[prop.orgs[1]], prop);
+}
+
+// A buyer mentions it when your package fills one of the spots it's shopping for.
+function needNote(league: League, ai: Org, prop: TradeProposal): string {
+  const wants = shoppingFor(league, ai);
+  const hit = prop.give[0].pids.map((id) => league.players[id]).find((p) => p && wants.includes(p.pos) && (p.level === 'MLB' || p.level === 'AAA'));
+  const word: Record<string, string> = { C: 'catcher', '1B': 'first baseman', '2B': 'second baseman', '3B': 'third baseman', SS: 'shortstop', LF: 'left fielder', CF: 'center fielder', RF: 'right fielder', SP: 'starter', RP: 'reliever' };
+  return hit ? ` They've been shopping for a ${word[hit.pos] ?? hit.pos}, and ${pname(hit)} fits what they're after.` : '';
 }
 
 export const openTalks = (league: League) => (league.tradeTalks ?? []).filter((t) => t.status === 'waiting' || t.status === 'countered');
@@ -177,7 +187,7 @@ function respond(league: League, t: TradeTalk, stop = true): string {
     t.status = 'done';
     rel.rounds = 0;
     const todo = rosterTodo(league);
-    addInbox(league, { from, subject: `Trade accepted: ${ai.abbrev}`, kind: 'trade-reply', pids: t.proposal.give[1].pids, talkId: t.id, stop, text: `The ${name} accepted ${what}. The trade is done.${todo}`, link: { page: todo && !league.orgs[league.userOrgId].agm.roster ? 'roster-moves' : 'transactions' } });
+    addInbox(league, { from, subject: `Trade accepted: ${ai.abbrev}`, kind: 'trade-reply', pids: t.proposal.give[1].pids, talkId: t.id, stop, text: `The ${name} accepted ${what}. The trade is done.${needNote(league, ai, t.proposal)}${todo}`, link: { page: todo && !league.orgs[league.userOrgId].agm.roster ? 'roster-moves' : 'transactions' } });
     return `The ${name} accepted. The trade is done.${todo}`;
   }
   rel.rounds += 1;
@@ -199,7 +209,7 @@ function respond(league: League, t: TradeTalk, stop = true): string {
     addInbox(league, {
       from, subject: `Counteroffer: ${ai.abbrev}`, kind: 'trade-reply', talkId: t.id, stop,
       pids: [...new Set([...counter.give[1].pids, ...counter.give[0].pids])],
-      text: `The ${name} won't do ${what}, but they'd do it if you ${change}: ${assetsText(league, counter.give[0])} for ${assetsText(league, counter.give[1])}. The offer is good ${t.counterExpires === league.day ? 'until the deadline' : `for ${COUNTER_DAYS} days`}.`,
+      text: `The ${name} won't do ${what}, but they'd do it if you ${change}: ${assetsText(league, counter.give[0])} for ${assetsText(league, counter.give[1])}. The offer is good ${t.counterExpires === league.day ? 'until the deadline' : `for ${COUNTER_DAYS} days`}.${needNote(league, ai, t.proposal)}`,
       actions: [{ key: 'accept', label: 'Accept their counter' }, { key: 'revise', label: 'Counter back (open in Trade)' }, { key: 'decline', label: 'Decline' }],
     });
     return `The ${name} countered: ${assetsText(league, counter.give[0])} for ${assetsText(league, counter.give[1])}. See your Inbox to accept, counter back or decline.`;

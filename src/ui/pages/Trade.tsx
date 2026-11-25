@@ -8,6 +8,7 @@ import { fmtMoney, orgPayroll } from '../../core/contracts.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
 import { fortyMan, orgPlayers } from '../../core/util.ts';
+import { shoppingFor } from '../../core/market.ts';
 import { DataTable, OrgSelect, StatusTags, type Column, NumInput } from '../components.tsx';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { seasonFraction } from '../../core/value.ts';
@@ -159,8 +160,13 @@ export default function Trade() {
       <div className="form-row">
         Trade with <OrgSelect league={league} value={other.id} onChange={(id) => go('trade', [], { org: id })} />
         <span className="muted small">
-          {other.strategy} · owner {other.owner.type.toLowerCase()} · budget {fmtMoney(other.budget)} · payroll {fmtMoney(otherPay.cbt)}
+          {other.strategy} · {other.stance} · owner {other.owner.type.toLowerCase()} · budget {fmtMoney(other.budget)} · payroll {fmtMoney(otherPay.cbt)}
         </span>
+        {shoppingFor(league, other).length > 0 && (
+          <span className="needs-tag" title="A buying club pays a little extra (about 10%) for a big-league-ready player at one of these spots">
+            Shopping for: <b>{shoppingFor(league, other).join(', ')}</b>
+          </span>
+        )}
       </div>
       <div className="cards" style={{ alignItems: 'stretch' }}>
         <div className="box" style={{ flex: 1, minWidth: 420 }}>

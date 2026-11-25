@@ -8,6 +8,7 @@ import { loadTrade } from './Trade.tsx';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href } from '../../router.ts';
 import { answerInbox, moraleLabel } from '../../core/morale.ts';
+import { answerDfaOffer } from '../../core/dfaMarket.ts';
 import { answerStory } from '../../core/storylines.ts';
 import { answerPosition, answerSeptember } from '../../core/positions.ts';
 import { canRecall, canSelect, recallPlayer, selectContract } from '../../core/rules.ts';
@@ -90,6 +91,8 @@ export default function Inbox() {
                         const counter = t?.counter;
                         setMessage(answerCounter(league, m, a.key));
                         if (a.key === 'revise' && t && counter) { loadTrade(t.orgId, [counter.give[0], counter.give[1]]); go('trade'); }
+                      } else if (m.kind === 'dfa-offer') {
+                        setMessage(answerDfaOffer(league, m, a.key));
                       } else if (m.kind === 'il-ready') {
                         setMessage(answerIlReady(league, m, a.key));
                       } else if (m.kind === 'staff') {
