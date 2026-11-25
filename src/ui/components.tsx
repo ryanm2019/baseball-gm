@@ -124,7 +124,7 @@ export function DataTable<T>({
             <tr key={rowKey(r)} className={[rowClass?.(r), pinned?.(r) ? 'pinned' : ''].filter(Boolean).join(' ') || undefined}>
               {cols.map((c) => (
                 <td key={c.key} className={c.left ? 'l' : ''}>
-                  {c.render ? c.render(r) : c.value ? c.value(r) : null}
+                  {c.render ? c.render(r) : c.value ? ((c.key === 'ovr' || c.key === 'pot') && typeof c.value(r) === 'number' ? <Rating v={Math.round(c.value(r) as number)} /> : c.value(r)) : null}
                 </td>
               ))}
             </tr>
@@ -148,9 +148,11 @@ export function OrgLink({ league, orgId, level = 'MLB', abbrev }: { league: Leag
   return <a href={href('roster', [], { org: o.id, level })}>{name}</a>;
 }
 
+// 20-80 grade color bands: red (poor) → orange → yellow (average) → green → blue (elite).
+export const gradeClass = (v: number): string => (v >= 75 ? 'g80' : v >= 65 ? 'g70' : v >= 55 ? 'g60' : v >= 45 ? 'g50' : v >= 35 ? 'g40' : 'g20');
+
 export function Rating({ v }: { v: number }) {
-  const cls = v >= 70 ? 'r80' : v >= 60 ? 'r60' : v >= 45 ? 'r50' : v >= 35 ? 'r40' : 'r20';
-  return <span className={`rating ${cls}`}>{v}</span>;
+  return <span className={`rating ${gradeClass(v)}`}>{v}</span>;
 }
 
 export function LevelTabs({ value, onChange, extra }: { value: string; onChange: (v: string) => void; extra?: { key: string; label: string }[] }) {

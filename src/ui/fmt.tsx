@@ -7,6 +7,8 @@ import { optionYearAvailable } from '../core/rules.ts';
 import type { Column } from './components.tsx';
 import { PlayerLink, Rating, StatusTags } from './components.tsx';
 
+import { HeatIcon } from './show.tsx';
+
 export const bt = (p: Player) => `${p.bats}/${p.throws}`;
 
 export function seasonBat(p: Player, season: number, level?: Level): BatStats {
@@ -33,6 +35,7 @@ export function nameCol(league: League): Column<Player> {
     render: (p) => (
       <>
         <PlayerLink p={p} />
+        <HeatIcon league={league} p={p} />
         <StatusTags league={league} p={p} />
       </>
     ),

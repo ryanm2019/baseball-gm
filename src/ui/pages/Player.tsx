@@ -14,9 +14,11 @@ import { canStart, changePosition, positionReads } from '../../core/positions.ts
 
 const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
-import { orgById, pname } from '../../core/util.ts';
+import { orgById } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
 import { ActionSelect, LinkedText, OrgLink, Rating, StatusTags } from '../components.tsx';
+import { ShowHeader } from '../show.tsx';
+import { ContractCell } from '../fmt.tsx';
 import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
 import { batAdvanced, entryWar, levelPlus, minorPerfAdj, pitAdvanced, seasonCtx } from '../../core/war.ts';
 import { scoutArea } from '../../core/ratings.ts';
@@ -337,11 +339,22 @@ export default function PlayerPage() {
 
   return (
     <>
-      <h1>
-        {pname(p)} <StatusTags league={league} p={p} />{' '}
-        <a className="btn btn-sm" href={href('compare', [], { pids: String(p.id) })}>Compare</a>{' '}
-        <RosterNav league={league} p={p} />
-      </h1>
+      <div className="show show-banner">
+        <div className="show-bar">
+          <StatusTags league={league} p={p} />
+          <a className="btn btn-sm" href={href('compare', [], { pids: String(p.id) })}>Compare</a>
+          <RosterNav league={league} p={p} />
+        </div>
+        <ShowHeader league={league} p={p} level={p.level ?? undefined} />
+        <div className="sh-strip">
+          <div><span>Team</span><b>{org ? <><OrgLink league={league} orgId={org.id} level={p.level ?? 'MLB'} /> · {p.level}</> : p.retired ? 'Retired' : 'Free agent'}</b></div>
+          {p.orgId !== null && <div><span>Contract</span><b><ContractCell league={league} p={p} /></b></div>}
+          <div><span>Service</span><b>{serviceLabel(p.mlServiceDays, s)} · {serviceClass(p, s)}</b></div>
+          {p.orgId !== null && <div><span>Options</span><b>{optLeft} left{p.optionsUsed ? ` (${p.optionsUsed} used)` : ''}</b></div>}
+          <div><span>Born</span><b>{p.born} · {p.country}</b></div>
+          <div><span>Ht / Wt</span><b>{ft}'{inch}" · {p.weight}</b></div>
+        </div>
+      </div>
       <div className="cards">
         <div className="box">
           <div className="kv">

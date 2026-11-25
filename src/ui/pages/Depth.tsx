@@ -6,11 +6,12 @@ import type { DepthChart, Level, PenRole, Player, Pos } from '../../core/types.t
 import { PEN_ROLES } from '../../core/types.ts';
 import { activeAt, playersAt } from '../../core/util.ts';
 import { defAt, isPitcher, scoutedOvr } from '../../core/ratings.ts';
-import { battingOrder, buildLineup } from '../../core/sim/lineup.ts';
+import { battingOrder, buildLineup, restDays, rotationOf, suggestLineup } from '../../core/sim/lineup.ts';
 import { LevelTabs } from '../components.tsx';
-import { PlayerCard } from '../PlayerCard.tsx';
 import { posLabel } from '../../core/rules.ts';
-import { depthSeason, HIT_HEAD, HitCells, PIT_HEAD, PitCells, StarterLine, type StatWhen } from '../depthStats.tsx';
+import { depthSeason, HIT_HEAD, HitCells, StarterLine, type StatWhen } from '../depthStats.tsx';
+import { gradeClass, HeatIcon, ShowHeader } from '../show.tsx';
+import { era, seasonPit } from '../fmt.tsx';
 
 const POSITIONS: Pos[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 
@@ -25,21 +26,19 @@ export default function Depth() {
   const route = useRoute();
   const level = (route.query.level ?? 'MLB') as Level;
   const [draft, setDraft] = useState<{ key: string; d: DepthChart } | null>(null);
-  const [drag, setDrag] = useState<{ from: 'lineup' | 'bench'; i: number; pid: number } | null>(null);
+  const [drag, setDrag] = useState<{ from: 'lineup' | 'bench' | 'rot' | 'pen'; i: number; pid: number } | null>(null);
+  const [tab, setTab] = useState<'lineup' | 'pitching'>('lineup');
+  const [posMenu, setPosMenu] = useState<number | null>(null);
+  const [roleMenu, setRoleMenu] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setSel(null); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setPosMenu(null); setRoleMenu(null); } };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, []);
   const [vs, setVs] = useState<'R' | 'L'>('R');
   const [when, setWhen] = useState<StatWhen>(statWhen);
-  // Clicking a row shows the player's ratings; clicks on the dropdowns don't count.
-  const pick = (pid: number) => (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('select, option, a, button')) return;
-    setSel(pid);
-  };
   if (!league) return null;
   const org = league.orgs[league.userOrgId];
   const roster = activeAt(league, org.id, level).filter((p) => !p.injury);
@@ -96,7 +95,9 @@ export default function Depth() {
     setDraft({ key, d: x });
   };
   if (d.rotation.length === 0) {
-    d.rotation = [...pitchers].sort((a, b) => (b.pos === 'SP' ? 1 : 0) - (a.pos === 'SP' ? 1 : 0) || scoutedOvr(league, b) - scoutedOvr(league, a)).slice(0, 5).map((p) => p.id);
+    // Auto: the rotation the manager actually uses.
+    d.rotation = rotationOf(league, org.id, level, pitchers, undefined).map((p) => p.id);
+    if (d.rotation.length === 0) d.rotation = [...pitchers].sort((a, b) => (b.pos === 'SP' ? 1 : 0) - (a.pos === 'SP' ? 1 : 0) || scoutedOvr(league, b) - scoutedOvr(league, a)).slice(0, 5).map((p) => p.id);
   }
   while (d.lineup.length < 9) d.lineup.push({ pid: healthyHitters[d.lineup.length]?.id ?? 0, pos: POSITIONS[d.lineup.length] });
   const cur = cardOf(d);
@@ -110,7 +111,7 @@ export default function Depth() {
   // Drop onto lineup spot i: a lineup player moves to that spot (with his
   // position); a bench player takes over that spot's position.
   const drop = (i: number) => {
-    if (!drag) return;
+    if (!drag || (drag.from !== 'lineup' && drag.from !== 'bench')) return;
     update((x) => {
       if (drag.from === 'lineup') {
         const c = cardOf(x);
@@ -125,15 +126,12 @@ export default function Depth() {
     setOver(null);
   };
 
-  const name = (p: Player) => `${p.first} ${p.last} (${posLabel(p)}, ${scoutedOvr(league, p)})`;
   const ids = cur.map((s) => s.pid);
   const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
   const posList = cur.map((s) => s.pos);
   const missingPos = POSITIONS.filter((p) => !posList.includes(p));
   const valid = dupes.length === 0 && missingPos.length === 0 && ids.every((id) => hitters.some((h) => h.id === id)) && d.closer !== null;
   const dirty = draft?.key === key;
-  // The player you clicked opens in a side panel (a bottom sheet on a phone).
-  const shown = sel !== null ? league.players[sel] ?? null : null;
   const relievers = pitchers.filter((p) => !d.rotation.includes(p.id));
   const roleOf = (pid: number): PenRole => (d.closer === pid ? 'CL' : d.setup.includes(pid) ? 'SU' : d.pen?.[pid] && d.pen[pid] !== 'CL' && d.pen[pid] !== 'SU' ? d.pen[pid] : 'MR');
   const setRole = (pid: number, role: PenRole) =>
@@ -161,36 +159,93 @@ export default function Depth() {
     changed();
   };
 
-  return (
-    <div className={shown ? 'with-side-panel' : ''}>
-      <h1>Depth Chart <span className="muted small">{org.affiliates[level].name}</span>{level === 'MLB' && <> <a className="btn btn-sm" href={href('depth-field')}>Field view</a></>}</h1>
-      <LevelTabs value={level} onChange={(v) => go('depth', [], { level: v })} />
-      <p>
-        Mode: <b>{org.depth[level]?.auto === false ? 'Manual' : 'Auto (manager sets the lineup each day)'}</b>{' '}
-        {org.depth[level]?.auto === false && (
-          <button className="btn btn-sm" onClick={() => save(true)}>
-            Switch to auto
-          </button>
-        )}
-      </p>
-      <p className="muted small">
-        Edit any time. Your manual lineup is used every day; if someone in it is hurt or off the active roster, only his spot is filled by the best available bench player at that position, and he goes back in when he returns. Auto lineups platoon against the opposing starter and rest regulars now and then.
-      </p>
-      <div className="form-row small">
-        Stats:{' '}
-        <select value={when} onChange={(e) => { statWhen = e.target.value as StatWhen; setWhen(statWhen); }}>
-          <option value="this">{depthSeason(league, 'this')} at {level}</option>
-          <option value="last">{depthSeason(league, 'last')} at {level}</option>
-        </select>{' '}
-        <span className="muted">Hover a column header for what it means.</span>
-      </div>
-      <div className="cards">
-        <div className="box">
-          <h3>Lineup</h3>
-          <div className="btn-group tabs">
-            <button className={`btn btn-sm${vs === 'R' ? ' active' : ''}`} onClick={() => setVs('R')}>vs RHP</button>
-            <button className={`btn btn-sm${vs === 'L' ? ' active' : ''}`} onClick={() => setVs('L')}>vs LHP</button>
-          </div>{' '}
+  // Change a hitter's position; whoever had that spot takes his old one.
+  const setPos = (i: number, pos: Pos) => {
+    update((x) => {
+      const c = cardOf(x);
+      const j = c.findIndex((s, k) => k !== i && s.pos === pos);
+      if (j >= 0) c[j].pos = c[i].pos;
+      c[i].pos = pos;
+    });
+    setPosMenu(null);
+  };
+  const optimize = () => update((x) => {
+    const best = suggestLineup(league, org.id, level, vs);
+    if (best.length !== 9) return;
+    const c = cardOf(x);
+    c.splice(0, c.length, ...best.map((b) => ({ pid: b.p.id, pos: b.pos })));
+  });
+
+  // Pitching drag: rotation slots reorder; a reliever dropped on a slot takes it
+  // (the starter he replaces goes to middle relief).
+  const dropRot = (i: number) => {
+    if (!drag || (drag.from !== 'rot' && drag.from !== 'pen')) return;
+    update((x) => {
+      if (drag.from === 'rot') {
+        const [m] = x.rotation.splice(drag.i, 1);
+        x.rotation.splice(i, 0, m);
+      } else {
+        const out = x.rotation[i];
+        x.rotation[i] = drag.pid;
+        if (x.closer === drag.pid) x.closer = out ?? null;
+        x.setup = x.setup.filter((id) => id !== drag.pid);
+        x.pen ??= {};
+        delete x.pen[drag.pid];
+        if (out !== undefined && x.closer !== out) x.pen[out] = 'MR';
+      }
+    });
+    setDrag(null);
+    setOver(null);
+  };
+
+  const dragRow = (from: 'lineup' | 'bench' | 'rot' | 'pen', i: number, pid: number, onDrop?: () => void) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(pid)); setDrag({ from, i, pid }); },
+    onDragEnd: () => { setDrag(null); setOver(null); },
+    ...(onDrop ? {
+      onDragOver: (e: React.DragEvent) => { e.preventDefault(); if (over !== i) setOver(i); },
+      onDragLeave: () => setOver((o) => (o === i ? null : o)),
+      onDrop: (e: React.DragEvent) => { e.preventDefault(); onDrop(); },
+    } : {}),
+  });
+  const grip = (from: 'lineup' | 'bench' | 'rot' | 'pen', i: number, pid: number, onDrop?: () => void) => (
+    <td
+      className={`grip${drag?.pid === pid && drag.from === from ? ' picked' : ''}`}
+      title="Drag, or tap here and then tap the spot you want"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (drag && onDrop && drag.pid !== pid) onDrop();
+        else setDrag(drag?.pid === pid ? null : { from, i, pid });
+      }}
+    >⋮⋮</td>
+  );
+  const ovrCell = (p: Player) => { const v = scoutedOvr(league, p); return <td className={`ovr ${gradeClass(v)}`}>{v}</td>; };
+  const defCell = (p: Player | undefined, pos: Pos) => {
+    if (!p || pos === 'DH' || pos === 'SP' || pos === 'RP') return <td className="muted">-</td>;
+    const v = Math.round(defAt(p, pos));
+    return <td className={`ovr ${gradeClass(v)}`}>{v}</td>;
+  };
+
+  // The header shows whoever you clicked (or the leadoff man / your ace).
+  const fallback = tab === 'lineup' ? league.players[cur[0]?.pid] : league.players[d.rotation[0]];
+  const shown = (sel !== null ? league.players[sel] : null) ?? fallback ?? null;
+  const shownSlot = shown ? cur.find((s) => s.pid === shown.id) : undefined;
+  // Who's up next under the saved chart (the manager skips anyone not rested).
+  const savedRot = rotationOf(league, org.id, level, pitchers, org.depth[level]);
+  const cycle = Math.max(savedRot.length, ...(org.depth[level]?.auto === false ? org.depth[level]!.bullpenDays ?? [] : []).map((x) => x + 1));
+  const nextSlot = cycle ? (org.rotationIndex[level] ?? 0) % cycle : -1;
+  const nextPid = savedRot[nextSlot]?.id;
+  const rotIdx = !dirty && nextPid !== undefined ? d.rotation.indexOf(nextPid) : -1;
+  const season0 = season;
+
+  const lineupPanel = (
+    <div className="spanel">
+      <div className="spanel-head">
+        <span>Lineup</span>
+        <span>
+          <button className={`btn btn-sm${vs === 'R' ? ' active' : ''}`} onClick={() => setVs('R')}>vs RHP</button>{' '}
+          <button className={`btn btn-sm${vs === 'L' ? ' active' : ''}`} onClick={() => setVs('L')}>vs LHP</button>{' '}
+          <button className="btn btn-sm" title="The manager's best nine and positions against this hand, defense included (no rest days)" onClick={optimize}>Optimize</button>{' '}
           <button
             className="btn btn-sm"
             title="Keep these nine players and positions; reorder them into the best batting order"
@@ -200,145 +255,222 @@ export default function Depth() {
               if (slots.length !== c.length) return;
               c.splice(0, c.length, ...battingOrder(slots, vs).map((y) => y.s));
             })}
-          >
-            Auto-sort order
-          </button>
-          <p className="muted small">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace whoever is there. On a phone, tap the ⋮⋮ handle on a player, then tap the ⋮⋮ on the spot you want. Click a player to see his ratings. The vs LHP card is used when the other team starts a lefty; until you change it, it starts as a copy of your vs RHP card.</p>
-          <table className="data compact">
-            <thead><tr><th>#</th><th /><th className="l">Player</th><th>Pos</th><th>Def</th>{HIT_HEAD(vs)}</tr></thead>
-            <tbody>
-              {cur.map((s, i) => {
-                const p = league.players[s.pid];
-                const def = p && s.pos !== 'DH' && s.pos !== 'SP' && s.pos !== 'RP' ? Math.round(defAt(p, s.pos)) : '-';
-                const out = p ? outReason(p) : null;
-                return (
-                  <tr
-                    key={i}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(s.pid)); setDrag({ from: 'lineup', i, pid: s.pid }); }}
-                    onDragEnd={() => { setDrag(null); setOver(null); }}
-                    onDragOver={(e) => { e.preventDefault(); if (over !== i) setOver(i); }}
-                    onDragLeave={() => setOver((o) => (o === i ? null : o))}
-                    onDrop={(e) => { e.preventDefault(); drop(i); }}
-                    onClick={pick(s.pid)}
-                    className={`draggable${over === i ? ' drop-target' : ''}${drag?.from === 'lineup' && drag.i === i ? ' dragging' : ''}${shown?.id === s.pid ? ' selected' : ''}`}
-                  >
-                    <td>{i + 1}</td>
-                    <td
-                      className={`grip${drag?.from === 'lineup' && drag.i === i ? ' picked' : ''}`}
-                      title="Drag, or tap here and then tap another spot"
-                      onClick={(e) => { e.stopPropagation(); if (drag) drop(i); else setDrag({ from: 'lineup', i, pid: s.pid }); }}
-                    >
-                      ⋮⋮
-                    </td>
-                    <td className="l">
-                      <select value={s.pid} onChange={(e) => update((x) => { cardOf(x)[i].pid = Number(e.target.value); })}>
-                        {hitters.map((h) => <option key={h.id} value={h.id}>{name(h)}{outReason(h) ? ` [${outReason(h)}]` : ''}</option>)}
-                      </select>
-                      {out && <span className="tag tag-il" title="The manager plays the best available sub in this spot until he's back">{out}: sub plays</span>}
-                    </td>
-                    <td>
-                      <select value={s.pos} onChange={(e) => update((x) => { cardOf(x)[i].pos = e.target.value as Pos; })}>
-                        {POSITIONS.map((p) => <option key={p}>{p}</option>)}
-                      </select>
-                    </td>
-                    <td>{def}</td>
-                    {p ? <HitCells league={league} p={p} level={level} season={season} vs={vs} /> : <td colSpan={5} />}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <h3>Bench</h3>
-          {bench.length === 0 ? <p className="muted small">No other hitters.</p> : (
-            <table className="data compact">
-              <thead><tr><th /><th className="l">Player</th>{HIT_HEAD(vs)}</tr></thead>
-              <tbody>
-                {bench.map((h) => (
-                  <tr
-                    key={h.id}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(h.id)); setDrag({ from: 'bench', i: -1, pid: h.id }); }}
-                    onDragEnd={() => { setDrag(null); setOver(null); }}
-                    onClick={pick(h.id)}
-                    className={`draggable${drag?.pid === h.id ? ' dragging' : ''}${shown?.id === h.id ? ' selected' : ''}`}
-                  >
-                    <td
-                      className={`grip${drag?.pid === h.id ? ' picked' : ''}`}
-                      title="Drag onto a lineup spot, or tap here and then tap a lineup spot"
-                      onClick={(e) => { e.stopPropagation(); setDrag(drag?.pid === h.id ? null : { from: 'bench', i: -1, pid: h.id }); }}
-                    >
-                      ⋮⋮
-                    </td>
-                    <td className="l">{name(h)} {outReason(h) && <span className="tag tag-il">{outReason(h)}</span>}</td>
-                    <HitCells league={league} p={h} level={level} season={season} vs={vs} />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          >Sort order</button>
+        </span>
+      </div>
+      <table className="stable lineup-tbl">
+        <thead><tr><th /><th /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th><th title="Defense at the position he's playing">Def</th>{HIT_HEAD(vs)}</tr></thead>
+        <tbody>
+          {cur.map((s, i) => {
+            const p = league.players[s.pid];
+            const out = p ? outReason(p) : null;
+            return (
+              <tr key={i} {...dragRow('lineup', i, s.pid, () => drop(i))} onClick={() => setSel(s.pid)}
+                className={`${over === i && (drag?.from === 'lineup' || drag?.from === 'bench') ? 'drop-target' : ''}${drag?.from === 'lineup' && drag.i === i ? ' dragging' : ''}${shown?.id === s.pid ? ' sel' : ''}`}>
+                <td className="num">{i + 1}.</td>
+                {grip('lineup', i, s.pid, () => drop(i))}
+                <td className="l nm">{p ? `${p.first} ${p.last}` : '—'}{p && <HeatIcon league={league} p={p} />}{out && <span className="out" title="The manager plays the best available sub here until he's back">{out}</span>}</td>
+                <td style={{ position: 'relative' }}>
+                  <button className="pos-btn" onClick={(e) => { e.stopPropagation(); setRoleMenu(null); setPosMenu(posMenu === i ? null : i); }}>{s.pos}</button>
+                  {posMenu === i && p && (
+                    <div className="pos-menu" style={{ right: 0, top: 30 }} onClick={(e) => e.stopPropagation()}>
+                      {POSITIONS.map((pos) => {
+                        const v = pos === 'DH' ? null : Math.round(defAt(p, pos as Exclude<Pos, 'DH' | 'SP' | 'RP'>));
+                        const holder = cur.find((x, k) => k !== i && x.pos === pos);
+                        return (
+                          <button key={pos} className={`${pos === s.pos ? 'cur ' : ''}${v !== null ? gradeClass(v) : ''}`} onClick={() => setPos(i, pos)} title={holder ? `Swaps with ${league.players[holder.pid]?.last ?? ''}` : ''}>
+                            <b>{pos}</b><span>{v ?? '—'}</span>
+                          </button>
+                        );
+                      })}
+                      <div className="pm-note">Defense rating at each spot. Picking a taken spot swaps positions with that player.</div>
+                    </div>
+                  )}
+                </td>
+                <td>{p?.bats ?? ''}</td>
+                {p ? ovrCell(p) : <td />}
+                {defCell(p, s.pos)}
+                {p ? <HitCells league={league} p={p} level={level} season={season} vs={vs} /> : <td colSpan={5} />}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {(dupes.length > 0 || missingPos.length > 0) && (
+        <div style={{ padding: 10 }}>
           {dupes.length > 0 && <div className="alert alert-err">A player is listed twice.</div>}
           {missingPos.length > 0 && <div className="alert alert-err">Missing: {missingPos.join(', ')}</div>}
         </div>
-        <div className="box">
-          <h3>Rotation</h3>
-          {d.rotation.map((pid, i) => {
-            const bp = (d.bullpenDays ?? []).includes(i);
-            return (
-              <div key={i} className="form-row">
-                {i + 1}.{' '}
-                {bp ? <b>Bullpen game</b> : (
-                  <select value={pid} onChange={(e) => update((x) => { x.rotation[i] = Number(e.target.value); })}>
-                    {pitchers.map((p) => <option key={p.id} value={p.id}>{name(p)}</option>)}
-                  </select>
-                )}{' '}
-                {!bp && <button className="btn btn-sm" onClick={() => setSel(pid)}>Ratings</button>}{' '}
-                <label className="small"><input type="checkbox" checked={bp} onChange={(e) => update((x) => { const s = new Set(x.bullpenDays ?? []); if (e.target.checked) s.add(i); else s.delete(i); x.bullpenDays = [...s].sort(); })} /> Bullpen game</label>
-                {!bp && league.players[pid] && <div style={{ flexBasis: '100%', paddingLeft: 18 }}><StarterLine league={league} p={league.players[pid]} level={level} season={season} /></div>}
-              </div>
-            );
-          })}
-          <p className="muted small">A bullpen game: a rested reliever (not your closer) opens for an inning or two, then your long relievers and the rest of the pen cover the game.</p>
-          <div className="form-row small">
-            Playoff rotation:{' '}
-            <select value={d.playoffRotation ?? 4} onChange={(e) => update((x) => { x.playoffRotation = Number(e.target.value) as 3 | 4; })}>
-              <option value={4}>4 starters</option><option value={3}>3 starters</option>
-            </select>{' '}
-            <span className="muted">The others move to the bullpen for the playoffs, where their stuff plays up.</span>
-          </div>
-          <h3>Bullpen roles</h3>
-          <p className="muted small">The manager goes to each role by game situation. One closer, up to two setup men; setup 1 gets the 8th, setup 2 the 7th.</p>
-          <table className="data compact">
-            <thead><tr><th className="l">Reliever</th><th className="l">Role</th>{PIT_HEAD}<th /></tr></thead>
-            <tbody>
-              {relievers.map((p) => (
-                <tr key={p.id} className={shown?.id === p.id ? 'selected' : ''}>
-                  <td className="l">{name(p)}</td>
-                  <td className="l">
-                    <select value={roleOf(p.id)} onChange={(e) => setRole(p.id, e.target.value as PenRole)} title={PEN_ROLES.find((r) => r.key === roleOf(p.id))?.help}>
-                      {PEN_ROLES.map((r) => <option key={r.key} value={r.key}>{r.key === 'SU' && d.setup.includes(p.id) ? `Setup ${d.setup.indexOf(p.id) + 1}` : r.label}</option>)}
-                    </select>
-                  </td>
-                  <PitCells league={league} p={p} level={level} season={season} />
-                  <td><button className="btn btn-sm" onClick={() => setSel(p.id)}>Ratings</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {d.closer === null && <div className="alert alert-err">Pick a closer.</div>}
-        </div>
-      </div>
-      <button className="btn btn-primary" disabled={!valid} onClick={() => save(false)}>
-        Save as manual depth chart
-      </button>{' '}
-      {dirty && <span className="muted small">Unsaved changes</span>}{' '}
-      {dirty && <button className="btn btn-sm" onClick={() => setDraft(null)}>Undo changes</button>}
-      {shown && (
-        <div className="side-panel" role="dialog" aria-label={`${shown.first} ${shown.last}`}>
-          <button className="btn btn-sm side-panel-close" onClick={() => setSel(null)} title="Close (Esc)">✕</button>
-          <PlayerCard league={league} p={shown} level={level} />
+      )}
+      <p className="help">Drag a hitter to a new spot in the order, or drag a bench player onto a spot to replace him (on a phone, tap ⋮⋮ then tap the spot). Tap a position to move him around the diamond. The vs LHP card starts as a copy of your vs RHP card.</p>
+    </div>
+  );
+
+  const benchPanel = (
+    <div className="spanel">
+      <div className="spanel-head"><span>Bench</span></div>
+      {bench.length === 0 ? <p className="help">No other hitters.</p> : (
+        <div style={{ overflowX: 'auto' }}>
+        <table className="stable bench-tbl">
+          <thead><tr><th /><th className="l">Player</th><th>Pos</th><th>B</th><th>Ovr</th>{HIT_HEAD(vs)}</tr></thead>
+          <tbody>
+            {bench.map((h) => (
+              <tr key={h.id} {...dragRow('bench', -1, h.id)} onClick={() => setSel(h.id)} className={`${drag?.pid === h.id ? 'dragging' : ''}${shown?.id === h.id ? ' sel' : ''}`}>
+                {grip('bench', -1, h.id)}
+                <td className="l nm">{h.first} {h.last}<HeatIcon league={league} p={h} />{outReason(h) && <span className="out">{outReason(h)}</span>}</td>
+                <td>{posLabel(h)}</td>
+                <td>{h.bats}</td>
+                {ovrCell(h)}
+                <HitCells league={league} p={h} level={level} season={season} vs={vs} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
         </div>
       )}
+    </div>
+  );
+
+  const rotationPanel = (
+    <div className="spanel">
+      <div className="spanel-head">
+        <span>Starting rotation</span>
+        <span className="small" style={{ fontSize: 12, letterSpacing: 0, textTransform: 'none' }}>
+          Playoffs:{' '}
+          <select value={d.playoffRotation ?? 4} onChange={(e) => update((x) => { x.playoffRotation = Number(e.target.value) as 3 | 4; })} style={{ background: '#0f2240', color: '#fff' }}>
+            <option value={4}>4 starters</option><option value={3}>3 starters</option>
+          </select>
+        </span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+      <table className="stable">
+        <thead><tr><th /><th /><th className="l">Starters</th><th>T</th><th>Ovr</th><th title="Days since his last start (ready at 5)">Rest</th><th className="l">{season0}</th><th /></tr></thead>
+        <tbody>
+          {d.rotation.map((pid, i) => {
+            const bp = (d.bullpenDays ?? []).includes(i);
+            const p = league.players[pid];
+            const rd = p ? Math.max(0, Math.min(5, restDays(league, p))) : 0;
+            const ready = rd >= 5;
+            return (
+              <tr key={i} {...dragRow('rot', i, pid, () => dropRot(i))} onClick={() => !bp && setSel(pid)}
+                className={`${over === i && (drag?.from === 'rot' || drag?.from === 'pen') ? 'drop-target' : ''}${drag?.from === 'rot' && drag.i === i ? ' dragging' : ''}${!bp && shown?.id === pid ? ' sel' : ''}`}>
+                <td className="num">{i + 1}.</td>
+                {bp ? <td /> : grip('rot', i, pid, () => dropRot(i))}
+                <td className="l nm">
+                  {bp ? 'Bullpen game' : p ? `${p.first} ${p.last}` : '—'}{!bp && p && <HeatIcon league={league} p={p} />}
+                  {i === rotIdx && <span className="tagx next">Next</span>}
+                </td>
+                <td>{bp ? '' : p?.throws}</td>
+                {bp || !p ? <td /> : ovrCell(p)}
+                <td>{bp || !p ? '' : <span title={ready ? 'Ready' : `${rd} days since his last start`}><span className="rest"><div style={{ width: `${(rd / 5) * 100}%`, background: ready ? '#2fbf71' : rd >= 3 ? '#f5c542' : '#e5484d' }} /></span></span>}</td>
+                <td className="l wrap">{bp || !p ? <span className="muted small">An opener, then the pen</span> : <StarterLine league={league} p={p} level={level} season={season} />}</td>
+                <td>
+                  <button className="btn btn-sm" title="Make this turn a bullpen game: a rested reliever opens, then the pen covers" onClick={(e) => { e.stopPropagation(); update((x) => { const st = new Set(x.bullpenDays ?? []); if (bp) st.delete(i); else st.add(i); x.bullpenDays = [...st].sort(); }); }}>
+                    {bp ? 'Cancel BP game' : 'BP game'}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+          {d.rotation.length < 5 && (
+            <tr {...dragRow('rot', d.rotation.length, -1, () => dropRot(d.rotation.length))} draggable={false} className={over === d.rotation.length ? 'drop-target' : ''}>
+              <td className="num">{d.rotation.length + 1}.</td>
+              <td className="grip" onClick={(e) => { e.stopPropagation(); if (drag) dropRot(d.rotation.length); }}>⋮⋮</td>
+              <td className="l muted" colSpan={6}>[Open] No fifth starter: these turns are bullpen games. Drag a pitcher here to fill it.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      </div>
+      <p className="help">Drag starters to reorder, or drag a reliever onto a turn to give him the start (the starter he replaces moves to middle relief). A bullpen game: a rested reliever (not your closer) opens for an inning or two, then the pen covers.</p>
+    </div>
+  );
+
+  const ROLE_ORDER: PenRole[] = ['CL', 'SU', 'MR', 'LR', 'MU'];
+  const penPanel = (
+    <div className="spanel">
+      <div className="spanel-head"><span>Bullpen</span></div>
+      <table className="stable">
+        <thead><tr><th /><th className="l">Relievers</th><th>Role</th><th>T</th><th>Ovr</th><th title="Appearances in the last 7 days">7d</th><th>G</th><th>ERA</th><th>SV/HLD</th></tr></thead>
+        <tbody>
+          {ROLE_ORDER.flatMap((role) => {
+            const group = relievers.filter((p) => roleOf(p.id) === role).sort((a, b) => (role === 'SU' ? d.setup.indexOf(a.id) - d.setup.indexOf(b.id) : scoutedOvr(league, b) - scoutedOvr(league, a)));
+            const label = PEN_ROLES.find((r) => r.key === role)!;
+            return [
+              <tr key={`h-${role}`} className="sub"><td colSpan={9} title={label.help}>{label.label}{role === 'SU' ? ' (up to 2)' : ''} · <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>{label.help}</span></td></tr>,
+              ...(group.length ? group.map((p) => {
+                const s = seasonPit(p, season, level);
+                const recent = (p.recentApps ?? []).filter((x) => x > league.day - 7 && x <= league.day).length;
+                return (
+                  <tr key={p.id} {...dragRow('pen', -1, p.id)} onClick={() => setSel(p.id)} className={`${drag?.pid === p.id ? 'dragging' : ''}${shown?.id === p.id ? ' sel' : ''}`}>
+                    {grip('pen', -1, p.id)}
+                    <td className="l nm">{p.first} {p.last}<HeatIcon league={league} p={p} />{p.pos === 'SP' && <span className="tagx">SP</span>}</td>
+                    <td style={{ position: 'relative' }}>
+                      <button className={`role-btn ${roleOf(p.id)}`} onClick={(e) => { e.stopPropagation(); setPosMenu(null); setRoleMenu(roleMenu === p.id ? null : p.id); }}>
+                        {roleOf(p.id) === 'SU' ? `SU${d.setup.indexOf(p.id) + 1}` : roleOf(p.id)}
+                      </button>
+                      {roleMenu === p.id && (
+                        <div className="pos-menu" style={{ right: 0, top: 26, gridTemplateColumns: 'repeat(1, 150px)' }} onClick={(e) => e.stopPropagation()}>
+                          {PEN_ROLES.map((r) => (
+                            <button key={r.key} className={r.key === roleOf(p.id) ? 'cur' : ''} title={r.help} onClick={() => { setRole(p.id, r.key); setRoleMenu(null); }}>
+                              <b>{r.label}</b>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td>{p.throws}</td>
+                    {ovrCell(p)}
+                    <td className={recent >= 3 ? 'neg' : ''}>{recent || ''}</td>
+                    <td>{s.g || ''}</td>
+                    <td>{s.outs ? era(s).toFixed(2) : ''}</td>
+                    <td>{s.g ? `${s.sv}/${s.hld}` : ''}</td>
+                  </tr>
+                );
+              }) : [<tr key={`e-${role}`}><td /><td className="l muted" colSpan={8}>[Empty]</td></tr>]),
+            ];
+          })}
+        </tbody>
+      </table>
+      {d.closer === null && <div style={{ padding: 10 }}><div className="alert alert-err">Pick a closer.</div></div>}
+      <p className="help">Tap a role to change it. The manager goes to each role by game situation: setup 1 gets the 8th, setup 2 the 7th.</p>
+    </div>
+  );
+
+  return (
+    <div className="show" onClick={() => { if (posMenu !== null) setPosMenu(null); if (roleMenu !== null) setRoleMenu(null); }}>
+      <div className="show-bar">
+        <h1 style={{ margin: 0 }}>Depth Chart <span className="muted small">{org.affiliates[level].name}</span></h1>
+        {level === 'MLB' && <a className="btn btn-sm" href={href('depth-field')}>Field view</a>}
+      </div>
+      <LevelTabs value={level} onChange={(v) => go('depth', [], { level: v })} />
+      {shown && (
+        <ShowHeader league={league} p={shown} level={level}>
+          {shownSlot && <span className="sh-chip">Playing {shownSlot.pos}{shownSlot.pos !== 'DH' ? ` · Def ${Math.round(defAt(shown, shownSlot.pos as Exclude<Pos, 'DH' | 'SP' | 'RP'>))}` : ''}</span>}
+          {!isPitcher(shown) ? null : d.rotation.includes(shown.id) ? <span className="sh-chip">Rotation #{d.rotation.indexOf(shown.id) + 1}</span> : <span className="sh-chip">{PEN_ROLES.find((r) => r.key === roleOf(shown.id))?.label}</span>}
+        </ShowHeader>
+      )}
+      <div className="show-tabs">
+        <button className={tab === 'lineup' ? 'on' : ''} onClick={() => { setTab('lineup'); setSel(null); }}>Lineups</button>
+        <button className={tab === 'pitching' ? 'on' : ''} onClick={() => { setTab('pitching'); setSel(null); }}>Pitching rotation</button>
+        <span style={{ flex: 1 }} />
+        <span className="show-bar" style={{ margin: 0 }}>
+          <span className={`mode${org.depth[level]?.auto === false ? ' manual' : ''}`}>{org.depth[level]?.auto === false ? 'Manual' : 'Auto: manager sets it daily'}</span>
+          <span className="small muted">Stats</span>
+          <select value={when} onChange={(e) => { statWhen = e.target.value as StatWhen; setWhen(statWhen); }}>
+            <option value="this">{depthSeason(league, 'this')} at {level}</option>
+            <option value="last">{depthSeason(league, 'last')} at {level}</option>
+          </select>
+        </span>
+      </div>
+      {tab === 'lineup' ? <div className="show-panels">{lineupPanel}{benchPanel}</div> : <div className="show-panels even">{rotationPanel}{penPanel}</div>}
+      <div className="show-bar" style={{ marginTop: 16 }}>
+        <button className="btn btn-primary" disabled={!valid} onClick={() => save(false)}>Save as manual depth chart</button>
+        {org.depth[level]?.auto === false && <button className="btn btn-sm" onClick={() => save(true)}>Switch to auto</button>}
+        {dirty && <span className="muted small">Unsaved changes</span>}
+        {dirty && <button className="btn btn-sm" onClick={() => setDraft(null)}>Undo changes</button>}
+      </div>
+      <p className="help" style={{ margin: '6px 0' }}>Your manual lineup is used every day; if someone in it is hurt or off the active roster, only his spot is filled by the best available bench player, and he goes back in when he returns. Auto lineups platoon against the opposing starter and rest regulars now and then.</p>
     </div>
   );
 }

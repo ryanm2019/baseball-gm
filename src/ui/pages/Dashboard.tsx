@@ -6,7 +6,7 @@ import type { League, Org } from '../../core/types.ts';
 import { userRosterIssues, userRosterWarnings } from '../../core/sim/day.ts';
 import { dayShort, LEVEL_NAMES } from '../../core/settings.ts';
 import { cbtTax, fmtMoney, orgPayroll } from '../../core/contracts.ts';
-import { activeAt, fortyMan, orgById, pname } from '../../core/util.ts';
+import { activeAt, fortyMan, orgById, orgPlayers, pname } from '../../core/util.ts';
 import { era, fmt3, obp, ops, seasonBat, seasonPit, slg, avg } from '../fmt.tsx';
 import { isPitcher } from '../../core/ratings.ts';
 import { farmDirectorOf } from '../../core/farmDirector.ts';
@@ -16,6 +16,37 @@ import { changed } from '../../store.ts';
 import { LinkedText, OrgSelect } from '../components.tsx';
 import { expectedWins, setOwnerGoals } from '../../core/owners.ts';
 import { deptSpend } from '../../core/depts.ts';
+import { TeamBadge } from '../show.tsx';
+import { heat } from '../../core/form.ts';
+
+const ordinal = (n: number) => `${n}${['st', 'nd', 'rd'][n - 1] ?? 'th'}`;
+
+// Who's hot and who's cold on the big league club.
+function HotCold({ league, org }: { league: League; org: Org }) {
+  const list = orgPlayers(league, org.id).filter((p) => p.level === 'MLB').map((p) => ({ p, h: heat(league, p) })).filter((x) => x.h);
+  const hot = list.filter((x) => x.h!.kind === 'hot');
+  const cold = list.filter((x) => x.h!.kind === 'cold');
+  return (
+    <>
+      <h3 style={{ marginTop: 0 }}>Who's hot, who's not</h3>
+      {league.phase !== 'regular' && league.phase !== 'playoffs' ? <p className="muted small">Streaks start once the season does.</p> : !list.length ? <p className="muted small">Nobody on a real streak right now.</p> : (
+        <div className="hotcold">
+          {[['🔥 Hot', hot], ['❄️ Cold', cold]].map(([label, xs]) => (
+            <div key={label as string}>
+              <h4>{label as string}</h4>
+              {(xs as typeof list).length ? (xs as typeof list).map(({ p, h }) => (
+                <div key={p.id} className="row" title={h!.text}>
+                  <a href={href('player', [p.id])}>{p.first[0]}. {p.last}</a>
+                  <span className="muted">{h!.short}</span>
+                </div>
+              )) : <div className="muted small">None</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 function Goals({ league, org }: { league: League; org: Org }) {
   const g = org.goals;
@@ -128,7 +159,30 @@ export default function Dashboard() {
 
   return (
     <>
-      <h1>{org.region} {org.name} Dashboard</h1>
+      <div className="show show-banner">
+        <div className="dash-banner">
+          <div className="dash-team">
+            <TeamBadge league={league} orgId={org.id} size={64} />
+            <div>
+              <div className="nm">{org.region} {org.name}</div>
+              <div className="sub">{org.league} {org.div} · {ordinal(div.findIndex((d) => d.o.id === org.id) + 1)}{(() => { const gb = div.find((d) => d.o.id === org.id)?.gb ?? 0; return gb > 0 ? ` · ${gb.toFixed(1)} GB` : st.w + st.l > 0 ? ' · leads the division' : ''; })()}</div>
+            </div>
+          </div>
+          <div className="dash-rec">{st.w}-{st.l}<small>{league.phase === 'preseason' ? `${league.season} spring training` : `${league.season} record`}</small></div>
+          <div>
+            <div className="small muted" style={{ textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, fontSize: 11 }}>Last 10 · {st.streak > 0 ? `W${st.streak}` : st.streak < 0 ? `L${-st.streak}` : 'no streak'}</div>
+            <div className="l10">{st.last10 ? st.last10.split('').map((c, i) => <span key={i} className={c}>{c}</span>) : <span className="muted small" style={{ width: 'auto' }}>No games yet</span>}</div>
+          </div>
+        </div>
+        <div className="kpis">
+          <div className="kpi"><span>Run differential</span><b className={st.rs - st.ra > 0 ? 'pos' : st.rs - st.ra < 0 ? 'neg' : ''}>{st.rs - st.ra > 0 ? '+' : ''}{st.rs - st.ra}</b><i>{st.rs} scored · {st.ra} allowed</i></div>
+          <div className="kpi"><span>Projected wins</span><b>{Math.round(expectedWins(league, org.id))}</b><i>{st.w + st.l >= 10 ? `${Math.round((st.w / (st.w + st.l)) * 162)}-win pace` : 'from the roster'}</i></div>
+          <div className="kpi"><span>CBT payroll</span><b className={pay.cbt > org.budget ? 'neg' : ''}>{fmtMoney(pay.cbt)}</b><i>budget {fmtMoney(org.budget)}{tax.tax > 0 ? ` · tax ${fmtMoney(tax.tax)}` : ''}</i></div>
+          <div className="kpi"><span>Active / 40-man</span><b>{mlb.length} / {fortyMan(league, org.id).length}</b><i>max {league.settings.activeMax} / {league.settings.fortyMax}</i></div>
+          <div className="kpi"><span>Revenue</span><b>{fmtMoney(revenueSoFar(league, org).total)}</b><i>hype {Math.round(finOf(league, org).hype)}</i></div>
+          <div className="kpi"><span>Job security</span><b className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</b><i>{org.owner.first} {org.owner.last}</i></div>
+        </div>
+      </div>
       {league.fired && <Fired league={league} />}
       {league.phase === 'offseason' && (() => {
         const ev = nextEvent(league);
@@ -162,32 +216,11 @@ export default function Dashboard() {
       ))}
       <div className="cards">
         <div className="box">
-          <h2 style={{ marginTop: 0 }}>
-            {st.w}-{st.l}
-          </h2>
           <div className="kv">
-            <div>Division</div>
-            <div>{org.league} {org.div}, {div.findIndex((d) => d.o.id === org.id) + 1}{['st', 'nd', 'rd', 'th', 'th'][div.findIndex((d) => d.o.id === org.id)]}</div>
-            <div>Run differential</div>
-            <div className={st.rs - st.ra >= 0 ? 'pos' : 'neg'}>{st.rs - st.ra > 0 ? '+' : ''}{st.rs - st.ra}</div>
-            <div>Streak</div>
-            <div>{st.streak > 0 ? `W${st.streak}` : st.streak < 0 ? `L${-st.streak}` : '-'}</div>
-            <div>Active / 40-man</div>
-            <div>{mlb.length} / {fortyMan(league, org.id).length}</div>
-            <div>CBT payroll</div>
-            <div>{fmtMoney(pay.cbt)}{tax.tax > 0 ? ` (tax ${fmtMoney(tax.tax)})` : ''}</div>
             <div>Owner</div>
             <div>{org.owner.first} {org.owner.last} ({org.owner.type.toLowerCase()})</div>
-            <div>Budget</div>
-            <div>{fmtMoney(org.budget)}</div>
             <div>Departments</div>
             <div className={deptSpend(org) > org.opBudget ? 'neg' : ''}><a href={href('departments')}>{fmtMoney(deptSpend(org))}</a> of {fmtMoney(org.opBudget)}</div>
-            <div>Revenue</div>
-            <div><a href={href('finances')}>{fmtMoney(revenueSoFar(league, org).total)}</a> · hype {Math.round(finOf(league, org).hype)} · {finOf(league, org).games ? Math.round(finOf(league, org).attendance / finOf(league, org).games).toLocaleString() : '-'} per game</div>
-            <div>Job security</div>
-            <div>
-              <span className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</span>
-            </div>
             <div>Farm director</div>
             <div>{fd ? `${fd.first} ${fd.last} (${fd.philosophy})` : <a href={href('staff')}>None, hire one</a>}</div>
           </div>
@@ -247,7 +280,8 @@ export default function Dashboard() {
         </div>
 
         <div className="box">
-          <h3 style={{ marginTop: 0 }}>Team leaders</h3>
+          <HotCold league={league} org={org} />
+          <h3>Team leaders</h3>
           {hitters.length > 0 && (
             <div className="kv">
               {(() => {

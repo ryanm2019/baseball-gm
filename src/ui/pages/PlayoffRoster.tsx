@@ -1,3 +1,4 @@
+import { Rating } from '../components.tsx';
 // Set your 26 for the current playoff round.
 import { useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
@@ -42,7 +43,7 @@ export default function PlayoffRoster() {
               <td><input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} /></td>
               <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a></td>
               <td>{posLabel(p)}</td>
-              <td>{scoutedOvr(league, p)}</td>
+              <td><Rating v={scoutedOvr(league, p)} /></td>
               <td>{p.level}</td>
               <td className="l small">{p.injury ? `${p.injury.name} (${p.injury.daysLeft}d)` : ''}</td>
             </tr>

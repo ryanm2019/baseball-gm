@@ -13,6 +13,7 @@ import { resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay } from '../freeAgency.ts';
+import { recordBatForm, recordPitForm } from '../form.ts';
 import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
 import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
@@ -176,6 +177,11 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
     for (const { p, orgId, line } of out.pitLines) {
       const e = statEntry(p, league.season, g.level, orgId).pit;
       for (const k in line) e[k as keyof typeof line] += line[k as keyof typeof line];
+    }
+    // Hot and cold streaks (regular season).
+    if (!g.playoff) {
+      for (const { p, line } of out.batLines) recordBatForm(league, p, line);
+      for (const { p, line } of out.pitLines) recordPitForm(league, p, line);
     }
   }
   for (const { p, line, isStarter } of out.pitLines) {

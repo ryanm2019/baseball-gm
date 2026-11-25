@@ -289,6 +289,7 @@ export interface Player {
   consecutiveDays: number;
   lastStartDay: number;
   recentApps?: number[]; // league days of recent relief appearances (workload)
+  form?: { season: number; day: number; n: number; v: number; f?: number }; // recent stretch, fading (hot/cold)
 
   stats: StatEntry[];
 }

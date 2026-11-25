@@ -8,6 +8,7 @@ import { activeAt, orgPlayers } from '../../core/util.ts';
 import { defAt, isPitcher, ovr, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { ovrAt, positionReads } from '../../core/positions.ts';
 import { buildLineup } from '../../core/sim/lineup.ts';
+import { HeatIcon } from '../show.tsx';
 import { orgPayroll, fmtMoney } from '../../core/contracts.ts';
 import { acquisition } from '../../core/moves.ts';
 import { ContractCell } from '../fmt.tsx';
@@ -48,7 +49,7 @@ const rankOf = (mine: number, all: number[]) => 1 + all.filter((v) => v > mine +
 function Row({ league, p, note, star }: { league: League; p: Player; note?: string; star?: boolean }) {
   return (
     <div className={`fp-row${star ? ' fp-star' : ''}`}>
-      <span className="fp-name"><a href={href('player', [p.id])} title={acquisition(league, p)?.text ?? ''}>{p.first[0]}. {p.last}</a>{note && <span className="fp-note">{note}</span>}</span>
+      <span className="fp-name"><a href={href('player', [p.id])} title={acquisition(league, p)?.text ?? ''}>{p.first[0]}. {p.last}</a><HeatIcon league={league} p={p} />{note && <span className="fp-note">{note}</span>}</span>
       <span className="fp-num" title="Overall / potential (your scouts)">{Math.round(scoutedOvr(league, p))}/{Math.round(scoutedPot(league, p))}</span>
       <span className="fp-meta">{league.season - p.born}</span>
       <span className="fp-meta fp-ctr"><ContractCell league={league} p={p} compact /></span>
@@ -132,7 +133,7 @@ export default function DepthField() {
   };
 
   return (
-    <>
+    <div className="show">
       <h1>Depth Chart: Field View</h1>
       <p className="muted small">
         Starters (your lineup vs right-handers), their backups and the top prospects at each spot. The badge is where your starter ranks among the 30 clubs at that position (green top 10, red bottom 10). Hover a name to see how he was acquired. <a href={href('depth')}>Edit the depth chart</a>
@@ -175,6 +176,6 @@ export default function DepthField() {
         ), ranks.Bullpen, 'Bullpen')}
       </div>
       <p className="muted small">Prospect rows show their level (AAA, AA...). Backups show how well your scouts think they fit the spot (Natural fits show no tag).</p>
-    </>
+    </div>
   );
 }

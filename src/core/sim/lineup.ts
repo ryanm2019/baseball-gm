@@ -140,10 +140,10 @@ function devBonus(league: League, p: Player, level: Level): number {
   return w * Math.max(0, potOvr(p) - 45) * 0.7 * (age <= 21 ? 1 : age <= 23 ? 0.6 : 0.2);
 }
 
-function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: Player; pos: Pos }[] {
+function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level: Level, rest = true): { p: Player; pos: Pos }[] {
   const pool = [...hitters];
   // Regulars occasionally rest when there is a bench to cover.
-  if (pool.length > 10) {
+  if (rest && pool.length > 10) {
     // Rest follows fatigue: catchers wear down about 1.5x as fast.
     const restChance = (p: Player) => {
       const s = streak(league, p);
@@ -259,6 +259,13 @@ export function battingOrder<T extends { p: Player }>(slots: T[], hand: 'L' | 'R
   const cleanup = take(top, (x) => sp(x).power + 0.5 * offVs(x.p, hand));
   const third = take(top, (x) => offVs(x.p, hand));
   return [lead, second, third, cleanup, ...top, ...rest];
+}
+
+// The manager's best nine and their positions from everyone healthy (no rest
+// days): the Depth Chart's "Optimize lineup".
+export function suggestLineup(league: League, orgId: number, level: Level, oppHand: 'L' | 'R'): { p: Player; pos: Pos }[] {
+  const hitters = activeAt(league, orgId, level).filter((p) => !p.injury && !isPitcher(p));
+  return autoLineup(league, hitters, oppHand, level, false);
 }
 
 export function postseasonEligible(league: League, p: Player): boolean {

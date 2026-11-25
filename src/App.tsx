@@ -169,6 +169,17 @@ export default function App() {
   const league = st.league;
   // Phones: the sidebar slides in from a menu button and closes on navigation.
   const [navOpen, setNavOpen] = useState(false);
+  // Sidebar groups you've collapsed (remembered on this device). Your team's
+  // pages and the league basics start open; the rest start folded.
+  const [navClosed, setNavClosed] = useState<string[]>(() => {
+    try { const v = localStorage.getItem('bgm-nav-closed'); if (v) return JSON.parse(v) as string[]; } catch { /* no storage */ }
+    return ['Trades', 'Players', 'Front Office', 'Tools'];
+  });
+  const toggleGroup = (head: string) => setNavClosed((c) => {
+    const next = c.includes(head) ? c.filter((x) => x !== head) : [...c, head];
+    try { localStorage.setItem('bgm-nav-closed', JSON.stringify(next)); } catch { /* no storage */ }
+    return next;
+  });
   const routeKey = `${route.page}/${route.args.join('/')}`;
   useEffect(() => setNavOpen(false), [routeKey]);
   // Browser tab title follows the page (player pages show his name).
@@ -295,10 +306,17 @@ export default function App() {
       <div className="layout">
         {navOpen && <div className="nav-back" onClick={() => setNavOpen(false)} />}
         <nav className={`sidebar${navOpen ? ' open' : ''}`}>
-          {SIDEBAR.map((g) => (
-            <div key={g.head}>
-              <div className="head">{g.head}</div>
-              {g.links.map(([page, label]) => (
+          {SIDEBAR.map((g) => {
+            const here = g.links.some(([pg]) => pg === route.page);
+            const open = here || !navClosed.includes(g.head);
+            const badge = g.links.reduce((t, [pg]) => t + (pg === 'inbox' ? unreadInbox(league) : pg === 'trade-offers' ? league.tradeOffers.length : 0), 0);
+            return (
+            <div key={g.head} className={`nav-group${open ? '' : ' closed'}`}>
+              <button className="head" onClick={() => toggleGroup(g.head)} aria-expanded={open} disabled={here}>
+                <span className="caret">{open ? '▾' : '▸'}</span>{g.head}
+                {!open && badge > 0 && <span className="tag">{badge}</span>}
+              </button>
+              {open && g.links.map(([page, label]) => (
                 <a key={label} href={href(page)} className={route.page === page ? 'active' : ''}>
                   {label}
                   {page === 'trade-offers' && league.tradeOffers.length > 0 && <span className="tag">{league.tradeOffers.length}</span>}
@@ -306,7 +324,8 @@ export default function App() {
                 </a>
               ))}
             </div>
-          ))}
+            );
+          })}
         </nav>
         <main className="content">
           {st.message && (
