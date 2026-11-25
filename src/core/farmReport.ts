@@ -13,10 +13,10 @@ import { staffOf } from './staff.ts';
 // Cumulative minor league totals: [pa, ab, h, 2b, 3b, hr, bb, hbp, sf, sb, outs, er, k(p), bb(p), h(p)]
 type Snap = number[];
 
-function totals(league: League, p: Player): Snap {
+function totals(league: League, p: Player, level?: Level): Snap {
   const t = new Array(15).fill(0);
   for (const e of p.stats) {
-    if (e.season !== league.season || e.level === 'MLB' || e.orgId !== p.orgId) continue;
+    if (e.season !== league.season || e.level === 'MLB' || e.orgId !== p.orgId || (level && e.level !== level)) continue;
     const b = e.bat;
     const q = e.pit;
     const add = [b.pa, b.ab, b.h, b.d, b.t, b.hr, b.bb, b.hbp, b.sf, b.sb, q.outs, q.er, q.k, q.bb, q.h];
@@ -111,16 +111,23 @@ export function weeklyFarmReport(league: League): void {
     });
   if (tops.length) sections.push({ title: 'Top prospects this week', lines: tops });
 
+  // Judged on what he's done at his current level (a player promoted last week
+  // isn't "dominating" his new level on the strength of the old one).
+  const atLevel = new Map(minors.map((p) => [p.id, totals(league, p, p.level!)]));
+  // Out for a while: not a candidate to move up or down.
+  const sidelined = (p: Player) => !!p.il || (p.injury?.daysLeft ?? 0) > 10;
+
   // Struggling.
   const cold = top.filter((p) => {
-    const s = season.get(p.id)!;
+    if (sidelined(p)) return false;
+    const s = atLevel.get(p.id)!;
     return isPitcher(p) ? s[10] >= 60 && era(s) >= 6 : s[0] >= 80 && ops(s) < 0.6;
   });
   if (cold.length) {
     sections.push({
       title: 'Struggling',
       lines: cold.map((p) => {
-        const s = season.get(p.id)!;
+        const s = atLevel.get(p.id)!;
         return { text: `${where(league, p)} is ${isPitcher(p) ? `at a ${era(s).toFixed(2)} ERA over ${ip(s[10])} innings` : `hitting for a ${ops(s).toFixed(3).replace(/^0/, '')} OPS in ${s[0]} PA`}. I'd be patient${isPitcher(p) ? ' with his workload' : ''}, or think about moving him down a level.`, pids: [p.id] };
       }),
     });
@@ -128,7 +135,8 @@ export function weeklyFarmReport(league: League): void {
 
   // Ready to move up: dominating the level and not old for it.
   const ready = minors.filter((p) => {
-    const s = season.get(p.id)!;
+    if (sidelined(p)) return false;
+    const s = atLevel.get(p.id)!;
     const young = league.season - p.born <= LEVEL_AGE[p.level!] + 1.5;
     const dominating = isPitcher(p) ? s[10] >= 120 && era(s) <= 2.75 && s[12] >= 2.5 * Math.max(1, s[13]) : s[0] >= 120 && ops(s) >= 0.88;
     return young && dominating && potOvr(p) >= 45;
@@ -137,7 +145,7 @@ export function weeklyFarmReport(league: League): void {
     sections.push({
       title: 'Ready for a promotion',
       lines: ready.slice(0, 6).map((p) => {
-        const s = season.get(p.id)!;
+        const s = atLevel.get(p.id)!;
         const next = p.level === 'AAA' ? 'the majors' : p.level === 'AA' ? 'AAA' : p.level === 'A+' ? 'AA' : p.level === 'A' ? 'A+' : p.level === 'CPX' ? 'A' : 'the complex league';
         const manual = org.control[p.level!] === 'Manual' ? ' (you run this level)' : '';
         return { text: `${where(league, p)} has nothing left to prove: ${isPitcher(p) ? `${era(s).toFixed(2)} ERA, ${s[12]} K in ${ip(s[10])} IP` : `${ops(s).toFixed(3).replace(/^0/, '')} OPS, ${s[5]} HR in ${s[0]} PA`}. I'd move him to ${next}${manual}.`, pids: [p.id] };

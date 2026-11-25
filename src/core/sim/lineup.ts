@@ -129,6 +129,17 @@ function defValue(p: Player, pos: Pos): number {
   return w * (d - 50) - (w >= 0.8 && d < 40 ? (40 - d) * 0.6 : 0);
 }
 
+// Down on the farm, development comes first: young players with real
+// potential get the at-bats over organizational filler (most at the complex
+// and DSL, less in A-ball, none above that).
+const DEV_WEIGHT: Partial<Record<Level, number>> = { DSL: 1, CPX: 1, A: 0.7, 'A+': 0.5 };
+function devBonus(league: League, p: Player, level: Level): number {
+  const w = DEV_WEIGHT[level];
+  if (!w) return 0;
+  const age = league.season - p.born;
+  return w * Math.max(0, potOvr(p) - 45) * 0.7 * (age <= 21 ? 1 : age <= 23 ? 0.6 : 0.2);
+}
+
 function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level: Level): { p: Player; pos: Pos }[] {
   const pool = [...hitters];
   // Regulars occasionally rest when there is a bench to cover.
@@ -172,7 +183,7 @@ function autoLineup(league: League, hitters: Player[], oppHand: 'L' | 'R', level
     let bestV = -Infinity;
     for (const p of pool) {
       if (used.has(p.id)) continue;
-      let v = offVs(p, oppHand) + defValue(p, pos);
+      let v = offVs(p, oppHand) + defValue(p, pos) + devBonus(league, p, level);
       if (pos === 'C' && p.pos !== 'C') v -= 40;
       if (p.pos === pos) v += 4;
       if (v > bestV) {
@@ -258,7 +269,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
       let bestV = -Infinity;
       for (const p of hitters) {
         if (used.has(p.id)) continue;
-        let v = offVs(p, oppHand);
+        let v = offVs(p, oppHand) + devBonus(league, p, level);
         if (pos !== 'DH' && pos !== 'SP' && pos !== 'RP') {
           v += defValue(p, pos);
           if (pos === 'C' && p.pos !== 'C') v -= 40;

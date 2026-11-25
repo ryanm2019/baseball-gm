@@ -143,9 +143,18 @@ function aiExercise(league: League, org: Org, p: Player): boolean {
   return p.contract.option!.salary <= marketValue(p, league.settings) * shade;
 }
 
+// Clubs extend a qualifying offer only when they'd be happy either way: he
+// clearly out-earns it on the market (so he declines and they get a pick), or a
+// one-year deal at the QO is fine value. The club judges him as it sees him,
+// production included; older players and relievers need a bigger cushion.
+function qoMarket(league: League, org: Org, p: Player): number {
+  const read = perceivedOvr(league, p, agmEvalSd(league, org));
+  return marketValue(p, league.settings, marketOvr(league, p, read, 0.5));
+}
 function aiOfferQo(league: League, org: Org, p: Player, qo: number): boolean {
-  void org;
-  return marketValue(p, league.settings) >= qo * 0.85;
+  const age = league.season + 1 - p.born;
+  const need = age >= 34 ? 1.35 : p.pos === 'RP' ? 1.3 : age >= 32 ? 1.12 : 1.05;
+  return qoMarket(league, org, p) >= qo * need;
 }
 
 // Did a vesting option vest? Checked against his final guaranteed season.
@@ -282,7 +291,13 @@ function runQoResponses(league: League): void {
     if (!p.qoPending || p.orgId === null) continue;
     const qo = p.qoPending;
     delete p.qoPending;
-    const accept = marketValue(p, league.settings) < qo * 0.82 || (league.season + 1 - p.born >= 35 && rand() < 0.5);
+    // He weighs one guaranteed year at the QO against what free agency would
+    // likely bring: his market value over the years a player his age gets,
+    // shaded down because signing him costs a club a draft pick.
+    const age = league.season + 1 - p.born;
+    const mv = marketValue(p, league.settings, marketOvr(league, p, ovr(p), 0.5)) * 0.9;
+    const years = age <= 30 ? 4 : age <= 32 ? 3 : age <= 34 ? 2 : 1;
+    const accept = mv < qo * 0.95 && (mv * years < qo * 1.6 || rand() < 0.35);
     const org = p.orgId;
     if (accept) {
       p.contract = { type: 'ML', salary: qo, minorSalary: 0, exp: league.season + 1, oneWay: true, signed: league.season + 1 };
