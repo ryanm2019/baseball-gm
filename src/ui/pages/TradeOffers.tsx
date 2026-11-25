@@ -1,5 +1,6 @@
 import { useStore, changed, setMessage, askConfirm } from '../../store.ts';
 import { href } from '../../router.ts';
+import { rushMany } from '../../core/scouting.ts';
 import { executeTrade, validateTrade, rosterTodo } from '../../core/trade.ts';
 import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr, scoutedPot } from '../../core/ratings.ts';
@@ -66,6 +67,7 @@ export default function TradeOffers() {
               </button>
               <button className="btn btn-sm" onClick={() => { league.tradeOffers = league.tradeOffers.filter((x) => x.id !== o.id); changed(); }}>Decline</button>
               <a className="btn btn-sm" href={href('trade', [], { org: ai.id, offer: o.id })}>Counter in the trade screen</a>
+              <button className="btn btn-sm" title="Have your pro scout file quick reports on the players they're offering" onClick={() => { setMessage(rushMany(league, o.proposal.give[0].pids)); changed(); }}>Rush scouting reports</button>
             </div>
           </div>
         );

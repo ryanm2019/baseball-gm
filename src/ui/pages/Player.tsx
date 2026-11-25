@@ -18,6 +18,7 @@ import { orgById } from '../../core/util.ts';
 import { dayShort } from '../../core/settings.ts';
 import { ActionSelect, LinkedText, OrgLink, Rating, StatusTags } from '../components.tsx';
 import { ShowHeader } from '../show.tsx';
+import { ReportCard } from './Scouting.tsx';
 import { ContractCell } from '../fmt.tsx';
 import { avg, era, fmt3, ipStr, obp, slg, whip } from '../fmt.tsx';
 import { batAdvanced, entryWar, levelPlus, minorPerfAdj, pitAdvanced, seasonCtx } from '../../core/war.ts';
@@ -355,6 +356,7 @@ export default function PlayerPage() {
           <div><span>Ht / Wt</span><b>{ft}'{inch}" · {p.weight}</b></div>
         </div>
       </div>
+      <ReportCard league={league} p={p} />
       <div className="cards">
         <div className="box">
           <div className="kv">

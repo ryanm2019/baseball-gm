@@ -9,6 +9,7 @@ import { posLabel } from '../../core/rules.ts';
 import { scoutedOvr } from '../../core/ratings.ts';
 import { fortyMan, orgPlayers } from '../../core/util.ts';
 import { shoppingFor } from '../../core/market.ts';
+import { rushMany } from '../../core/scouting.ts';
 import { DataTable, OrgSelect, StatusTags, type Column, NumInput } from '../components.tsx';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { seasonFraction } from '../../core/value.ts';
@@ -167,6 +168,9 @@ export default function Trade() {
             Shopping for: <b>{shoppingFor(league, other).join(', ')}</b>
           </span>
         )}
+        <button className="btn btn-sm" disabled={!st.give[1].pids.length} title="Have your pro scout file quick reports on the players you'd get in this deal" onClick={() => { setMessage(rushMany(league, st.give[1].pids)); changed(); }}>
+          Rush scouting reports ({st.give[1].pids.length})
+        </button>
       </div>
       <div className="cards" style={{ alignItems: 'stretch' }}>
         <div className="box" style={{ flex: 1, minWidth: 420 }}>

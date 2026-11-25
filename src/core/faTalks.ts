@@ -1,8 +1,9 @@
 // Free agent negotiation with you, as an ongoing conversation with his agent:
-//  - Every offer you make gets an answer in a day or three: he takes it, he
-//    counters with what it would take, or he tells you you're not close.
-//  - When another club tops your offer, his agent lets you know (roughly by
-//    how much and what you'd need), at most once every few days.
+//  - Every offer you make gets an answer in a day or three: he takes it, his
+//    agent tells you the range he's looking for, or that you're not close.
+//    Agents never hand you the exact number: you still have to make the offer.
+//  - When another club tops your offer, his agent lets you know roughly what
+//    that deal looks like, at most once every few days.
 // AI clubs' offers carry full terms too (options, opt-outs, no-trade clauses,
 // deferrals); he weighs every offer by what it's worth to him.
 import type { FaOffer, InboxMsg, League, Player } from './types.ts';
@@ -16,6 +17,15 @@ import { rand, randInt } from './random.ts';
 import { dayShort } from './settings.ts';
 
 const agentFrom = (p: Player) => `Agent for ${pname(p)}`;
+const roundM = (x: number, step: number) => Math.max(step, Math.round(x / step) * step);
+// A range around what it would take, never centered on the exact number.
+function rangeFor(o: FaOffer): { lo: number; hi: number; years: number } {
+  const step = o.aav >= 10e6 ? 0.5e6 : 0.25e6;
+  const lo = roundM(o.aav * (0.9 + 0.07 * rand()), step);
+  const hi = Math.max(lo + step, roundM(o.aav * (1.06 + 0.1 * rand()), step));
+  return { lo, hi, years: o.years };
+}
+const rangeText = (r: { lo: number; hi: number; years: number }) => `${fmtMoney(r.lo)}–${fmtMoney(r.hi)} a year over ${r.years === 1 ? 'one year' : `about ${r.years} years`}`;
 const deal = (o: FaOffer) => `${o.years === 1 ? '1 year' : `${o.years} years`} at ${fmtMoney(o.aav)} a year`;
 
 // The same offer scaled up or down in money (years and clauses kept).
@@ -66,30 +76,33 @@ export function agentReplies(league: League): void {
     const rival = bestRival(league, p);
     const r = rival?.s ?? 0;
     const notable = fa.asking.aav > 8e6;
-    const rivalLine = rival && r > s ? ` Another club has offered more (their deal is worth about ${Math.round((r / Math.max(0.01, s) - 1) * 100)}% more to him).` : rival ? ` You're ahead of the ${fa.offers.length - 1 === 1 ? 'other offer' : `${fa.offers.length - 1} other offers`} right now.` : ' Nobody else has made an offer yet.';
+    const rivalLine = rival && r > s ? ' Another club has offered more.' : rival ? ` You're ahead of the ${fa.offers.length - 1 === 1 ? 'other offer' : `${fa.offers.length - 1} other offers`} right now.` : ' Nobody else has made an offer yet.';
     // He takes it: clearly the best deal and at or above his number (bigger names take a little longer).
     if (s >= 1.0 && s >= r + 0.04 && rand() < (notable ? 0.55 : 0.85)) {
       const how = closeWithUser(league, p, mine);
       if (how === 'signed') return; // signFreeAgentOffer sends the "signed with you" note
       continue;
     }
+    // Ranges are priced at the length that matters: the leading rival's, or what he's asking.
+    const len = rival && r > s ? rival.o.years : fa.asking.years;
+    const base: FaOffer = len === mine.years ? mine : { ...mine, years: len, terms: undefined };
     if (s >= 0.8) {
-      // A counter: what it would take to be his choice.
-      const target = Math.max(1.02, r + 0.05);
-      const c = whatItTakes(league, p, mine, target);
-      fa.talk.counter = c;
+      // Close: his agent names a range, not the number.
+      const r2 = rangeFor(whatItTakes(league, p, base, Math.max(1.02, r + 0.05)));
+      fa.talk.range = r2;
       addInbox(league, {
-        from: agentFrom(p), subject: `${pname(p)} counters: ${deal(c)}`, kind: 'fa-reply', pids: [p.id], faPid: p.id, stop: true,
+        from: agentFrom(p), subject: `${pname(p)}: we're close`, kind: 'fa-reply', pids: [p.id], faPid: p.id, stop: true,
         link: { page: 'negotiate', args: ['fa', p.id] },
-        text: `We appreciate the offer (${deal(mine)}${mine.terms ? `; ${describeContract(league, buildContract(mine.terms, league.season + 1, league.season))}` : ''}).${rivalLine} For ${p.first} to sign today it would take ${deal(c)} (${fmtMoney(c.aav * c.years)} total), same structure. He decides by ${dayShort(league.season, fa.decideDay)} either way.`,
-        actions: [{ key: 'accept', label: `Accept: ${deal(c)}` }, { key: 'revise', label: 'Revise my offer' }, { key: 'pass', label: 'Hold firm' }],
+        text: `We appreciate the offer (${deal(mine)}${mine.terms ? `; ${describeContract(league, buildContract(mine.terms, league.season + 1, league.season))}` : ''}).${rivalLine} We're looking for a contract in the range of ${rangeText(r2)}. He decides by ${dayShort(league.season, fa.decideDay)} either way.`,
+        actions: [{ key: 'revise', label: 'Revise my offer' }, { key: 'pass', label: 'Hold firm' }],
       });
       continue;
     }
-    const need = whatItTakes(league, p, mine, Math.max(1.0, r + 0.02));
+    const r3 = rangeFor(whatItTakes(league, p, base, Math.max(1.0, r + 0.02)));
+    fa.talk.range = r3;
     addInbox(league, {
       from: agentFrom(p), subject: `${pname(p)}: not close`, kind: 'info', pids: [p.id], link: { page: 'negotiate', args: ['fa', p.id] },
-      text: `Respectfully, ${deal(mine)} isn't close for ${posLabel(p)} ${pname(p)}.${rivalLine} He's thinking more like ${deal(need)}.`,
+      text: `Respectfully, ${deal(mine)} isn't close for ${posLabel(p)} ${pname(p)}.${rivalLine} He's looking for something in the range of ${rangeText(r3)}.`,
     });
   }
 }
@@ -104,28 +117,22 @@ export function rivalAlert(league: League, p: Player, rivalOffer: FaOffer): void
   const s = offerScore(league, p, mine);
   const r = offerScore(league, p, rivalOffer);
   if (r <= s) return;
-  fa.talk = { respondDay: fa.talk?.respondDay ?? -1, counter: fa.talk?.counter, noted: league.day };
-  const need = whatItTakes(league, p, mine, r + 0.03);
-  const yrs = rivalOffer.years === mine.years ? 'the same length' : rivalOffer.years > mine.years ? `more years (${rivalOffer.years})` : `fewer years (${rivalOffer.years})`;
+  fa.talk = { respondDay: fa.talk?.respondDay ?? -1, range: fa.talk?.range, noted: league.day };
+  // What the rival deal looks like, roughly (rounded, no clauses spelled out).
+  const approx = roundM(rivalOffer.aav, rivalOffer.aav >= 10e6 ? 1e6 : 0.5e6);
+  const extras = rivalOffer.terms && (rivalOffer.terms.optOuts?.length || rivalOffer.terms.ntc || rivalOffer.terms.option) ? ', with some extras' : '';
   addInbox(league, {
     from: agentFrom(p), subject: `${pname(p)}: you've been topped`, kind: 'info', pids: [p.id], link: { page: 'negotiate', args: ['fa', p.id] },
-    text: `Heads up: another club has made ${p.first} a stronger offer, ${yrs}, worth about ${Math.round((r / Math.max(0.01, s) - 1) * 100)}% more to him than yours. To get back in front you'd need about ${deal(need)}. He decides by ${dayShort(league.season, fa.decideDay)}.`,
+    text: `Heads up: another club has made ${p.first} a stronger offer: ${rivalOffer.years === 1 ? 'one year' : `${rivalOffer.years} years`} at around ${fmtMoney(approx)} a year${extras}. If you can top it, we'll talk. He decides by ${dayShort(league.season, fa.decideDay)}.`,
   });
 }
 
-// Your answer to his counter.
+// Your answer to his agent: revise (opens the offer builder) or hold firm.
 export function answerFaReply(league: League, msg: InboxMsg, key: string): string {
   msg.read = true;
   const p = msg.faPid !== undefined ? league.players[msg.faPid] : undefined;
   if (!p || !p.fa || p.orgId !== null) { msg.resolved = 'Expired'; return 'He has already made his decision.'; }
-  const c = p.fa.talk?.counter;
   if (key === 'revise') { msg.resolved = 'Revising'; return ''; }
-  if (key !== 'accept') { msg.resolved = 'Held firm'; return `You held firm. ${p.first} still has your offer and decides by ${dayShort(league.season, p.fa.decideDay)}.`; }
-  if (!c) { msg.resolved = 'Expired'; return 'That counter is no longer on the table.'; }
-  p.fa.offers = p.fa.offers.filter((o) => o.orgId !== league.userOrgId);
-  const o: FaOffer = { ...c, orgId: league.userOrgId, day: league.day };
-  p.fa.offers.push(o);
-  msg.resolved = 'Accepted';
-  const how = closeWithUser(league, p, o);
-  return how === 'signed' ? `Done: ${pname(p)} signed, ${deal(o)}.` : `${pname(p)} agreed to ${deal(o)}. Make a roster move to finalize it.`;
+  msg.resolved = 'Held firm';
+  return `You held firm. ${p.first} still has your offer and decides by ${dayShort(league.season, p.fa.decideDay)}.`;
 }

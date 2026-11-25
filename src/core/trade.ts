@@ -331,40 +331,64 @@ function fillsNeed(league: League, buyer: Org, p: Player, needs: Pos[]): boolean
   return needs.includes(p.pos) || needFor(league, buyer, p) >= 2;
 }
 
-function tryAiTrade(league: League): void {
-  const ai = league.orgs.filter((o) => o.id !== league.userOrgId && o.stance !== 'Standing pat');
-  const buyers = shuffle(ai.filter((o) => o.stance === 'Buying' || (o.strategy === 'Contend' && o.stance === 'Listening')));
-  const sellers = shuffle(ai.filter((o) => o.stance === 'Selling' || o.stance === 'Listening'));
-  const buyer = buyers[0];
-  const seller = sellers.find((o) => o.id !== buyer?.id);
-  if (!buyer || !seller) return;
-  const needs = teamNeeds(league, buyer.id);
-  // Players on the seller's block come first; otherwise anyone who fits.
-  const onBlock = new Set(seller.block);
-  const targets = tradable(league, seller.id)
-    .filter((p) => p.level === 'MLB' && league.season - p.born >= 25 && fillsNeed(league, buyer, p, needs))
-    .map((p) => ({ p, v: tradeValue(league, buyer, p, true) * (onBlock.has(p.id) ? 1.25 : 1) }))
-    .filter((x) => x.v > 1e6)
-    .sort((a, b) => b.v - a.v);
-  const target = targets[Math.floor(rand() * Math.min(3, targets.length))];
-  if (!target) return;
-  const prop: TradeProposal = { orgs: [buyer.id, seller.id], give: [emptyAssets(), { ...emptyAssets(), pids: [target.p.id] }] };
+// A buyer's package for one target: its best non-MLB chips (and players on its
+// block) until the seller would say yes. With competition it adds a sweetener
+// if it still likes the deal.
+function buildPackage(league: League, buyer: Org, seller: Org, target: Player, compete: boolean): TradeProposal | null {
+  const prop: TradeProposal = { orgs: [buyer.id, seller.id], give: [emptyAssets(), { ...emptyAssets(), pids: [target.id] }] };
   const buyerBlock = new Set(buyer.block);
   const chips = tradable(league, buyer.id)
     .filter((p) => p.level !== 'MLB' || buyerBlock.has(p.id))
     .map((p) => ({ p, v: tradeValue(league, seller, p, true) }))
     .filter((x) => x.v > 0.5e6)
     .sort((a, b) => b.v - a.v);
-  for (const { p } of chips) {
+  let k = 0;
+  for (; k < chips.length; k++) {
     if (aiAccepts(league, seller, prop)) break;
     if (prop.give[0].pids.length >= 4) break;
-    prop.give[0].pids.push(p.id);
+    prop.give[0].pids.push(chips[k].p.id);
     if (!aiAccepts(league, buyer, prop)) prop.give[0].pids.pop();
   }
-  if (!prop.give[0].pids.length) return;
-  if (!aiAccepts(league, seller, prop) || !aiAccepts(league, buyer, prop)) return;
-  if (validateTrade(league, prop)) return;
-  executeTrade(league, prop);
+  if (!prop.give[0].pids.length || !aiAccepts(league, seller, prop) || !aiAccepts(league, buyer, prop)) return null;
+  if (compete) {
+    for (let m = k; m < chips.length && prop.give[0].pids.length < 5; m++) {
+      prop.give[0].pids.push(chips[m].p.id);
+      if (aiAccepts(league, buyer, prop)) break;
+      prop.give[0].pids.pop();
+    }
+  }
+  return validateTrade(league, prop) ? null : prop;
+}
+
+// AI-to-AI trades: a seller shops one of its players and every interested
+// buyer makes an offer; the seller takes the best package (not simply the
+// first contender to call).
+function tryAiTrade(league: League): void {
+  const ai = league.orgs.filter((o) => o.id !== league.userOrgId && o.stance !== 'Standing pat');
+  const buyers = ai.filter((o) => o.stance === 'Buying' || (o.strategy === 'Contend' && o.stance === 'Listening'));
+  const seller = shuffle(ai.filter((o) => o.stance === 'Selling' || o.stance === 'Listening'))[0];
+  if (!seller || !buyers.length) return;
+  const onBlock = new Set(seller.block);
+  // Who wants whom: for each of the seller's tradable veterans, the buyers it fits.
+  const wanted = tradable(league, seller.id)
+    .filter((p) => p.level === 'MLB' && league.season - p.born >= 25)
+    .map((p) => {
+      const fans = buyers.filter((b) => b.id !== seller.id && fillsNeed(league, b, p, teamNeeds(league, b.id)) && tradeValue(league, b, p, true) > 1e6);
+      return { p, fans, v: tradeValue(league, seller, p, false) * (onBlock.has(p.id) ? 1.25 : 1) };
+    })
+    .filter((x) => x.fans.length)
+    .sort((a, b) => b.v - a.v);
+  const pick = wanted[Math.floor(rand() * Math.min(3, wanted.length))];
+  if (!pick) return;
+  const compete = pick.fans.length > 1;
+  let best: { prop: TradeProposal; dv: number } | null = null;
+  for (const buyer of pick.fans.slice(0, 8)) {
+    const prop = buildPackage(league, buyer, seller, pick.p, compete);
+    if (!prop) continue;
+    const dv = evaluate(league, seller, prop).dv;
+    if (!best || dv > best.dv) best = { prop, dv };
+  }
+  if (best) executeTrade(league, best.prop);
 }
 
 // Over-budget AI clubs dump salary on teams with room, eating some money if

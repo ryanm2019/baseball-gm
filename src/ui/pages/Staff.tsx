@@ -1,5 +1,5 @@
 import { useStore, changed, askConfirm } from '../../store.ts';
-import { go, useRoute } from '../../router.ts';
+import { go, href, useRoute } from '../../router.ts';
 import type { Staff, StaffRole } from '../../core/types.ts';
 import { AGM_DUTIES, STAFF_NAMES, STAFF_ROLES } from '../../core/types.ts';
 import type { AgmDuty } from '../../core/types.ts';
@@ -135,7 +135,7 @@ export default function StaffPage() {
       </table>
 
       <h3>Assignments</h3>
-      <p className="muted small">Point each scout at something. Players in his focus are read much more sharply (about 28% less error); the rest of his beat a little less sharply. The director's focus sharpens any group on top of that.</p>
+      <p className="muted small">Point each scout at something. Players in his focus are read much more sharply (about 28% less error); the rest of his beat a little less sharply. The director's focus sharpens any group on top of that. Each month your director also sends the scouts out on specific looks and they file written reports: see the <a href={href('scouting')}>Scouting</a> page.</p>
       <table className="data compact" style={{ maxWidth: 620 }}>
         <tbody>
           {(['SD', 'PRO', 'AMA', 'INT'] as const).map((role) => {

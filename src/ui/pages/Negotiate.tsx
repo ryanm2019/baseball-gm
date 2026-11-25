@@ -130,10 +130,9 @@ export default function Negotiate() {
             <b>His agent:</b>{' '}
             {!mine ? `No offer from you yet. ${rivals.length ? `${rivals.length} other club${rivals.length === 1 ? ' has' : 's have'} made offers.` : 'Nobody has made an offer yet.'}`
               : t && t.respondDay >= 0 ? `Reviewing your offer; you'll hear back by ${dayShort(league.season, t.respondDay)}.`
-              : t?.counter ? <>He'd sign for <b>{t.counter.years} yr × {fmtMoney(t.counter.aav)}</b> ({fmtMoney(t.counter.aav * t.counter.years)}), same structure.{' '}
-                  <button className="btn btn-sm" onClick={() => { const c = t.counter!; setD({ ...cur, years: c.years, total: c.aav * c.years, custom: c.terms?.sched ?? null }); }}>Load his counter</button></>
+              : t?.range ? <>We're looking for a contract in the range of <b>{fmtMoney(t.range.lo)}–{fmtMoney(t.range.hi)} a year</b> over {t.range.years === 1 ? 'one year' : `about ${t.range.years} years`}.{top > ms ? ' Another club has offered more.' : ''}</>
               : top > ms ? 'Another club has offered more. Improve your offer to get back in front.' : 'Your offer leads right now.'}
-            <div className="muted small">Each offer you send gets an answer in a day or three: he signs, counters with what it would take, or tells you you're not close. You'll also hear if another club tops you.</div>
+            <div className="muted small">Each offer you send gets an answer in a day or three: he signs, his agent tells you the range he's looking for, or that you're not close. You'll also hear if another club tops you.</div>
           </div>
         );
       })()}

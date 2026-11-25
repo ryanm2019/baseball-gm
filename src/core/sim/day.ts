@@ -14,6 +14,7 @@ import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay, pendingBlock } from '../freeAgency.ts';
 import { dfaOffersDay, waiverFlags } from '../dfaMarket.ts';
+import { scoutingDay } from '../scouting.ts';
 import { recordBatForm, recordPitForm } from '../form.ts';
 import { ifaDay, postingDeadlines } from '../intl.ts';
 import { advanceDraft, createDraft, draftDeadline, draftSigningDay } from '../draft.ts';
@@ -443,6 +444,7 @@ function finishRegularDay(league: League): DayResult {
   faDay(league);
   dfaOffersDay(league);
   waiverFlags(league);
+  scoutingDay(league);
   ifaDay(league);
   talksDay(league);
   tradeDay(league);
@@ -539,6 +541,7 @@ export function simOneDay(league: League): DayResult {
       faDay(league);
       dfaOffersDay(league);
       waiverFlags(league);
+      scoutingDay(league);
       postingDeadlines(league);
       ifaDay(league);
       const talk = talksDay(league);
@@ -555,6 +558,7 @@ export function simOneDay(league: League): DayResult {
     faDay(league);
     dfaOffersDay(league);
     waiverFlags(league);
+    scoutingDay(league);
     ifaDay(league);
     const talk = talksDay(league);
     tradeDay(league);

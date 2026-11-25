@@ -541,3 +541,8 @@ tr.totals td { font-weight: 700; border-top: 2px solid var(--border); }
   .goals-tbl td { white-space: normal; }
 }
 .agent-box { background: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid #7c3aed; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 14px; max-width: 900px; }
+
+.report-card { max-width: 900px; border: 1px solid var(--border); border-left: 4px solid #0891b2; border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; background: #f8fdff; }
+.rc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
+.rc-meta { font-size: 14px; }
+.rc-tools { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }

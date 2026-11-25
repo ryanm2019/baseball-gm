@@ -125,7 +125,7 @@ export interface FaStatus {
   milbOffers?: { orgId: number; level: Level; invite: boolean; day: number }[]; // minor league bids (bidding window)
   milbDecide?: number; // day he picks among minor league offers
   pending?: { orgId: number; day: number; offer: FaOffer }; // agreed with you; waits for a 40-man/active spot
-  talk?: { respondDay: number; counter?: FaOffer; noted?: number }; // his agent's reply to your latest offer is due; his counter; last rival alert day
+  talk?: { respondDay: number; range?: { lo: number; hi: number; years: number }; noted?: number }; // his agent's reply to your latest offer is due; the range he gave you; last rival alert day
   extended?: boolean; // pushed his date back once for a bidding war
 }
 
@@ -301,6 +301,33 @@ export interface Player {
 export type Philosophy = 'Conservative' | 'Balanced' | 'Aggressive';
 
 export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD' | 'SD' | 'PRO' | 'AMA' | 'INT';
+
+// A scout's written report on one player (your organization only).
+export interface ScoutReport {
+  pid: number;
+  season: number;
+  day: number;
+  by: StaffRole; // which scout filed it
+  visits: number; // looks so far (a second look sharpens it further)
+  ovr: number; // the read when filed
+  pot: number;
+  role: string; // projection, e.g. "Above-average regular", "No. 3 starter"
+  risk: 'Low' | 'Medium' | 'High' | 'Extreme';
+  tools: { label: string; v: number }[];
+  text: string;
+  why: string; // why he was scouted
+}
+export type ScoutMode = 'auto' | 'buying' | 'selling' | 'balanced';
+export interface ScoutingState {
+  reports: Record<number, ScoutReport>;
+  mode: ScoutMode; // the director's plan: auto follows your club's situation
+  month: string; // 'season-month' the current plan covers
+  plan: { pid: number; by: StaffRole; due: number; why: string }[]; // visits still to make this month
+  rush: { pid: number; due: number }[];
+  requests: number[]; // players you asked about (first in line next)
+  fresh: number[]; // reports filed since the last digest
+  lastDigest: number;
+}
 export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD', 'SD', 'PRO', 'AMA', 'INT'];
 export const STAFF_NAMES: Record<StaffRole, string> = {
   AGM: 'Assistant GM',
@@ -844,6 +871,7 @@ export interface League {
   lastStandings?: number[]; // org ids, worst record first
   lastPlayoffTeams?: number[];
   draftAdjust?: DraftAdjust;
+  scouting?: ScoutingState; // your scouting department's plan and reports
   draftLottery?: { season: number; round1: number[]; lottery: { orgId: number; pick: number; from: number }[] }; // December's lottery for next summer's draft
   cbPicks: CbPick[];
   tradeOffers: TradeOffer[];

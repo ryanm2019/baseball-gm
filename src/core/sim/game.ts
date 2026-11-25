@@ -48,6 +48,18 @@ const sc = (r: number, coef: number) => Math.exp((coef * (r - 50)) / 10);
 // League offense correction (rating points for hitters), set each day from
 // league.offenseAdj so the run environment doesn't drift as players develop.
 let OFFENSE_ADJ = 0;
+// How much luck there is (rating points). teamDay: a whole club's good or bad
+// day; season: each player's hidden form for the year (career years, down years).
+export const LUCK = { teamDay: Number((globalThis as { process?: { env?: Record<string, string> } }).process?.env?.LUCK_TEAMDAY ?? 6), season: 2 };
+
+// A player's form for the season: fixed for the year, different every year.
+export function seasonForm(p: Player, season: number): number {
+  let h = (Math.imul(p.id ^ 0x9e3779b9, 2654435761) ^ Math.imul(season, 40503)) >>> 0;
+  let t = 0;
+  for (let i = 0; i < 4; i++) { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0; t += (h >>> 0) / 4294967296; }
+  return (t - 2) * Math.sqrt(3) * LUCK.season; // sum of 4 uniforms: about normal, sd = LUCK.season
+}
+
 export function setOffenseAdj(x: number): void { OFFENSE_ADJ = x; }
 // The league for the game being played (for streak-based fatigue).
 let currentLeague: League = null as unknown as League;
@@ -303,11 +315,12 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
   // the best teams lose more often than their ratings alone would say.
   // A shared team component matters most: independent player noise averages
   // out over nine hitters, but a whole club having a good or bad day doesn't.
-  const teamDay = new Map<number, number>([[home.orgId, normal(0, 4)], [away.orgId, normal(0, 4)]]);
+  // Luck: the day-to-day swing is big enough that the better club loses plenty.
+  const teamDay = new Map<number, number>([[home.orgId, normal(0, LUCK.teamDay)], [away.orgId, normal(0, LUCK.teamDay)]]);
   const formMap = new Map<number, number>();
   const form = (p: Player) => {
     let f = formMap.get(p.id);
-    if (f === undefined) { f = clamp(normal(0, 2.5) + (p.orgId !== null ? (teamDay.get(p.orgId) ?? 0) : 0), -9, 9); formMap.set(p.id, f); }
+    if (f === undefined) { f = clamp(normal(0, 2.5) + seasonForm(p, currentLeague?.season ?? 0) + (p.orgId !== null ? (teamDay.get(p.orgId) ?? 0) : 0), -12, 12); formMap.set(p.id, f); }
     return f;
   };
   const level = home.level;

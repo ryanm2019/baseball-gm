@@ -210,7 +210,17 @@ export function scoutSd(league: League, p: Player, isPot: boolean): number {
   const area = scoutArea(league, p);
   // High school amateurs are the hardest to project.
   const lvl = area === 'amateur' ? (p.prospect && !p.prospect.college ? 1.9 : 1.35) : area === 'intl' ? 1.6 : LEVEL_FOG[p.level ?? 'AAA'];
-  return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area, p) * (isPot ? 1.6 : 1);
+  return base * lvl * scoutFactor(league, league.orgs[league.userOrgId], area, p) * (isPot ? 1.6 : 1) * (area === 'own' ? 1 : reportFactor(league, p));
+}
+
+// A fresh scouting report sharpens the read on a player (a second look more so);
+// it fades over about nine months.
+export function reportFactor(league: League, p: Player): number {
+  const r = league.scouting?.reports[p.id];
+  if (!r) return 1;
+  const age = (league.season - r.season) * 365 + (league.day - r.day);
+  const fresh = clamp(1 - age / 270, 0, 1);
+  return 1 - fresh * (r.visits >= 2 ? 0.55 : 0.42);
 }
 
 export function scoutRaw(league: League, p: Player, key: string, value: number, isPot = false): number {

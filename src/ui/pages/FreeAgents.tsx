@@ -139,7 +139,7 @@ export default function FreeAgents() {
       const t = p.fa!.talk;
       if (p.fa!.pending) return '';
       if (t && t.respondDay >= 0) return <span className="muted">Reply by {dayShort(league.season, t.respondDay)}</span>;
-      if (t?.counter) return <a href={href('negotiate', ['fa', p.id])} className="pos">Countered: {t.counter.years} yr × {fmtMoney(t.counter.aav)}</a>;
+      if (t?.range) return <a href={href('negotiate', ['fa', p.id])} title="His agent's range: you still have to make the offer">Looking for {fmtMoney(t.range.lo)}–{fmtMoney(t.range.hi)} × ~{t.range.years} yr</a>;
       const rival = p.fa!.offers.filter((o) => o.orgId !== league.userOrgId).some((o) => offerScore(league, p, o) > offerScore(league, p, yourOffer(p)));
       return rival ? <span className="neg">Topped by another club</span> : <span className="muted">Your offer leads</span>;
     } },
