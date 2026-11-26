@@ -12,6 +12,7 @@
 //  Feb 5      arbitration hearings
 //  Feb 15     new season: aging, development, retirements, new schedule
 //  Opening Day
+import { successorDay } from './successor.ts';
 import type { League, Org, Player } from './types.ts';
 import { LEVELS } from './types.ts';
 import { dayToDate } from './settings.ts';
@@ -233,6 +234,7 @@ function runOptions(league: League): void {
 
 function runFaOpen(league: League): void {
   const s = league.settings;
+  successorDay(league, true); // open successor offers get their answer first
   updateStrategies(league);
   // Owners budget knowing next year's guaranteed money and arbitration raises.
   const super2 = superTwoSet(league);

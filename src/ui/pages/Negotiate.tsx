@@ -7,7 +7,7 @@ import { href, useRoute } from '../../router.ts';
 import type { ContractOption, League, Player } from '../../core/types.ts';
 import { fmtMoney, roundSalary } from '../../core/contracts.ts';
 import { cbtAav, describeContract, playerValue, shapeSchedule, type Structure, type Terms } from '../../core/terms.ts';
-import { canOfferExt, extAsk, extRefusal, extWillingness, extYears, offerExtension, pickNtcTeams, extStart } from '../../core/extensions.ts';
+import { inExclusiveWindow, pendingFreeAgent, canOfferExt, extAsk, extRefusal, extWillingness, extYears, offerExtension, pickNtcTeams, extStart } from '../../core/extensions.ts';
 import { firstContractSeason, interestLabel, makeOffer, offerScore } from '../../core/freeAgency.ts';
 import { willingnessBand } from '../../core/draft.ts';
 import { posLabel } from '../../core/rules.ts';
@@ -66,7 +66,7 @@ export default function Negotiate() {
     const years = Math.max(2, Math.min(8, extYears(league, p, 8).findIndex((y) => y.status === 'FA') + 2 || 3));
     const ask = extAsk(league, p, years);
     const last = ask.byYear[ask.byYear.length - 1]?.fair ?? league.settings.minSalary;
-    return { years, total: roundSalary(ask.total * 0.95), shape: 'ramp', custom: null, opt: 'none', optSalary: last, optBuyout: last * 0.08, vestNeed: p.pos === 'RP' ? 60 : p.pos === 'SP' ? 160 : 550, optOut: -1, ntc: 'none', ntcN: 8, defer: 0 };
+    return { years, total: roundSalary(ask.total * 0.95), shape: pendingFreeAgent(league, p) ? 'flat' : 'ramp', custom: null, opt: 'none', optSalary: last, optBuyout: last * 0.08, vestNeed: p.pos === 'RP' ? 60 : p.pos === 'SP' ? 160 : 550, optOut: -1, ntc: 'none', ntcN: 8, defer: 0 };
   };
   const cur = d ?? init();
   const set = (patch: Partial<Draft>) => setD({ ...cur, ...patch });
@@ -195,7 +195,7 @@ export default function Negotiate() {
       </div>
       <p className="muted small">
         {kind === 'ext'
-          ? 'One offer a week. Each year is valued by what he would otherwise earn (pre-arb, arbitration or free agency); younger players give up more for security. Player options, opt-outs and no-trade clauses are worth money to him; club and mutual options aren\'t. Lowballs (under ~80% of his ask) make him dig in.'
+          ? (inExclusiveWindow(league) && pendingFreeAgent(league, p) ? 'Exclusive window: he\'s about to become a free agent, and most players want to test the market, so even a fair offer usually falls short. Loyal and longtime players are likelier to stay. One offer a day. ' : 'One offer a week. ') + 'Each year is valued by what he would otherwise earn (pre-arb, arbitration or free agency); younger players give up more for security. Player options, opt-outs and no-trade clauses are worth money to him; club and mutual options aren\'t. Lowballs (under ~80% of his ask) make him dig in.'
           : 'Free agents compare all offers (AI clubs use options, opt-outs and no-trade clauses too). Clauses and deferrals change what your offer is worth to him.'}
       </p>
       <p className="muted small">

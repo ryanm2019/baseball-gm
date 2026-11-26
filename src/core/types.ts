@@ -280,6 +280,7 @@ export interface Player {
   rule5?: { fromOrg: number; season: number } | null;
   qoReceived?: boolean;
   qoPending?: number;
+  successor?: { season: number; level: Level; invite: boolean; day: number; byAgm?: boolean; answer?: 'yes' | 'no' } | null; // successor contract offer before minor league free agency
   faSigned?: number; // first season of a free-agent contract (can't be traded until June 15)
   teamSince?: number; // season he joined his current organization (10-and-5 rights)
   joined?: { season: number; day: number }; // when he joined (postseason eligibility, trade restrictions)
@@ -868,10 +869,12 @@ export interface League {
   intl: { pools: Record<number, number>; spent: Record<number, number>; open: boolean; acquired?: Record<number, number>; base?: Record<number, number>; year?: number };
   cbtHistory: CbtRecord[];
   wsEndDay: number | null;
+  windowNote?: number; // season the exclusive-window notice went out
   lastStandings?: number[]; // org ids, worst record first
   lastPlayoffTeams?: number[];
   draftAdjust?: DraftAdjust;
   scouting?: ScoutingState; // your scouting department's plan and reports
+  farmRankings?: import('./farmRank.ts').FarmEdition[]; // published farm system rankings (latest last)
   draftLottery?: { season: number; round1: number[]; lottery: { orgId: number; pick: number; from: number }[] }; // December's lottery for next summer's draft
   cbPicks: CbPick[];
   tradeOffers: TradeOffer[];

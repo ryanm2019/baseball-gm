@@ -1,5 +1,6 @@
 // The farm director's weekly report: who's hot, how the top prospects did,
 // who's struggling, and who he thinks is ready to move up.
+import { outgrownLevel } from './development.ts';
 import type { FarmReport, League, Level, Player } from './types.ts';
 import { addInbox } from './morale.ts';
 import { posLabel } from './rules.ts';
@@ -148,7 +149,7 @@ export function weeklyFarmReport(league: League): void {
         const s = atLevel.get(p.id)!;
         const next = p.level === 'AAA' ? 'the majors' : p.level === 'AA' ? 'AAA' : p.level === 'A+' ? 'AA' : p.level === 'A' ? 'A+' : p.level === 'CPX' ? 'A' : 'the complex league';
         const manual = org.control[p.level!] === 'Manual' ? ' (you run this level)' : '';
-        return { text: `${where(league, p)} has nothing left to prove: ${isPitcher(p) ? `${era(s).toFixed(2)} ERA, ${s[12]} K in ${ip(s[10])} IP` : `${ops(s).toFixed(3).replace(/^0/, '')} OPS, ${s[5]} HR in ${s[0]} PA`}. I'd move him to ${next}${manual}.`, pids: [p.id] };
+        return { text: `${where(league, p)} has nothing left to prove: ${isPitcher(p) ? `${era(s).toFixed(2)} ERA, ${s[12]} K in ${ip(s[10])} IP` : `${ops(s).toFixed(3).replace(/^0/, '')} OPS, ${s[5]} HR in ${s[0]} PA`}. I'd move him to ${next}${manual}.${outgrownLevel(league, p) ? " He's outgrown the level, so dominating it isn't speeding up his development anymore." : ''}`, pids: [p.id] };
       }),
     });
   }

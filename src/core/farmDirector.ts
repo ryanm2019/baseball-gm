@@ -23,6 +23,7 @@ import {
   recallPlayer,
   selectContract,
   signFreeAgent,
+  dslEligible,
 } from './rules.ts';
 import { generatePlayer } from './playerGen.ts';
 import { rand } from './random.ts';
@@ -328,7 +329,7 @@ function balanceAffiliate(league: League, org: Org, level: Level): void {
 
 function signFiller(league: League, org: Org, level: Level, need: 'P' | 'H' | 'C', faOnly = false): boolean {
   const fa = Object.values(league.players)
-    .filter((p) => isFreeAgent(p) && isMinorFA(league, p) && !p.fa?.milbOffers?.length && fits(p, need === 'C' ? 'C' : need) && league.season - p.born <= (level === 'DSL' ? 20 : level === 'CPX' ? 23 : 34))
+    .filter((p) => isFreeAgent(p) && isMinorFA(league, p) && !p.fa?.milbOffers?.length && fits(p, need === 'C' ? 'C' : need) && league.season - p.born <= (level === 'DSL' ? 20 : level === 'CPX' ? 23 : 34) && (level !== 'DSL' || dslEligible({ ...p, level: null })))
     .sort((a, b) => ovr(b) - ovr(a));
   const target = LEVEL_TALENT[level];
   const pick = fa.find((p) => ovr(p) <= target + 4 && ovr(p) >= target - 6);

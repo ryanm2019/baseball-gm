@@ -187,6 +187,7 @@ export default function Dashboard() {
           <div className="kpi"><span>CBT payroll</span><b className={pay.cbt > org.budget ? 'neg' : ''}>{fmtMoney(pay.cbt)}</b><i>budget {fmtMoney(org.budget)}{tax.tax > 0 ? ` · tax ${fmtMoney(tax.tax)}` : ''}</i></div>
           <div className="kpi"><span>Active / 40-man</span><b>{mlb.length} / {fortyMan(league, org.id).length}</b><i>max {league.settings.activeMax} / {league.settings.fortyMax}</i></div>
           <div className="kpi"><span>Revenue</span><b>{fmtMoney(revenueSoFar(league, org).total)}</b><i>hype {Math.round(finOf(league, org).hype)}</i></div>
+          {(() => { const eds = league.farmRankings ?? []; const last = eds[eds.length - 1]; const r = last?.orgs.find((o) => o.orgId === org.id); return <div className="kpi"><span>Farm system</span><b><a href={href('farm-rankings')} style={{ color: 'inherit' }}>{r ? `No. ${r.rank}` : '–'}</a></b><i>{r ? `${last.season} ${last.label.toLowerCase()} · ${r.top100} in the top 100` : 'first rankings in spring'}</i></div>; })()}
           <div className="kpi"><span>Job security</span><b className={org.owner.patience < 25 ? 'neg' : org.owner.patience >= 60 ? 'pos' : ''}>{org.owner.patience}/100</b><i>{org.owner.first} {org.owner.last}</i></div>
         </div>
       </div>

@@ -10,9 +10,10 @@ import { updateStances } from './market.ts';
 import { aiDepts, opBudgetFor } from './depts.ts';
 import { setOvrBaseline } from './offseason.ts';
 import { shiftPendingDays } from './dayShift.ts';
+import { dslEligible } from './rules.ts';
 import { dayToDate } from './settings.ts';
 
-export const CURRENT_VERSION = 8;
+export const CURRENT_VERSION = 9;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -138,6 +139,11 @@ export function migrate(league: League): League {
     l.settings.salaryScale ??= 1;
     l.settings.cbaScale ??= l.settings.salaryScale;
     l.version = 8;
+  }
+  if (l.version < 9) {
+    // The DSL is only for international signees who haven't played above it.
+    for (const p of Object.values(l.players)) if (p.level === 'DSL' && p.orgId !== null && !dslEligible({ ...p, level: null })) p.level = 'CPX';
+    l.version = 9;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

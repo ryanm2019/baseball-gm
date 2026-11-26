@@ -3,15 +3,19 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
 import type { Level, Player } from '../../core/types.ts';
 import { MINOR_LEVELS } from '../../core/types.ts';
+import { dslEligible } from '../../core/rules.ts';
 import { posLabel } from '../../core/rules.ts';
 import { fmtMoney, serviceLabel, serviceYears } from '../../core/contracts.ts';
 import { finalizePending, interestLabel, isFreeAgent, isMinorFA, offerScore, pendingBlock, withdrawOffer, firstContractSeason } from '../../core/freeAgency.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
-import { DataTable, type Column } from '../components.tsx';
+import { DataTable, Rating, type Column } from '../components.tsx';
+import { scoutedOvr } from '../../core/ratings.ts';
 import { bt, nameCol, ratingCols } from '../fmt.tsx';
 import { dayShort } from '../../core/settings.ts';
-import { fortyMan } from '../../core/util.ts';
+import { fortyMan, orgPlayers } from '../../core/util.ts';
 import { faStage, offseasonCalendar } from '../../core/offseason.ts';
+import { exclusiveFaDay, inExclusiveWindow, pendingFreeAgent, stayChance } from '../../core/extensions.ts';
+import { canOfferSuccessor, marketLevel, oddsLabel, offerSuccessor, pendingMilbFa, successorOdds, withdrawSuccessor } from '../../core/successor.ts';
 
 import { POS_FILTERS, PosFilterSelect } from '../posFilter.tsx';
 import { delegated } from '../../core/staff.ts';
@@ -40,7 +44,7 @@ function MilbCell({ p }: { p: Player }) {
   return (
     <span className="nowrap">
       <select value={lvl} onChange={(e) => setLvl(e.target.value as Level)}>
-        {MINOR_LEVELS.map((l) => <option key={l}>{l}</option>)}
+        {MINOR_LEVELS.filter((l) => l !== 'DSL' || dslEligible({ ...p, level: null })).map((l) => <option key={l}>{l}</option>)}
       </select>{' '}
       <label className="small" title="An invite to big league spring training: veterans like it"><input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} /> Camp invite</label>{' '}
       <button
@@ -162,6 +166,36 @@ export default function FreeAgents() {
     <>
       <h1>Free Agents</h1>
       {(() => { const st = faStage(league); return st ? <p className="alert alert-info small" style={{ margin: '4px 0 8px' }}><b>{st.stage}.</b> {st.detail}</p> : null; })()}
+      {inExclusiveWindow(league) && (() => {
+        const mine = orgPlayers(league, league.userOrgId).filter((p) => pendingFreeAgent(league, p));
+        if (!mine.length) return null;
+        const lean = (p: Player) => { const c = stayChance(league, p); return c >= 0.35 ? 'Open to staying' : c >= 0.15 ? 'Leaning toward the market' : 'Set on testing the market'; };
+        return (
+          <div className="box" style={{ maxWidth: 900, marginBottom: 10 }}>
+            <b>Exclusive window: your free agents</b> <span className="muted small">(until the market opens {dayShort(league.season, exclusiveFaDay(league))})</span>
+            <p className="small muted" style={{ margin: '4px 0' }}>Only you can talk to them right now. Most want to see what the market offers, so even a fair deal usually gets a "thanks, but…"; loyal players and longtime ones are likelier to stay. You can make one offer a day.</p>
+            <table className="data compact"><tbody>
+              {mine.map((p) => (
+                <tr key={p.id}><td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a></td><td>{posLabel(p)}</td><td>{league.season + 1 - p.born}</td><td><Rating v={scoutedOvr(league, p)} /></td><td className="l small">{lean(p)}</td><td><a className="btn btn-sm" href={href('negotiate', ['ext', p.id])}>Make offer</a></td></tr>
+              ))}
+            </tbody></table>
+          </div>
+        );
+      })()}
+      {inExclusiveWindow(league) && (() => {
+        const mine = orgPlayers(league, league.userOrgId).filter((p) => pendingMilbFa(league, p) || (p.successor?.season === league.season && p.successor.answer === 'yes'));
+        if (!mine.length) return null;
+        mine.sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a));
+        return (
+          <div className="box" style={{ maxWidth: 900, marginBottom: 10 }}>
+            <b>Successor contracts: your minor league free agents</b>
+            <p className="small muted" style={{ margin: '4px 0' }}>These players have six-plus pro seasons and aren't on the 40-man. Offer a new minor league deal before they hit the market. They weigh the level, a camp invite and their path to the majors against what other clubs would offer, and loyal players lean toward staying. They answer the next day.</p>
+            <div style={{ maxHeight: 360, overflowY: 'auto' }}><table className="data compact"><tbody>
+              {mine.map((p) => <SuccessorRow key={p.id} p={p} />)}
+            </tbody></table></div>
+          </div>
+        );
+      })()}
       <div className="btn-group tabs">
         <button className={`btn btn-sm${tab === 'ml' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'ml' })}>Major league ({ml.length - upcoming.length}{upcoming.length ? ` + ${upcoming.length} upcoming` : ''})</button>
         <button className={`btn btn-sm${tab === 'milb' ? ' active' : ''}`} onClick={() => go('free-agents', [], { tab: 'milb' })}>Minor league ({milb.length})</button>
@@ -211,5 +245,31 @@ export default function FreeAgents() {
         </>
       )}
     </>
+  );
+}
+
+function SuccessorRow({ p }: { p: Player }) {
+  const league = useStore().league!;
+  const [level, setLevel] = useState<Level>(p.level && p.level !== 'MLB' && p.level !== 'DSL' ? p.level : marketLevel(p));
+  const [invite, setInvite] = useState(false);
+  const o = p.successor?.season === league.season ? p.successor : null;
+  const why = canOfferSuccessor(league, p);
+  const status = o?.answer === 'yes' ? <span className="pos">Re-signed ({o.level})</span>
+    : o?.answer === 'no' ? <span className="neg">Declined: testing the market</span>
+    : o ? <>Offer out ({o.level}{o.invite ? ', camp invite' : ''}){o.byAgm ? ' by your AGM' : ''} <button className="btn btn-sm" onClick={() => { withdrawSuccessor(league, p); changed(); }}>Withdraw</button></>
+    : null;
+  return (
+    <tr>
+      <td className="l"><a href={href('player', [p.id])}>{p.first} {p.last}</a></td>
+      <td>{posLabel(p)}</td><td>{league.season + 1 - p.born}</td><td>{p.level}</td><td><Rating v={scoutedOvr(league, p)} /></td>
+      {status ? <td className="l small" colSpan={2}>{status}</td> : <>
+        <td className="l small">
+          <select value={level} onChange={(e) => setLevel(e.target.value as Level)}>{MINOR_LEVELS.filter((l) => l !== 'DSL').map((l) => <option key={l}>{l}</option>)}</select>{' '}
+          <label><input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} /> camp invite</label>{' '}
+          <span className="muted">{oddsLabel(successorOdds(league, p, level, invite))}</span>
+        </td>
+        <td><button className="btn btn-sm" disabled={!!why} title={why ?? ''} onClick={() => { const err = offerSuccessor(league, p, level, invite); setMessage(err ?? `Successor offer sent to ${p.first} ${p.last}: he'll answer tomorrow.`); changed(); }}>Offer</button></td>
+      </>}
+    </tr>
   );
 }

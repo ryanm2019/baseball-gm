@@ -546,3 +546,4 @@ tr.totals td { font-weight: 700; border-top: 2px solid var(--border); }
 .rc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
 .rc-meta { font-size: 14px; }
 .rc-tools { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
+.fv-chip { white-space: nowrap; font-weight: 700; }

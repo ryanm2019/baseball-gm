@@ -87,8 +87,17 @@ export function canDfa(_league: League, p: Player): string | null {
   return null;
 }
 
+// The Dominican Summer League is for international signees starting out: never
+// a drafted player, and nobody goes back once he has played above it.
+export function dslEligible(p: Player): boolean {
+  if (p.draft) return false;
+  if (p.level && p.level !== 'DSL') return false;
+  return !p.stats.some((s) => s.level !== 'DSL' && (s.bat.pa > 0 || s.pit.bf > 0));
+}
+
 export function canAssign(league: League, p: Player, level: Level): string | null {
   if (level === 'MLB') return 'Use recall or select contract';
+  if (level === 'DSL' && !dslEligible(p)) return 'The DSL is only for international signees who have not played above it';
   if (p.level === 'MLB') return p.on40 ? 'Use option' : 'Use DFA / outright';
   if (p.il) return 'On the injured list';
   if (p.dfa || p.waivers) return 'On waivers';
@@ -179,6 +188,7 @@ export function placeOnWaivers(league: League, p: Player, type: 'outright' | 're
 }
 
 export function assignPlayer(league: League, p: Player, level: Level, by?: string): void {
+  if (level === 'DSL' && !dslEligible(p)) level = 'CPX';
   const from = p.level;
   p.level = level;
   // AI clubs' minor-league shuffles are not logged, to keep the transaction log readable.
@@ -297,6 +307,8 @@ export function signFreeAgent(league: League, p: Player, orgId: number, level: L
   p.teamSince = league.season;
   p.joined = { season: league.season, day: league.day };
   p.on40 = false;
+  // Free agents never start in the DSL unless they're international amateurs who haven't played above it.
+  if (level === 'DSL' && !dslEligible({ ...p, level: null })) level = 'CPX';
   p.level = level;
   p.contract = { type: 'MiLB', salary: MILB_SALARY[level], minorSalary: MILB_SALARY[level], exp: league.season, oneWay: false, signed: league.season };
   p.fa = null;

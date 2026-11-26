@@ -5,7 +5,7 @@ import type { League, Level, Org, Player } from './types.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { isFreeAgent, isMinorFA } from './freeAgency.ts';
 import { signFreeAgent } from './rules.ts';
-import { isPitcher, ovr, scoutedOvr } from './ratings.ts';
+import { ovr, scoutedOvr } from './ratings.ts';
 import { activeAt, pname } from './util.ts';
 import { addInbox } from './morale.ts';
 import { delegated } from './staff.ts';
@@ -15,7 +15,7 @@ import { dayShort } from './settings.ts';
 
 export interface MilbOffer { orgId: number; level: Level; invite: boolean; day: number; byAgm?: boolean }
 
-const LEVEL_PULL: Partial<Record<Level, number>> = { AAA: 3, AA: 2, 'A+': 1.2, A: 0.8, CPX: 0.4, DSL: 0.2 };
+export const LEVEL_PULL: Partial<Record<Level, number>> = { AAA: 3, AA: 2, 'A+': 1.2, A: 0.8, CPX: 0.4, DSL: 0.2 };
 
 export const milbOffers = (p: Player): MilbOffer[] => (p.fa as { milbOffers?: MilbOffer[] } | null | undefined)?.milbOffers ?? [];
 const setOffers = (p: Player, o: MilbOffer[]) => { (p.fa as { milbOffers?: MilbOffer[] }).milbOffers = o; };
@@ -29,9 +29,13 @@ function appeal(league: League, p: Player, o: MilbOffer): number {
   const age = league.season - p.born;
   const lvl = (LEVEL_PULL[o.level] ?? 0) * (ovr(p) >= 45 ? 1.3 : 1);
   const invite = o.invite ? (age >= 25 ? 1.5 : 0.6) : 0;
-  const blockers = activeAt(league, o.orgId, 'MLB').filter((q) => (isPitcher(p) ? q.pos === p.pos : q.pos === p.pos) && ovr(q) > ovr(p)).length;
-  const path = Math.max(0, 2 - blockers * 0.5);
-  return lvl + invite + path + rand() * 0.8;
+  return lvl + invite + pathScore(league, o.orgId, p) + rand() * 0.8;
+}
+
+// A clear path to the majors: few big leaguers at his position better than him.
+export function pathScore(league: League, orgId: number, p: Player): number {
+  const blockers = activeAt(league, orgId, 'MLB').filter((q) => q.pos === p.pos && ovr(q) > ovr(p)).length;
+  return Math.max(0, 2 - blockers * 0.5);
 }
 
 export function offerMilb(league: League, orgId: number, p: Player, level: Level, invite: boolean, byAgm = false): string | null {

@@ -35,13 +35,27 @@ function decline(a: number, p: Player): number {
   return (a - 31) * 0.065 * elite * work;
 }
 
+// About where a player has outgrown a level (roughly the best 10% there, plus a bit).
+export const LEVEL_OUTGROWN: Record<string, number> = { DSL: 36, CPX: 38, A: 42, 'A+': 45, AA: 48 };
+// Oldest age (this season) that's still young for the level.
+const LEVEL_AGE: Record<string, number> = { DSL: 19, CPX: 20, A: 21, 'A+': 22, AA: 24 };
+
+// Dominating a level he's too good (or too old) for: below Triple-A, a player
+// whose ratings have outgrown the level, or who is old for it, gets no extra
+// growth from crushing it. He keeps developing at the normal rate. This stops a
+// club from parking a 23-year-old in High-A to speed him up.
+export function outgrownLevel(league: League, p: Player, age = league.season - p.born): boolean {
+  if (!p.level || !(p.level in LEVEL_OUTGROWN)) return false;
+  return ovr(p) >= LEVEL_OUTGROWN[p.level] || age > LEVEL_AGE[p.level];
+}
+
 // A minor leaguer dominating his level (130+ on the plus scale over 100+ PA or
-// batters faced) develops up to ~20% faster while he keeps it up.
+// batters faced) develops up to ~20% faster while he's still being challenged.
 export function crushBoost(league: League, p: Player, age = league.season - p.born): number {
   if (!p.level || p.level === 'MLB' || age > 27) return 1;
   const r = levelPlus(league, p, league.season, p.level);
   if (!r || r.n < 100 || r.plus < 130) return 1;
-  return 1 + Math.min(0.2, (r.plus - 125) / 250);
+  return outgrownLevel(league, p, age) ? 1 : 1 + Math.min(0.2, (r.plus - 125) / 250);
 }
 
 export function developPlayer(league: League, p: Player): void {

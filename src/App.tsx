@@ -42,6 +42,7 @@ import Playoffs from './ui/pages/Playoffs.tsx';
 import SettingsPage from './ui/pages/Settings.tsx';
 import News from './ui/pages/News.tsx';
 import Prospects from './ui/pages/Prospects.tsx';
+import FarmRankings from './ui/pages/FarmRankings.tsx';
 import Offseason from './ui/pages/Offseason.tsx';
 import Tenders from './ui/pages/Tenders.tsx';
 import Rule5 from './ui/pages/Rule5.tsx';
@@ -63,7 +64,7 @@ const SIDEBAR: { head: string; links: [string, string][] }[] = [
   { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['awards', 'Awards'], ['history', 'History & Records'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['playoff-roster', 'Playoff Roster'], ['depth', 'Depth Chart'], ['depth-field', 'Depth Chart: Field'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['scouting', 'Scouting'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-finder', 'Trade Finder'], ['compare', 'Compare Players'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
-  { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
+  { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['farm-rankings', 'Farm Rankings'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
   { head: 'Front Office', links: [['offseason', 'Offseason'], ['draft', 'Draft'], ['international', 'International'], ['rule5', 'Rule 5'], ['tenders', 'Tenders & Arb'], ['extensions', 'Extensions']] },
   { head: 'Tools', links: [['settings', 'League Settings'], ['', 'Switch League']] },
 ];
@@ -263,6 +264,7 @@ export default function App() {
     case 'settings': page = <SettingsPage />; break;
     case 'news': page = <News />; break;
     case 'prospects': page = <Prospects />; break;
+    case 'farm-rankings': page = <FarmRankings />; break;
     case 'offseason': page = <Offseason />; break;
     case 'tenders': page = <Tenders />; break;
     case 'rule5': page = <Rule5 />; break;

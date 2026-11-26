@@ -2,7 +2,7 @@ import { acquisition } from '../../core/moves.ts';
 import { useEffect, useState } from 'react';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
-import { crushBoost } from '../../core/development.ts';
+import { crushBoost, outgrownLevel } from '../../core/development.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, FIELD_POSITIONS, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
@@ -468,7 +468,9 @@ export default function PlayerPage() {
               const r = levelPlus(league, p, yr, p.level);
               if (!r) return null;
               const pit = isPitcher(p);
-              const boost = yr === league.season && crushBoost(league, p) > 1;
+              const cb = yr === league.season ? crushBoost(league, p) : 1;
+              const boost = cb > 1;
+              const capped = yr === league.season && !boost && r.n >= 100 && r.plus >= 130 && outgrownLevel(league, p);
               const adj = minorPerfAdj(league, p);
               return (
                 <>
@@ -476,6 +478,7 @@ export default function PlayerPage() {
                   <div className="small">
                     {pit ? <>FIP- <b>{200 - r.plus}</b></> : <>wRC+ <b>{r.plus}</b></>} at {p.level} in {yr} <span className="muted">({r.n} {pit ? 'batters faced' : 'PA'}; 100 = level average{pit ? ', lower is better' : ''})</span>
                     {boost && <> · <span className="pos">dominating the level: developing faster</span></>}
+                    {capped && <> · <span className="muted" title="He's too good or too old for this level to learn extra from it. He still develops at the normal rate; promote him to get the boost back.">outgrown the level: no extra boost from dominating here</span></>}
                     {adj >= 1.5 && <> · <span className="pos">clubs are taking notice</span></>}
                     {adj <= -1.5 && <> · <span className="neg">the numbers are raising doubts</span></>}
                   </div>

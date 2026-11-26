@@ -10,6 +10,7 @@
 // An extension signed during the arbitration process settles his case (no
 // hearing). Some players won't negotiate once the season starts; a few won't
 // negotiate at all before free agency.
+import { dayShort } from './settings.ts';
 import type { League, Org, Player } from './types.ts';
 import { fmtMoney, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
 import { ovr, potOvr, scoutFactor } from './ratings.ts';
@@ -134,12 +135,14 @@ export function extRefusal(league: League, p: Player, orgId = league.userOrgId):
   const svc = serviceYears(p.mlServiceDays, league.settings);
   // Some players (and some agents' clients) shut talks down at Opening Day.
   const noInSeason = seededNormal(p.scoutSeed, 0, 5150) + (a?.inSeasonBan ?? 0) > 0.65;
+  // In the exclusive window everyone about to hit the market will at least listen.
+  const window = inExclusiveWindow(league) && pendingFreeAgent(league, p);
   if (inSeason && noInSeason) return "He won't negotiate during the season. Try again in the offseason.";
   // A few will only listen once they reach free agency.
-  if (svc >= 4 && p.personality.greed > 68 && seededNormal(p.scoutSeed, 0, 5151) + (a?.toMarket ?? 0) > 0.9) return 'He intends to test free agency and has declined to negotiate.';
+  if (!window && svc >= 4 && p.personality.greed > 68 && seededNormal(p.scoutSeed, 0, 5151) + (a?.toMarket ?? 0) > 0.9) return 'He intends to test free agency and has declined to negotiate.';
   // Stars closer to free agency are likelier to bet on themselves.
   const star = starLevel(league, p);
-  if (svc >= 3 && star >= 0.5 && seededNormal(p.scoutSeed, 0, 5152) + (a?.toMarket ?? 0) + star * 0.6 + (p.personality.greed - 50) / 60 > 1.3) return 'He intends to test free agency and has declined to negotiate.';
+  if (!window && svc >= 3 && star >= 0.5 && seededNormal(p.scoutSeed, 0, 5152) + (a?.toMarket ?? 0) + star * 0.6 + (p.personality.greed - 50) / 60 > 1.3) return 'He intends to test free agency and has declined to negotiate.';
   if (extStart(league, p) - contractBase(league) >= 3) return 'He is already signed for three or more seasons';
   const morale = p.morale?.value;
   if (morale !== undefined && morale < 25) return 'He is too unhappy to talk about staying.';
@@ -147,6 +150,27 @@ export function extRefusal(league: League, p: Player, orgId = league.userOrgId):
 }
 
 const accept = (ratio: number) => 1 / (1 + Math.exp(-(ratio - 1) / 0.045));
+
+// The exclusive window: the few days between the end of the World Series and
+// the opening of free agency, when only his own club can talk to a player about
+// to hit the market. Most want to test it anyway.
+export function inExclusiveWindow(league: League): boolean {
+  if (league.phase !== 'offseason' || league.wsEndDay === undefined || league.wsEndDay === null) return false;
+  return league.day >= league.wsEndDay && league.day < league.wsEndDay + 5;
+}
+export const exclusiveFaDay = (league: League): number => (league.wsEndDay ?? league.day) + 5;
+// About to become a free agent (contract up, six-plus years of service).
+export function pendingFreeAgent(league: League, p: Player): boolean {
+  return p.contract.type === 'ML' && p.contract.exp === league.season && serviceYears(p.mlServiceDays, league.settings) >= 6;
+}
+// How willing he is to skip the market: loyalty above all, then years with you;
+// stars want to see what's out there.
+export function stayChance(league: League, p: Player): number {
+  const loyal = (p.personality.loyalty - 50) / 50; // -0.6 .. +0.6
+  const tenure = p.teamSince !== undefined ? Math.min(1, (league.season - p.teamSince) / 8) : 0;
+  const star = starLevel(league, p);
+  return Math.max(0.03, Math.min(0.6, 0.12 + 0.55 * Math.max(0, loyal) + 0.1 * Math.min(0, loyal) + 0.12 * tenure - 0.12 * star));
+}
 
 function offerValue(league: League, p: Player, t: Terms): number {
   const ys = extYears(league, p, t.sched.length);
@@ -159,14 +183,21 @@ export function extWillingness(league: League, p: Player, t: Terms, orgId = leag
   const ask = extAsk(league, p, t.sched.length).total;
   const f = scoutFactor(league, league.orgs[orgId], 'own');
   const misread = Math.exp(0.08 * f * seededNormal(p.scoutSeed, orgId, 6161));
-  return accept(offerValue(league, p, t) / (ask * misread));
+  const r = offerValue(league, p, t) / (ask * misread);
+  return inExclusiveWindow(league) && pendingFreeAgent(league, p) ? windowOdds(league, p, r) : accept(r);
+}
+
+// In the window even a fair offer usually loses to the market; overpaying helps a little.
+function windowOdds(league: League, p: Player, ratio: number): number {
+  return accept(ratio) * Math.min(0.7, stayChance(league, p) + Math.max(0, ratio - 1) * 0.5);
 }
 
 export function canOfferExt(league: League, p: Player, orgId = league.userOrgId): string | null {
   const r = extRefusal(league, p, orgId);
   if (r) return r;
   const last = p.ext?.season === league.season ? p.ext.lastOffer : undefined;
-  if (last !== undefined && league.day - last < 7) return `One offer a week: next offer in ${7 - (league.day - last)} day(s)`;
+  const gap = inExclusiveWindow(league) && pendingFreeAgent(league, p) ? 1 : 7;
+  if (last !== undefined && league.day - last < gap) return gap === 1 ? 'One offer a day: try again tomorrow' : `One offer a week: next offer in ${7 - (league.day - last)} day(s)`;
   return null;
 }
 
@@ -178,6 +209,17 @@ export function offerExtension(league: League, p: Player, t: Terms, orgId = leag
   p.ext!.lastOffer = league.day;
   const ask = extAsk(league, p, t.sched.length).total;
   const ratio = offerValue(league, p, t) / ask;
+  // In the exclusive window most players want to see the market first.
+  if (inExclusiveWindow(league) && pendingFreeAgent(league, p)) {
+    const odds = windowOdds(league, p, ratio);
+    if (rand() < odds) {
+      signExtension(league, p, t, orgId);
+      return { ok: true, text: `${pname(p)} decided not to test the market: he re-signed.` };
+    }
+    if (ratio < 0.8) return { ok: false, text: `${pname(p)}'s agent: that's well short of what he'll get on the open market.` };
+    const loyal = p.personality.loyalty >= 65;
+    return { ok: false, text: `${pname(p)} appreciates the offer${ratio >= 0.97 ? ' (it was a strong one)' : ''}, but ${loyal ? "he wants to see what's out there first. He likes it here: you're still in the running once the market opens" : 'he wants to test the market'}. Free agency opens ${dayShort(league.season, exclusiveFaDay(league))}.` };
+  }
   if (rand() < accept(ratio)) {
     signExtension(league, p, t, orgId);
     return { ok: true, text: `${pname(p)} agreed to an extension.` };
