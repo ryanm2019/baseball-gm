@@ -1,5 +1,5 @@
 import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
-import { positionGames, posGamesText } from '../../core/positions.ts';
+import { playedSeason, positionGames, posGamesText } from '../../core/positions.ts';
 import { useState } from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
@@ -82,8 +82,8 @@ export default function Roster() {
   const pitCols = [...base, ...pitStatCols((p) => seasonPit(p, league.season, statLevel)), ...tail];
   const playedCol: Column<Player> = {
     key: 'played', label: 'Played', left: true, title: `Games at each position this season${level ? ` (${level})` : ''}, most first`,
-    value: (p) => positionGames(p, league.season, statLevel ?? 'all')[0]?.pos ?? '',
-    render: (p) => <span className="small nowrap">{posGamesText(positionGames(p, league.season, statLevel ?? 'all'))}</span>,
+    value: (p) => positionGames(p, playedSeason(league), statLevel ?? 'all')[0]?.pos ?? '',
+    render: (p) => <span className="small nowrap">{posGamesText(positionGames(p, playedSeason(league), statLevel ?? 'all'))}</span>,
   };
   const batCols = [...base, playedCol, ...batStatCols((p) => seasonBat(p, league.season, statLevel)), ...tail];
 

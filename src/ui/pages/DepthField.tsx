@@ -6,7 +6,7 @@ import { href } from '../../router.ts';
 import type { League, Org, Player, Pos } from '../../core/types.ts';
 import { activeAt, orgPlayers } from '../../core/util.ts';
 import { defAt, isPitcher, ovr, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { ovrAt, positionGames, positionReads } from '../../core/positions.ts';
+import { ovrAt, playedSeason, positionGames, positionReads } from '../../core/positions.ts';
 import { everydayLineup } from '../../core/sim/lineup.ts';
 import { HeatIcon } from '../show.tsx';
 import { orgPayroll, fmtMoney } from '../../core/contracts.ts';
@@ -117,7 +117,7 @@ export default function DepthField() {
     return (bench.length ? bench : fits).slice(0, 2);
   };
   // Games he's played at this spot this season (MLB).
-  const gamesAt = (p: Player, pos: Pos) => { const g = positionGames(p, league.season).find((r) => r.pos === pos)?.g; return g ? `${g} G` : ''; };
+  const gamesAt = (p: Player, pos: Pos) => { const g = positionGames(p, playedSeason(league)).find((r) => r.pos === pos)?.g; return g ? `${g} G` : ''; };
   const startsAt = (p: Player) => [...starter.entries()].find(([, q]) => q === p)?.[0];
   const prospects = (match: (p: Player) => boolean) => minors.filter(match).sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a)).slice(0, 2);
 

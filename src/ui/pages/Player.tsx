@@ -11,7 +11,7 @@ import { controlThrough, fmtMoney, serviceClass, serviceLabel } from '../../core
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
 import { project } from '../../core/projections.ts';
-import { canStart, changePosition, positionReads, positionGames, FIELD_ORDER } from '../../core/positions.ts';
+import { canStart, changePosition, positionReads, positionGames, playedSeason, FIELD_ORDER } from '../../core/positions.ts';
 
 const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
@@ -254,7 +254,7 @@ function PositionsPanel({ p }: { p: Player }) {
     );
   }
   const reads = positionReads(league, org, p);
-  const played = positionGames(p, league.season, p.level === 'MLB' ? 'MLB' : 'all');
+  const played = positionGames(p, playedSeason(league), p.level === 'MLB' ? 'MLB' : 'all');
   return (
     <div className="box" style={{ margin: '8px 0' }}>
       <h3>Positions</h3>

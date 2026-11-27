@@ -10,7 +10,7 @@ import { createGame, setGameLeague, setOffenseAdj, simGame, type GameEngine, typ
 import { activeAt, activeLimit, addNews, countPitchers, fortyMan, orgById, pitcherLimit, pname, statEntry } from '../util.ts';
 import { farmDirectorReview, ilReadyNotices, isManaged, manageOrg } from '../farmDirector.ts';
 import { weeklyFarmReport } from '../farmReport.ts';
-import { resolveWaivers } from '../rules.ts';
+import { designate, fortyCut, posLabel, resolveWaivers } from '../rules.ts';
 import { monthlyDevelopment } from '../development.ts';
 import { onSeasonEnd, runOffseasonEvents } from '../offseason.ts';
 import { faDay, pendingBlock } from '../freeAgency.ts';
@@ -24,7 +24,7 @@ import { deadlineFlex, ownerCheckin, updateStrategies } from '../owners.ts';
 import { talksDay } from '../negotiation.ts';
 import { tradeDay } from '../trade.ts';
 import { aiExtensions } from '../extensions.ts';
-import { inboxStop, moraleWeek } from '../morale.ts';
+import { addInbox, inboxStop, moraleWeek } from '../morale.ts';
 import { storylinesWeek } from '../storylines.ts';
 import { selectAllStars } from '../awards.ts';
 import { ensurePlayoffRosters, playoffRosterFor } from '../playoffRoster.ts';
@@ -547,9 +547,22 @@ export function endLiveDay(league: League, ld: LiveDay): DayResult {
 }
 
 // Outside the season, a 40-man over the limit (after a waiver claim, say) must be fixed first.
+// If your assistant GM runs the roster, he designates the weakest 40-man player himself.
 function userFortyOver(league: League): string | null {
-  const f = fortyMan(league, league.userOrgId).length;
-  return f > league.settings.fortyMax ? `Your 40-man roster has ${f} players (max ${league.settings.fortyMax}). Designate, release or trade someone on the Roster Moves page, then press Play.` : null;
+  const org = league.orgs[league.userOrgId];
+  const max = league.settings.fortyMax;
+  if (fortyMan(league, org.id).length > max && delegated(league, org, 'roster')) {
+    const cut: string[] = [];
+    while (fortyMan(league, org.id).length > max) {
+      const p = fortyCut(league, org.id);
+      if (!p) break;
+      designate(league, p);
+      cut.push(`${posLabel(p)} ${pname(p)}`);
+    }
+    if (cut.length) addInbox(league, { from: 'Assistant GM', kind: 'info', pids: [], subject: 'Made room on the 40-man', text: `We were over the 40-man limit, so I designated ${cut.join(' and ')} for assignment.` });
+  }
+  const f = fortyMan(league, org.id).length;
+  return f > max ? `Your 40-man roster has ${f} players (max ${max}). Designate, release or trade someone on the Roster Moves page, then press Play.` : null;
 }
 
 export function simOneDay(league: League): DayResult {

@@ -346,3 +346,7 @@ export function positionGames(p: Player, season?: number, level: Level | 'all' =
 
 export const posGamesText = (rows: PosGames[], max = 3) => rows.slice(0, max).map((r) => `${r.pos} ${r.g}`).join(', ') + (rows.length > max ? ` +${rows.length - max}` : '');
 export const FIELD_ORDER = FLD_ORDER;
+
+// The season whose games-by-position to show: last season's during spring
+// training (no games played yet), otherwise this season's.
+export const playedSeason = (league: League): number => (league.phase === 'preseason' ? league.season - 1 : league.season);
