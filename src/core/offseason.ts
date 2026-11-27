@@ -16,7 +16,7 @@ import { successorDay } from './successor.ts';
 import type { League, Org, Player } from './types.ts';
 import { LEVELS } from './types.ts';
 import { dayToDate } from './settings.ts';
-import { cbtTax, fmtMoney, marketValue, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
+import { cbtTax, fmtMoney, marketValue, MILB_SALARY, orgPayroll, roundSalary, serviceYears } from './contracts.ts';
 import { displayOvr, isPitcher, ovr, perceivedOvr, potOvr } from './ratings.ts';
 import { addNews, addTransaction, fortyMan, orgPlayers, pname, sumBat, sumPit, touchRosters } from './util.ts';
 import { agmEvalSd, delegated, staffContractsExpire, staffOf } from './staff.ts';
@@ -261,9 +261,21 @@ function runFaOpen(league: League): void {
     if (c.type === 'ML') {
       const qoP = p.qoPending;
       if (qoP) continue; // decides later
-      if (serviceYears(p.mlServiceDays, s) >= 6 || !p.on40) {
+      const svc = serviceYears(p.mlServiceDays, s);
+      if (svc >= 6 || (!p.on40 && svc >= 3)) {
         openFreeAgent(league, p, former);
         nMl++;
+      } else if (!p.on40) {
+        // Off the 40-man (outrighted) with under 3 years: he's a minor leaguer
+        // now. Six-plus pro seasons makes him a minor league free agent;
+        // otherwise his club keeps him on a minor league deal.
+        if (p.proSeasons >= 6) {
+          openFreeAgent(league, p, former);
+          nMilb++;
+        } else {
+          const lvl = p.level && p.level !== 'MLB' ? p.level : 'AAA';
+          p.contract = { type: 'MiLB', salary: MILB_SALARY[lvl], minorSalary: MILB_SALARY[lvl], exp: league.season + 1, oneWay: false, signed: league.season + 1 };
+        }
       }
       // Under club control: waits for the tender deadline.
     } else {

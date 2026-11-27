@@ -64,7 +64,9 @@ export function askingFor(league: League, p: Player): { years: number; aav: numb
 }
 
 // Players who would only get minor league deals.
-export const isMinorFA = (league: League, p: Player) => !p.fa || p.fa.asking.aav <= league.settings.minSalary * 1.15 || ovr(p) < 42;
+// The minor league market: anyone who has never played in the majors (posted
+// players from Asian leagues aside), and anyone asking about the minimum.
+export const isMinorFA = (league: League, p: Player) => !p.fa || p.fa.asking.aav <= league.settings.minSalary * 1.15 || ovr(p) < 42 || (p.mlServiceDays === 0 && !p.fa.posted);
 
 export function openFreeAgent(league: League, p: Player, formerOrg: number | null, qo = false): void {
   const asking = askingFor(league, p);
