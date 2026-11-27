@@ -535,7 +535,17 @@ export function endLiveDay(league: League, ld: LiveDay): DayResult {
   return { stop: null };
 }
 
+// Outside the season, a 40-man over the limit (after a waiver claim, say) must be fixed first.
+function userFortyOver(league: League): string | null {
+  const f = fortyMan(league, league.userOrgId).length;
+  return f > league.settings.fortyMax ? `Your 40-man roster has ${f} players (max ${league.settings.fortyMax}). Designate, release or trade someone on the Roster Moves page, then press Play.` : null;
+}
+
 export function simOneDay(league: League): DayResult {
+  if (league.phase === 'offseason' || league.phase === 'preseason') {
+    const over = userFortyOver(league);
+    if (over) return { stop: over };
+  }
   if (league.phase === 'offseason') {
     const stop = runOffseasonEvents(league);
     if (stop) return { stop };

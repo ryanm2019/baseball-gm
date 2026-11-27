@@ -9,6 +9,7 @@ import { MINOR_LEVELS } from './types.ts';
 import { activeAt, activeLimit, addNews, addTransaction, countPitchers, fortyMan, orgById, pitcherLimit, pname, touchRosters } from './util.ts';
 import { isPitcher, ovr, potOvr } from './ratings.ts';
 import { addInbox } from './morale.ts';
+import { delegated } from './staff.ts';
 import { MILB_SALARY, roundSalary, serviceYears } from './contracts.ts';
 import { rand } from './random.ts';
 import { firstContractSeason, openFreeAgent } from './freeAgency.ts';
@@ -375,7 +376,8 @@ export function resolveWaivers(league: League, p: Player): void {
   let claimer: number | null = null;
   for (const id of order) {
     if (id === league.userOrgId) {
-      if (userClaims.includes(id) && fortyMan(league, id).length < league.settings.fortyMax) {
+      // A full 40-man doesn't stop a claim: you make room once it's awarded.
+      if (userClaims.includes(id)) {
         claimer = id;
         break;
       }
@@ -387,9 +389,15 @@ export function resolveWaivers(league: League, p: Player): void {
   delete waiverClaims(league)[p.id];
   if (claimer !== null) {
     const fromName = orgById(league, from)?.affiliates.MLB.name ?? '';
-    if (claimer !== league.userOrgId && fortyMan(league, claimer).length >= league.settings.fortyMax) {
-      const cut = fortyCut(league, claimer);
-      if (cut) designate(league, cut);
+    const userClaimer = claimer === league.userOrgId;
+    // Over the 40-man: AI clubs (and your assistant GM, if he runs the roster) designate the weakest player.
+    let madeRoom: Player | null = null;
+    if (fortyMan(league, claimer).length >= league.settings.fortyMax && (!userClaimer || delegated(league, orgById(league, claimer)!, 'roster'))) {
+      madeRoom = fortyCut(league, claimer);
+      if (madeRoom) designate(league, madeRoom);
+    }
+    if (!userClaimer && userClaims.includes(league.userOrgId)) {
+      addInbox(league, { from: 'Front office', subject: `Lost the claim on ${pname(p)}`, kind: 'info', pids: [p.id], text: `The ${orgById(league, claimer)!.affiliates.MLB.name} claimed ${posLabel(p)} ${pname(p)} ahead of you: they're higher in waiver priority (claims go to the club with the worst record first).` });
     }
     p.orgId = claimer;
     touchRosters();
@@ -409,7 +417,11 @@ export function resolveWaivers(league: League, p: Player): void {
     logMove(league, 'Waiver claim', [side(claimer, [p.id]), side(from, [])], `${orgById(league, claimer)!.abbrev} claimed ${posLabel(p)} ${pname(p)} from ${orgById(league, from)!.abbrev}`, p.contract.type === 'ML' ? p.contract.salary : 0);
     if (claimer === league.userOrgId || from === league.userOrgId) addNews(league, claimer, `${pname(p)} was claimed off waivers by the ${orgById(league, claimer)!.affiliates.MLB.name}.`, [p.id]);
     if (from === league.userOrgId) addInbox(league, { from: 'Front office', subject: `${pname(p)} was claimed on waivers`, kind: 'info', pids: [p.id], text: `The ${orgById(league, claimer)!.affiliates.MLB.name} claimed ${posLabel(p)} ${pname(p)} off waivers. He joins their 40-man roster${p.contract.type === 'ML' ? ' and they take on his contract' : ''}.` });
-    if (claimer === league.userOrgId) addInbox(league, { from: 'Front office', subject: `You claimed ${pname(p)}`, kind: 'info', pids: [p.id], link: { page: 'roster-moves' }, text: `Your claim on ${posLabel(p)} ${pname(p)} went through (from the ${fromName}). He's on your 40-man roster, assigned to ${p.level}.` });
+    if (userClaimer) {
+      const over = fortyMan(league, claimer).length - league.settings.fortyMax;
+      const room = madeRoom ? ` Your assistant GM designated ${posLabel(madeRoom)} ${pname(madeRoom)} for assignment to make room.` : over > 0 ? ` Your 40-man is now ${fortyMan(league, claimer).length}/${league.settings.fortyMax}: designate, release or trade a player (or move an injured one to the 60-day IL) on the Roster Moves page before the next sim day.` : '';
+      addInbox(league, { from: 'Front office', subject: `You claimed ${pname(p)}`, kind: 'info', stop: over > 0, pids: [p.id], link: { page: 'roster-moves' }, text: `Your claim on ${posLabel(p)} ${pname(p)} went through (from the ${fromName}). He's on your 40-man roster, assigned to ${p.level}.${room}` });
+    }
     return;
   }
   // Cleared waivers.

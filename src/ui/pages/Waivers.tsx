@@ -1,6 +1,7 @@
 import { useStore, changed } from '../../store.ts';
 import type { Player } from '../../core/types.ts';
 import { waiverClaims, posLabel } from '../../core/rules.ts';
+import { fortyMan } from '../../core/util.ts';
 import { serviceLabel } from '../../core/contracts.ts';
 import { tradePlayerCols } from '../tradeCols.tsx';
 import { DataTable, OrgLink, type Column } from '../components.tsx';
@@ -37,7 +38,9 @@ export default function Waivers() {
       render: (p) => {
         if (p.waivers!.fromOrg === league.userOrgId) return <span className="muted small">yours</span>;
         const mine = (claims[p.id] ?? []).includes(league.userOrgId);
+        const full = fortyMan(league, league.userOrgId).length >= s.fortyMax;
         return (
+          <>
           <button
             className="btn btn-sm"
             onClick={() => {
@@ -48,6 +51,8 @@ export default function Waivers() {
           >
             {mine ? 'Cancel claim' : 'Claim'}
           </button>
+          {full && <span className="muted small" title="If the claim is awarded you'll need to clear a 40-man spot (your assistant GM does it if he runs the roster)."> 40-man full</span>}
+          </>
         );
       },
     },
@@ -61,7 +66,7 @@ export default function Waivers() {
     <>
       <h1>Waivers</h1>
       <p className="muted small">
-        Claims are awarded in reverse order of MLB winning percentage. A claiming team takes on the contract and needs a 40-man spot: you need an open one when the claim is awarded; AI clubs drop their weakest 40-man player to make room for a clear upgrade. Before a player reaches waivers, a club that really wants him may call you with a small trade instead. Players who clear outright waivers are outrighted to Triple-A; those with {s.outrightRefuseServiceYears}+ years of service or a previous outright can elect free agency instead.
+        Claims are awarded in reverse order of MLB winning percentage. A claiming team takes on the contract and puts him on its 40-man. You can claim with a full 40-man: if the claim is awarded you'll need to clear a spot before the next sim day (your assistant GM does it if he runs the roster), and AI clubs drop their weakest 40-man player. If a club ahead of you in priority claims him, you'll get a note. Before a player reaches waivers, a club that really wants him may call you with a small trade instead. Players who clear outright waivers are outrighted to Triple-A; those with {s.outrightRefuseServiceYears}+ years of service or a previous outright can elect free agency instead.
       </p>
       <h2>On waivers</h2>
       <DataTable cols={wCols} rows={onWaivers} rowKey={(p) => p.id} defaultSort={{ key: 'ovr', desc: true }} compact />
