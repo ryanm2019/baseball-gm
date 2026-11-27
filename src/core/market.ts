@@ -6,6 +6,7 @@ import { ovr } from './ratings.ts';
 import { orgPlayers } from './util.ts';
 import { rand } from './random.ts';
 import { serviceYears } from './contracts.ts';
+import { playerTradeBlock } from './trade.ts';
 
 export const NEED_POS: Pos[] = [...FIELD_POS, 'SP', 'RP'];
 
@@ -53,10 +54,24 @@ function stanceFor(league: League, org: Org): TradeStance {
   return r < 0.2 ? 'Standing pat' : r < 0.4 ? 'Selling' : 'Listening';
 }
 
+// A club that just committed to a big free agent (a multi-year deal or $10M+
+// a year) doesn't shop him in his first two seasons. Exceptions: a rebuilding
+// club that signed him to flip, or one in a full rebuild a year later
+// (rebuilding coming out of a later winter, not just a deadline sell-off).
+function newSignee(league: League, org: Org, p: Player): boolean {
+  if (p.faSigned === undefined || p.teamSince !== p.faSigned || p.faSignedRebuild) return false;
+  const c = p.contract;
+  if (c.type !== 'ML') return false;
+  const season = league.phase === 'offseason' ? league.season + 1 : league.season;
+  if (season > p.faSigned && org.strategy === 'Rebuild' && (org.winterStrategy ?? org.strategy) === 'Rebuild') return false;
+  const big = c.exp > p.faSigned || c.salary >= 10e6;
+  return big && season <= p.faSigned + 1;
+}
+
 // Players a club is openly shopping.
 function blockFor(league: League, org: Org): number[] {
   if (org.stance === 'Standing pat') return [];
-  const ps = orgPlayers(league, org.id).filter((p) => !p.retired && !p.il && !p.prospect && !p.ifa && !p.waivers && !p.dfa);
+  const ps = orgPlayers(league, org.id).filter((p) => !p.retired && !p.il && !p.prospect && !p.ifa && !p.waivers && !p.dfa && !playerTradeBlock(league, p) && !newSignee(league, org, p));
   const age = (p: Player) => league.season - p.born;
   let picks: Player[] = [];
   if (org.stance === 'Selling') {
@@ -76,9 +91,14 @@ function blockFor(league: League, org: Org): number[] {
   return picks.sort((a, b) => ovr(b) - ovr(a)).slice(0, org.stance === 'Buying' ? 2 : 4).map((p) => p.id);
 }
 
-export function updateStances(league: League): void {
+// A club keeps its stance until its strategy changes; it rethinks it once a
+// year when free agency opens (fresh).
+export function updateStances(league: League, fresh = false): void {
   for (const org of league.orgs) {
-    if (org.id !== league.userOrgId) org.stance = stanceFor(league, org);
+    if (org.id !== league.userOrgId && (fresh || org.stanceStrategy !== org.strategy)) {
+      org.stance = stanceFor(league, org);
+      org.stanceStrategy = org.strategy;
+    }
     if (org.id !== league.userOrgId) org.block = blockFor(league, org);
     else org.block = org.block.filter((id) => league.players[id]?.orgId === org.id);
   }

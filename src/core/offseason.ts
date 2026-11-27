@@ -86,6 +86,10 @@ export function onSeasonEnd(league: League): void {
   league.lastWins = Object.fromEntries(league.orgs.map((o) => [o.id, st[o.id].w]));
   seasonAwards(league);
   archiveSeason(league);
+  {
+    const mvps = (league.awards ?? []).filter((a) => a.season === league.season && a.award === 'MVP').map((a) => `${a.lg} MVP ${pname(league.players[a.pid])}`);
+    addInbox(league, { from: 'League office', kind: 'info', stop: true, pids: [], subject: `The ${league.season} season in review`, text: `The ${league.season} season is in the books. ${mvps.join(', ')}. See every award and the full voting on the Season Review page.`, link: { page: 'season-review', args: [league.season] } });
+  }
   closeBooks(league);
   yearlyEconomy(league);
   // Hold the run environment near 4.45 runs per game as talent shifts.
@@ -235,7 +239,7 @@ function runOptions(league: League): void {
 function runFaOpen(league: League): void {
   const s = league.settings;
   successorDay(league, true); // open successor offers get their answer first
-  updateStrategies(league);
+  updateStrategies(league, false, true); // clubs rethink their trade stance once a winter
   // Owners budget knowing next year's guaranteed money and arbitration raises.
   const super2 = superTwoSet(league);
   setBudgets(league, (org) => orgPlayers(league, org.id).reduce((t, p) => {

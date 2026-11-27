@@ -248,6 +248,7 @@ export function signFreeAgentOffer(league: League, p: Player, o: FaOffer): void 
   p.fa = null;
   p.teamSince = start;
   p.faSigned = start;
+  p.faSignedRebuild = league.orgs[o.orgId].strategy === 'Rebuild' || undefined;
   p.joined = { season: league.season, day: league.day };
   if (fa.qo && fa.formerOrg !== null && fa.formerOrg !== o.orgId) applyQoPenalty(league, o.orgId, fa.formerOrg, o.aav * o.years);
   if (fa.posted) {

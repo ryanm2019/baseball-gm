@@ -281,6 +281,7 @@ export interface Player {
   qoReceived?: boolean;
   qoPending?: number;
   successor?: { season: number; level: Level; invite: boolean; day: number; byAgm?: boolean; answer?: 'yes' | 'no' } | null; // successor contract offer before minor league free agency
+  faSignedRebuild?: boolean; // signed by a club that was rebuilding (a flip candidate)
   faSigned?: number; // first season of a free-agent contract (can't be traded until June 15)
   teamSince?: number; // season he joined his current organization (10-and-5 rights)
   joined?: { season: number; day: number }; // when he joined (postseason eligibility, trade restrictions)
@@ -558,6 +559,8 @@ export interface Org {
   lastGameDay?: Partial<Record<Level, number>>;
   scoutFocus?: Partial<Record<StaffRole, string>>; // 'general' | 'HS' | 'College' | 'country:<name>' | 'org:<id>' // last day each affiliate played (for fatigue streaks) // deferred salary owed in later seasons
   stance: TradeStance;
+  winterStrategy?: Strategy; // strategy coming out of the offseason (midseason changes don't touch it)
+  stanceStrategy?: Strategy; // strategy the stance was set under (kept until it changes)
   block: number[]; // players the club is shopping
   interest: TradeInterest; // user only: watched players and wanted positions
   goals?: OwnerGoals; // user only
@@ -676,6 +679,16 @@ export interface AwardRec {
   orgId: number;
   pos?: string;
   line: string; // stat line at the time
+}
+
+// One voted award in one league: every player who got a vote, in order.
+export interface AwardVote {
+  season: number;
+  award: AwardName;
+  lg: 'AL' | 'NL';
+  voters: number;
+  scale: number[]; // points for 1st, 2nd, ...
+  rows: { pid: number; orgId: number; pos: string; line: string; war: number; points: number; votes: number[] }[]; // votes[i] = ballots with him in place i+1
 }
 
 export interface HofRec { season: number; pid: number; pct: number; war: number; line: string; ballot: number }
@@ -893,6 +906,7 @@ export interface League {
   devAdj?: number; // development speed for players 27 and under, tuned to keep the number of stars steady
   offenseAdj?: number;
   awards?: AwardRec[];
+  awardVotes?: AwardVote[]; // ballot results for the voted awards
   hof?: HofRec[];
   hofBallot?: Record<number, number>; // pid -> years on the ballot
   seasonRecs?: SeasonRec[]; // hitter rating points added league-wide to hold the run environment steady

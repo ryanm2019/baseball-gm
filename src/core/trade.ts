@@ -492,7 +492,7 @@ function pushOffer(league: League, ai: Org, prop: TradeProposal, note: string, p
   const offer: TradeOffer = { id: league.nextId.tx++, day: league.day, season: league.season, fromOrg: ai.id, proposal: prop, expires: league.day + 3, note };
   league.tradeOffers.push(offer);
   addNews(league, user.id, `The ${ai.affiliates.MLB.name} reached out with a trade offer: ${note} See Trade Offers.`, pids);
-  addInbox(league, { from: `${ai.region} ${ai.name} front office`, subject: 'Trade offer', kind: 'info', pids, text: `The ${ai.affiliates.MLB.name} sent you a trade offer: ${note}`, link: { page: 'trade-offers' } });
+  addInbox(league, { from: `${ai.region} ${ai.name} front office`, subject: `Trade offer from the ${ai.affiliates.MLB.name}`, kind: 'info', stop: true, pids, text: `The ${ai.affiliates.MLB.name} sent you a trade offer: ${note} It expires in 3 days.`, link: { page: 'trade-offers' } });
 }
 
 // An AI club wants one of the user's players (block players first).

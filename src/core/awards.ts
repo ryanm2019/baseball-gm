@@ -12,6 +12,7 @@ import { batAdvanced, batWar, pitAdvanced, pitWar, seasonCtx } from './war.ts';
 import { addNews, emptyBat, emptyPit, pname } from './util.ts';
 import { posLabel } from './rules.ts';
 import { moraleEvent } from './morale.ts';
+import { normal } from './random.ts';
 import { addScoop } from './util.ts';
 import type { FieldPos } from './types.ts';
 
@@ -95,7 +96,36 @@ function isRookie(p: Player, season: number): boolean {
   let pa = 0;
   let outs = 0;
   for (const e of p.stats) if (e.level === 'MLB' && e.season < season) { pa += e.bat.pa; outs += e.pit.outs; }
-  return pa < 130 && outs < 150;
+  // Service before this season counts too (veterans from before the league began have no stats here).
+  return pa < 130 && outs < 150 && p.mlServiceDays - p.serviceThisSeason < 45;
+}
+
+const MVP_SCALE = [14, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const CY_SCALE = [7, 4, 3, 2, 1];
+const ROY_SCALE = [5, 3, 1];
+const VOTERS = 30;
+
+// Each writer ranks the field by how he sees it (the merit score plus his own
+// read); points by place decide the award. Returns the winner.
+function vote(league: League, lg: 'AL' | 'NL', award: AwardName, field: Line[], merit: (l: Line) => number, scale: number[]): Line | undefined {
+  if (!field.length) return undefined;
+  const cands = [...field].sort((a, b) => merit(b) - merit(a)).slice(0, scale.length + 8);
+  const spread = Math.max(0.4, (merit(cands[0]) - merit(cands[Math.min(cands.length - 1, scale.length)])) / 4);
+  const tally = new Map<number, { l: Line; points: number; votes: number[] }>();
+  for (let v = 0; v < VOTERS; v++) {
+    const ballot = cands.map((l) => ({ l, s: merit(l) + normal(0, spread) })).sort((a, b) => b.s - a.s).slice(0, scale.length);
+    ballot.forEach(({ l }, i) => {
+      const t = tally.get(l.p.id) ?? { l, points: 0, votes: scale.map(() => 0) };
+      t.points += scale[i];
+      t.votes[i]++;
+      tally.set(l.p.id, t);
+    });
+  }
+  // Most points; ties go to more first-place votes.
+  const rows = [...tally.values()].sort((a, b) => b.points - a.points || b.votes[0] - a.votes[0]);
+  league.awardVotes ??= [];
+  league.awardVotes.push({ season: league.season, award, lg, voters: VOTERS, scale, rows: rows.map((t) => ({ pid: t.l.p.id, orgId: t.l.orgId, pos: posLabel(t.l.p), line: lineOf(t.l), war: Math.round(t.l.war * 10) / 10, points: t.points, votes: t.votes })) });
+  return rows[0]?.l;
 }
 
 export function seasonAwards(league: League): void {
@@ -109,14 +139,16 @@ export function seasonAwards(league: League): void {
     const mine = lines.filter((l) => l.lg === lg);
     const qualH = mine.filter((l) => !isPitcher(l.p) && l.b.pa >= 400);
     const qualP = mine.filter((l) => isPitcher(l.p) && (l.s.outs >= 360 || (l.p.pos === 'RP' && l.s.outs >= 150)));
-    // MVP: best WAR (pitchers count a little less).
-    const mvp = [...qualH, ...qualP].sort((a, b) => b.war * (isPitcher(b.p) ? 0.8 : 1) - a.war * (isPitcher(a.p) ? 0.8 : 1))[0];
+    // The voted awards: 30 writers per league fill out ranked ballots.
+    // MVP: WAR (pitchers count a little less), a nudge for playoff clubs.
+    const playoff = new Set(league.playoffs ? [...league.playoffs.seeds.AL, ...league.playoffs.seeds.NL] : []);
+    const mvp = vote(league, lg, 'MVP', [...qualH, ...qualP], (l) => l.war * (isPitcher(l.p) ? 0.8 : 1) + (playoff.has(l.orgId) ? 0.4 : 0), MVP_SCALE);
     if (mvp) { give(league, mvp, 'MVP'); headlines.push(`${lg} MVP: ${pname(mvp.p)} (${lineOf(mvp)})`); pids.push(mvp.p.id); }
-    const cy = qualP.filter((l) => l.p.pos === 'SP').sort((a, b) => b.war - a.war)[0];
+    const cy = vote(league, lg, 'Cy Young', qualP.filter((l) => l.p.pos === 'SP'), (l) => l.war + (l.s.w - 12) * 0.05, CY_SCALE);
     if (cy) { give(league, cy, 'Cy Young'); headlines.push(`${lg} Cy Young: ${pname(cy.p)} (${pitLine(cy)})`); pids.push(cy.p.id); }
-    const roy = mine.filter((l) => isRookie(l.p, season) && (l.b.pa >= 250 || l.s.outs >= 180)).sort((a, b) => b.war - a.war)[0];
+    const roy = vote(league, lg, 'Rookie of the Year', mine.filter((l) => isRookie(l.p, season) && (l.b.pa >= 250 || l.s.outs >= 180)), (l) => l.war, ROY_SCALE);
     if (roy) { give(league, roy, 'Rookie of the Year'); headlines.push(`${lg} Rookie of the Year: ${pname(roy.p)}`); pids.push(roy.p.id); }
-    const rel = mine.filter((l) => l.p.pos === 'RP' && l.s.outs >= 150).sort((a, b) => b.war + b.s.sv * 0.02 - (a.war + a.s.sv * 0.02))[0];
+    const rel = vote(league, lg, 'Reliever of the Year', mine.filter((l) => l.p.pos === 'RP' && l.s.outs >= 150), (l) => l.war + l.s.sv * 0.02, ROY_SCALE);
     if (rel) give(league, rel, 'Reliever of the Year');
     // Gold Gloves: best fielder at each spot among regulars.
     for (const pos of ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'] as FieldPos[]) {

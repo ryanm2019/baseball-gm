@@ -21,6 +21,7 @@ import Extensions from './ui/pages/Extensions.tsx';
 import Negotiate from './ui/pages/Negotiate.tsx';
 import Inbox from './ui/pages/Inbox.tsx';
 import Storylines from './ui/pages/Storylines.tsx';
+import SeasonReview from './ui/pages/SeasonReview.tsx';
 import Awards from './ui/pages/Awards.tsx';
 import History from './ui/pages/History.tsx';
 import Finances from './ui/pages/Finances.tsx';
@@ -61,7 +62,7 @@ import Preview from './ui/pages/Preview.tsx';
 import { hasUserGameToday } from './core/sim/day.ts';
 
 const SIDEBAR: { head: string; links: [string, string][] }[] = [
-  { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['awards', 'Awards'], ['history', 'History & Records'], ['league-payrolls', 'League Payrolls']] },
+  { head: 'League', links: [['dashboard', 'Dashboard'], ['inbox', 'Inbox'], ['preview', 'Season Preview'], ['standings', 'Standings'], ['playoffs', 'Playoffs'], ['scores', 'Scores'], ['transactions', 'Transactions'], ['moves', 'Transaction Review'], ['news', 'News'], ['storylines', 'Storylines'], ['season-review', 'Season Review'], ['awards', 'Awards'], ['history', 'History & Records'], ['league-payrolls', 'League Payrolls']] },
   { head: 'Team', links: [['roster', 'Roster'], ['roster-moves', 'Roster Moves'], ['playoff-roster', 'Playoff Roster'], ['depth', 'Depth Chart'], ['depth-field', 'Depth Chart: Field'], ['farm', 'Farm System'], ['farm-reports', 'Farm Reports'], ['schedule', 'Schedule'], ['payroll', 'Payroll & CBT'], ['finances', 'Finances'], ['departments', 'Departments'], ['staff', 'Staff'], ['scouting', 'Scouting'], ['injuries', 'Injuries']] },
   { head: 'Trades', links: [['trade', 'Trade'], ['trade-finder', 'Trade Finder'], ['compare', 'Compare Players'], ['trade-market', 'Trade Market'], ['trading-block', 'Trading Block'], ['trade-offers', 'Trade Offers']] },
   { head: 'Players', links: [['stats', 'Stats'], ['prospects', 'Top Prospects'], ['farm-rankings', 'Farm Rankings'], ['free-agents', 'Free Agents'], ['waivers', 'Waivers']] },
@@ -244,6 +245,7 @@ export default function App() {
     case 'inbox': page = <Inbox />; break;
     case 'storylines': page = <Storylines />; break;
     case 'awards': page = <Awards />; break;
+    case 'season-review': page = <SeasonReview />; break;
     case 'history': page = <History />; break;
     case 'finances': page = <Finances />; break;
     case 'trade-finder': page = <TradeFinder />; break;

@@ -341,5 +341,7 @@ export function inboxStop(league: League): string | null {
   const m = (league.inbox ?? []).find((x) => x.stop && !x.stopped && !x.resolved);
   if (!m) return null;
   m.stopped = true;
+  if (m.link?.page === 'trade-offers') return `${m.subject}. Review it on the Trade Offers page; press Play to continue.`;
+  if (m.link?.page === 'season-review') return `${m.subject}: awards and full voting on the Season Review page. Press Play to continue.`;
   return m.actions?.length ? `Inbox: ${m.subject}. Answer it on the Inbox page, then press Play to continue.` : `Inbox: ${m.subject}. Details on the Inbox page; press Play to continue.`;
 }

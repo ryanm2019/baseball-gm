@@ -83,7 +83,7 @@ export function teamStrength(league: League, orgId: number): number {
   return [...hit, ...pit].reduce((t, x) => t + x, 0) / 26;
 }
 
-export function updateStrategies(league: League, midseason = false): void {
+export function updateStrategies(league: League, midseason = false, freshStances = false): void {
   const ranks = league.orgs.map((o) => ({ o, s: teamStrength(league, o.id) })).sort((a, b) => b.s - a.s);
   const st = league.standings.MLB;
   ranks.forEach(({ o }, i) => {
@@ -99,8 +99,9 @@ export function updateStrategies(league: League, midseason = false): void {
     if (o.owner.type === 'Win-now' && strat === 'Retool' && i < 16) strat = 'Contend';
     if (o.owner.type === 'Cheap' && strat === 'Retool' && i >= 17) strat = 'Rebuild';
     o.strategy = strat;
+    if (!midseason) o.winterStrategy = strat;
   });
-  updateStances(league);
+  updateStances(league, freshStances);
 }
 
 export function setBudgets(league: League, committed?: (org: Org) => number): void {

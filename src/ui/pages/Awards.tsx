@@ -18,7 +18,8 @@ export default function Awards() {
   return (
     <>
       <h1>Awards</h1>
-      <select value={s} onChange={(e) => setSeason(Number(e.target.value))}>{seasons.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+      <select value={s} onChange={(e) => setSeason(Number(e.target.value))}>{seasons.map((x) => <option key={x} value={x}>{x}</option>)}</select>{' '}
+      {(league.awardVotes ?? []).some((v) => v.season === s) && <a className="small" href={href('season-review', [s])}>Full voting results: {s} Season Review</a>}
       <div className="row" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         {(['AL', 'NL'] as const).map((lg) => (
           <div key={lg} style={{ flex: '1 1 420px' }}>
