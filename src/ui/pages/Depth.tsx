@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { positionGames, posGamesText } from '../../core/positions.ts';
 import type React from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
@@ -447,6 +448,7 @@ export default function Depth() {
       {shown && (
         <ShowHeader league={league} p={shown} level={level}>
           {shownSlot && <span className="sh-chip">Playing {shownSlot.pos}{shownSlot.pos !== 'DH' ? ` · Def ${Math.round(defAt(shown, shownSlot.pos as Exclude<Pos, 'DH' | 'SP' | 'RP'>))}` : ''}</span>}
+          {!isPitcher(shown) && (() => { const pg = positionGames(shown, league.season, level); return pg.length ? <span className="sh-chip" title="Games at each position this season at this level">Played {posGamesText(pg, 4)}</span> : null; })()}
           {!isPitcher(shown) ? null : d.rotation.includes(shown.id) ? <span className="sh-chip">Rotation #{d.rotation.indexOf(shown.id) + 1}</span> : <span className="sh-chip">{PEN_ROLES.find((r) => r.key === roleOf(shown.id))?.label}</span>}
         </ShowHeader>
       )}

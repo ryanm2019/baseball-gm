@@ -1,4 +1,5 @@
 import { PosFilterSelect, posFilterFn } from '../posFilter.tsx';
+import { positionGames, posGamesText } from '../../core/positions.ts';
 import { useState } from 'react';
 import { useStore, changed } from '../../store.ts';
 import { go, useRoute } from '../../router.ts';
@@ -79,7 +80,12 @@ export default function Roster() {
   const pitchers = players.filter(isPitcher).filter(posFilterFn(pf));
   const hitters = players.filter((p) => !isPitcher(p)).filter(posFilterFn(pf));
   const pitCols = [...base, ...pitStatCols((p) => seasonPit(p, league.season, statLevel)), ...tail];
-  const batCols = [...base, ...batStatCols((p) => seasonBat(p, league.season, statLevel)), ...tail];
+  const playedCol: Column<Player> = {
+    key: 'played', label: 'Played', left: true, title: `Games at each position this season${level ? ` (${level})` : ''}, most first`,
+    value: (p) => positionGames(p, league.season, statLevel ?? 'all')[0]?.pos ?? '',
+    render: (p) => <span className="small nowrap">{posGamesText(positionGames(p, league.season, statLevel ?? 'all'))}</span>,
+  };
+  const batCols = [...base, playedCol, ...batStatCols((p) => seasonBat(p, league.season, statLevel)), ...tail];
 
   const setQ = (q: Record<string, string | number>) => go('roster', [], { org: orgId, level: view, ...q });
   const fd = farmDirectorOf(league, org);

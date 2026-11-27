@@ -4,13 +4,14 @@ import { useStore, changed, setMessage } from '../../store.ts';
 import { go, href, useRoute } from '../../router.ts';
 import { crushBoost, outgrownLevel } from '../../core/development.ts';
 import type { BatSplit, DefRatings, FieldPos, League, Player, Pos, StatEntry } from '../../core/types.ts';
+import { LEVELS } from '../../core/types.ts';
 import { FIELD_POS } from '../../core/types.ts';
 import { contact, FIELD_POSITIONS, isPitcher, posRating, scout, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
 import { controlThrough, fmtMoney, serviceClass, serviceLabel } from '../../core/contracts.ts';
 import { describeContract } from '../../core/terms.ts';
 import { agentName, moraleLabel } from '../../core/morale.ts';
 import { project } from '../../core/projections.ts';
-import { canStart, changePosition, positionReads } from '../../core/positions.ts';
+import { canStart, changePosition, positionReads, positionGames, FIELD_ORDER } from '../../core/positions.ts';
 
 const fmtPart = (x: number) => `${x > 0 ? '+' : ''}${Math.round(x)}`;
 import { posLabel, optionYearAvailable } from '../../core/rules.ts';
@@ -253,11 +254,12 @@ function PositionsPanel({ p }: { p: Player }) {
     );
   }
   const reads = positionReads(league, org, p);
+  const played = positionGames(p, league.season, p.level === 'MLB' ? 'MLB' : 'all');
   return (
     <div className="box" style={{ margin: '8px 0' }}>
       <h3>Positions</h3>
       <table className="data compact" style={{ width: 'auto' }}>
-        <thead><tr><th className="l">Pos</th><th className="l">Scouts' read</th><th title="Overall at this position today">Now</th><th title="Your scouts' projection once he settles in">Settled</th><th title="Experience at the position (100 = fully at home)">Exp</th>{mine && <th />}</tr></thead>
+        <thead><tr><th className="l">Pos</th><th className="l">Scouts' read</th><th title="Overall at this position today">Now</th><th title="Your scouts' projection once he settles in">Settled</th><th title="Experience at the position (100 = fully at home)">Exp</th><th title={`Games there this season (${p.level === 'MLB' ? 'MLB' : 'all levels'})`}>G</th>{mine && <th />}</tr></thead>
         <tbody>
           {reads.map((r) => (
             <tr key={r.pos} className={r.pos === p.pos ? 'user' : ''}>
@@ -266,6 +268,7 @@ function PositionsPanel({ p }: { p: Player }) {
               <td>{Math.round(r.now)}</td>
               <td>{Math.round(r.projected)}</td>
               <td>{Math.round(r.exp)}</td>
+              <td>{played.find((x) => x.pos === r.pos)?.g || ''}</td>
               {mine && <td>{r.pos !== p.pos && <button className="btn btn-sm" onClick={() => move(r.pos)}>Move</button>}</td>}
             </tr>
           ))}
@@ -273,6 +276,31 @@ function PositionsPanel({ p }: { p: Player }) {
       </table>
       <p className="muted small">A new position takes time: he gains experience with every game played there (spring training counts double). Some players turn out better than their ratings suggest, some grow into it slowly, and some never quite settle in. "Settled" is your scouts' best guess; better scouting, better guesses.</p>
     </div>
+  );
+}
+
+// Games (and starts) at each position, by season, level and team. Only the
+// positions he has actually played get a column.
+function PosGamesTable({ league, p }: { league: League; p: Player }) {
+  const rows = p.stats.filter((e) => e.fld && Object.keys(e.fld).length).sort((a, b) => a.season - b.season || LEVELS.indexOf(b.level) - LEVELS.indexOf(a.level));
+  if (!rows.length) return null;
+  const cols = FIELD_ORDER.filter((pos) => rows.some((e) => e.fld![pos]?.[0]));
+  return (
+    <>
+      <h3>Games by position</h3>
+      <table className="data compact" style={{ width: 'auto', minWidth: 0 }}>
+        <thead><tr><th>Year</th><th>Lvl</th><th className="l">Team</th>{cols.map((c) => <th key={c} title={`Games at ${c} (starts in parentheses)`}>{c}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((e, i) => (
+            <tr key={i}>
+              <td>{e.season}</td><td>{e.level}</td><td className="l">{league.orgs[e.orgId]?.abbrev}</td>
+              {cols.map((c) => { const r = e.fld![c]; return <td key={c}>{r?.[0] ? <>{r[0]} <span className="muted small">({r[1]})</span></> : ''}</td>; })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">Games at each position, with starts in parentheses. A player moved during a game gets a game at both spots.</p>
+    </>
   );
 }
 
@@ -560,6 +588,7 @@ export default function PlayerPage() {
       <p className="muted small">Plus/minus stats are relative to that level's league that season (100 = average). wRC+, OPS+ and ERA+: higher is better; FIP-: lower is better.</p>
       {isPitcher(p) ? <PitAdvancedTable league={league} p={p} entries={p.stats} /> : <BatAdvancedTable league={league} p={p} entries={p.stats} />}
 
+      {!isPitcher(p) && <PosGamesTable league={league} p={p} />}
       <SplitsPanel p={p} />
       <h2>Transactions</h2>
       {txs.length === 0 && <p className="muted">None.</p>}

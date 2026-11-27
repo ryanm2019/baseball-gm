@@ -138,7 +138,7 @@ export interface GameOutput {
   homeRuns: number;
   awayRuns: number;
   innings: number;
-  batLines: { p: Player; orgId: number; line: BatStats }[];
+  batLines: { p: Player; orgId: number; line: BatStats; pos: string; startPos?: string }[]; // pos: where he ended the game; startPos: where he started (starters only)
   pitLines: { p: Player; orgId: number; line: PitStats; isStarter: boolean }[];
   injuries: InjuryEvent[];
   box: BoxScore;
@@ -1200,7 +1200,7 @@ export function createGame(home: GameLineup, away: GameLineup, opts: GameOpts): 
     for (const side of [H, A]) {
       for (const [, v] of side.bat) {
         const p = allBatters(side).find((x) => x.id === v.box.pid);
-        if (p) batLines.push({ p, orgId: side.lu.orgId, line: v.line });
+        if (p) batLines.push({ p, orgId: side.lu.orgId, line: v.line, pos: v.box.pos, startPos: side.lu.batters.find((x) => x.p.id === p.id)?.pos });
       }
       for (const a of side.apps) pitLines.push({ p: a.p, orgId: side.lu.orgId, line: a.line, isStarter: a.isStarter });
     }

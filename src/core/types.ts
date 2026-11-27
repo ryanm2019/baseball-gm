@@ -226,6 +226,7 @@ export interface StatEntry {
   pit: PitStats;
   // MLB splits: vsL, vsR, risp, home, away, m3..m10 (month)
   splits?: { bat?: Record<string, BatStats>; pit?: Record<string, PitStats> };
+  fld?: Record<string, [number, number]>; // games and starts at each position played (C, 1B, ..., DH)
 }
 
 export interface Player {

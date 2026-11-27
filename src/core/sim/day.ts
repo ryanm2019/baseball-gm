@@ -149,6 +149,8 @@ function playGame(league: League, g: Game, recordStats: boolean): void {
   applyGameOutput(league, g, out, recordStats);
 }
 
+const FLD_POS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
+
 // Records a finished game: result, standings, stats, workloads, injuries, box score.
 export function applyGameOutput(league: League, g: Game, out: GameOutput, recordStats: boolean): void {
   g.result = { hs: out.homeRuns, as: out.awayRuns, innings: out.innings, wp: out.wp, lp: out.lp, sv: out.sv };
@@ -156,9 +158,18 @@ export function applyGameOutput(league: League, g: Game, out: GameOutput, record
   if (recordStats) {
     updateStanding(league, g.level, g.home, out.homeRuns > out.awayRuns, out.homeRuns, out.awayRuns);
     updateStanding(league, g.level, g.away, out.awayRuns > out.homeRuns, out.awayRuns, out.homeRuns);
-    for (const { p, orgId, line } of out.batLines) {
-      const e = statEntry(p, league.season, g.level, orgId).bat;
+    for (const { p, orgId, line, pos, startPos } of out.batLines) {
+      const se = statEntry(p, league.season, g.level, orgId);
+      const e = se.bat;
       for (const k in line) e[k as keyof typeof line] += line[k as keyof typeof line];
+      // Games (and starts) by position; a player moved mid-game gets a game at both spots.
+      const f = (se.fld ??= {});
+      for (const at of new Set([startPos, pos])) {
+        if (!at || !FLD_POS.has(at)) continue;
+        const r = (f[at] ??= [0, 0]);
+        r[0]++;
+        if (at === startPos) r[1]++;
+      }
     }
     // MLB splits: vs hand and RISP from the engine; home/away and month from the game.
     if (g.level === 'MLB' && !g.playoff) {

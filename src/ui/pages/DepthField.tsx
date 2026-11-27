@@ -6,12 +6,13 @@ import { href } from '../../router.ts';
 import type { League, Org, Player, Pos } from '../../core/types.ts';
 import { activeAt, orgPlayers } from '../../core/util.ts';
 import { defAt, isPitcher, ovr, scoutedOvr, scoutedPot } from '../../core/ratings.ts';
-import { ovrAt, positionReads } from '../../core/positions.ts';
-import { buildLineup } from '../../core/sim/lineup.ts';
+import { ovrAt, positionGames, positionReads } from '../../core/positions.ts';
+import { everydayLineup } from '../../core/sim/lineup.ts';
 import { HeatIcon } from '../show.tsx';
 import { orgPayroll, fmtMoney } from '../../core/contracts.ts';
 import { acquisition } from '../../core/moves.ts';
 import { ContractCell } from '../fmt.tsx';
+import { delegated } from '../../core/staff.ts';
 
 type Spot = Pos | 'SP' | 'RP';
 const FIELD: Pos[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
@@ -70,9 +71,11 @@ export default function DepthField() {
   const hitters = active.filter((p) => !isPitcher(p));
   const minors = orgPlayers(league, org.id).filter((p) => p.level && p.level !== 'MLB');
 
-  // Your lineup (vs right-handers): the saved card, or the auto lineup.
+  // Your everyday lineup (vs right-handers), built exactly the way games build
+  // it: your card (with hurt or departed players' spots filled) or the auto
+  // lineup if it's on or your assistant GM runs the depth chart. No rest days.
   const saved = org.depth.MLB;
-  const lu = saved && !saved.auto ? saved.lineup : buildLineup(league, org.id, 'MLB')?.batters.map((b) => ({ pid: b.p.id, pos: b.pos })) ?? [];
+  const lu = everydayLineup(league, org.id)?.map((b) => ({ pid: b.p.id, pos: b.pos })) ?? [];
   const starter = new Map<Pos, Player>();
   for (const s of lu) { const p = league.players[s.pid]; if (p) starter.set(s.pos, p); }
 
@@ -113,6 +116,8 @@ export default function DepthField() {
     const bench = fits.filter((x) => !x.starts);
     return (bench.length ? bench : fits).slice(0, 2);
   };
+  // Games he's played at this spot this season (MLB).
+  const gamesAt = (p: Player, pos: Pos) => { const g = positionGames(p, league.season).find((r) => r.pos === pos)?.g; return g ? `${g} G` : ''; };
   const startsAt = (p: Player) => [...starter.entries()].find(([, q]) => q === p)?.[0];
   const prospects = (match: (p: Player) => boolean) => minors.filter(match).sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a)).slice(0, 2);
 
@@ -136,7 +141,7 @@ export default function DepthField() {
     <div className="show">
       <h1>Depth Chart: Field View</h1>
       <p className="muted small">
-        Starters (your lineup vs right-handers), their backups and the top prospects at each spot. The badge is where your starter ranks among the 30 clubs at that position (green top 10, red bottom 10). Hover a name to see how he was acquired. <a href={href('depth')}>Edit the depth chart</a>
+        Starters (your everyday lineup vs right-handers, as games use it: {saved && !saved.auto && !delegated(league, org, 'depth') ? 'your depth chart card' : delegated(league, org, 'depth') ? "your assistant GM's lineup" : 'the auto lineup'}), their backups and the top prospects at each spot. The badge is where your starter ranks among the 30 clubs at that position (green top 10, red bottom 10). Hover a name to see how he was acquired. <a href={href('depth')}>Edit the depth chart</a>
       </p>
       <div className="fp-summary">
         <span>Payroll (CBT) <b>{fmtMoney(orgPayroll(league, org).cbt)}</b></span>
@@ -155,8 +160,8 @@ export default function DepthField() {
           const pr = pos === 'DH' ? [] : prospects((p) => p.pos === pos);
           return card(pos, (
             <>
-              {s ? <Row league={league} p={s} star /> : <div className="fp-row neg">Nobody</div>}
-              {bk.map((b) => <Row key={b.p.id} league={league} p={b.p} note={b.starts ? `starts ${startsAt(b.p)}` : pos === 'DH' || b.r.fit === 'Natural' ? undefined : b.r.fit === 'Good fit' ? 'good fit' : 'can play'} />)}
+              {s ? <Row league={league} p={s} star note={gamesAt(s, pos)} /> : <div className="fp-row neg">Nobody</div>}
+              {bk.map((b) => <Row key={b.p.id} league={league} p={b.p} note={[b.starts ? `starts ${startsAt(b.p)}` : pos === 'DH' || b.r.fit === 'Natural' ? '' : b.r.fit === 'Good fit' ? 'good fit' : 'can play', gamesAt(b.p, pos)].filter(Boolean).join(' · ') || undefined} />)}
               {pr.map((p) => <Row key={p.id} league={league} p={p} note={p.level ?? ''} />)}
             </>
           ), posRank(pos));
@@ -175,7 +180,7 @@ export default function DepthField() {
           </>
         ), ranks.Bullpen, 'Bullpen')}
       </div>
-      <p className="muted small">Prospect rows show their level (AAA, AA...). Backups show how well your scouts think they fit the spot (Natural fits show no tag).</p>
+      <p className="muted small">Prospect rows show their level (AAA, AA...). Backups show how well your scouts think they fit the spot (Natural fits show no tag). "G" is games played at that spot this season.</p>
     </div>
   );
 }

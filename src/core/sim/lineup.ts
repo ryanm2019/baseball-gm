@@ -272,7 +272,7 @@ export function postseasonEligible(league: League, p: Player): boolean {
   return !(league.phase === 'playoffs' && p.joined && p.joined.season === league.season && p.joined.day > league.settings.postseasonEligibilityDay);
 }
 
-export function buildLineup(league: League, orgId: number, level: Level, oppHand: 'L' | 'R' = 'R', sp?: Player): GameLineup | null {
+export function buildLineup(league: League, orgId: number, level: Level, oppHand: 'L' | 'R' = 'R', sp?: Player, rest = true): GameLineup | null {
   // Players acquired after August 31 aren't eligible for the postseason.
   const cutoff = league.settings.postseasonEligibilityDay;
   let roster = activeAt(league, orgId, level).filter(
@@ -329,7 +329,7 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
     }
     if (slots.every(Boolean)) batters = slots as { p: Player; pos: Pos }[];
   }
-  if (batters.length !== 9) batters = autoLineup(league, hitters, oppHand, level);
+  if (batters.length !== 9) batters = autoLineup(league, hitters, oppHand, level, rest);
   // Too few healthy hitters: borrow pitchers to fill out the card.
   if (batters.length < 9) {
     const spare = pitchers.filter((p) => p !== starter);
@@ -359,6 +359,15 @@ export function buildLineup(league: League, orgId: number, level: Level, oppHand
 
   const medical = 1 - 0.18 * deptEffect(org, 'medical');
   return { orgId, level, batters, sp: starter, bullpen, closer, setup, roles, medical, bench, mgr: managerMods(league, orgId, level), pInjury: pitcherInjuryMult(league, orgId, level) * medical };
+}
+
+// The everyday lineup (vs right-handers): exactly what games use, from your
+// card or the auto lineup (whoever runs the depth chart), minus rest days.
+export function everydayLineup(league: League, orgId: number, oppHand: 'L' | 'R' = 'R'): { p: Player; pos: Pos }[] | null {
+  const hitters = activeAt(league, orgId, 'MLB').filter((p) => !isPitcher(p));
+  const anySp = activeAt(league, orgId, 'MLB').find(isPitcher) ?? hitters[0];
+  if (!anySp) return null;
+  return buildLineup(league, orgId, 'MLB', oppHand, anySp, false)?.batters ?? null;
 }
 
 export function blendedOffense(p: Player): number {

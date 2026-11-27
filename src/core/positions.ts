@@ -9,7 +9,7 @@
 // Pitchers: a reliever moved to the rotation is stretched out gradually (his
 // pitch limit grows start by start, or through spring training); a starter
 // moved to the pen sees his stuff play up in short stints.
-import type { FieldPos, League, Org, Player, Pos } from './types.ts';
+import type { FieldPos, League, Level, Org, Player, Pos } from './types.ts';
 import { FIELD_POSITIONS, adaptCap, aptitude, defAt, hitterOvrAt, isPitcher, offense, blendSplits, ovr, pitcherOvr, posExp, posRating, scoutFactor } from './ratings.ts';
 import { clamp, rand, seededNormal, shuffle } from './random.ts';
 import { activeAt, addTransaction, orgPlayers, pname } from './util.ts';
@@ -321,3 +321,28 @@ export function stretchOutProspects(league: League): void {
     }
   }
 }
+
+// ---------- games played by position ----------
+
+const FLD_ORDER = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+export interface PosGames { pos: string; g: number; gs: number }
+
+// Games and starts at each position he has played (most games first), for a
+// season (or all seasons) at a level (or all levels). Only positions played.
+export function positionGames(p: Player, season?: number, level: Level | 'all' = 'MLB'): PosGames[] {
+  const acc = new Map<string, PosGames>();
+  for (const e of p.stats) {
+    if (season !== undefined && e.season !== season) continue;
+    if (level !== 'all' && e.level !== level) continue;
+    for (const [pos, [g, gs]] of Object.entries(e.fld ?? {})) {
+      const r = acc.get(pos) ?? { pos, g: 0, gs: 0 };
+      r.g += g;
+      r.gs += gs;
+      acc.set(pos, r);
+    }
+  }
+  return [...acc.values()].filter((r) => r.g > 0).sort((a, b) => b.g - a.g || FLD_ORDER.indexOf(a.pos) - FLD_ORDER.indexOf(b.pos));
+}
+
+export const posGamesText = (rows: PosGames[], max = 3) => rows.slice(0, max).map((r) => `${r.pos} ${r.g}`).join(', ') + (rows.length > max ? ` +${rows.length - max}` : '');
+export const FIELD_ORDER = FLD_ORDER;
