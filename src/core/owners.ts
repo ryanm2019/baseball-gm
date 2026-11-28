@@ -116,7 +116,7 @@ export function deadlineFlex(league: League): void {
     const add = Math.round((o.budget * bump) / 1e6) * 1e6;
     o.budget += add;
     const g = o.goals?.season === league.season ? o.goals.items.find((x) => x.type === 'budget') : undefined;
-    if (g && o.owner.type !== 'Big spender') {
+    if (g) {
       g.target += add;
       g.text = `Keep the CBT payroll under ${fmtMoney(g.target)} (raised for the deadline)`;
     }
@@ -157,14 +157,19 @@ export function setOwnerGoals(league: League): void {
   if (exp >= 86 || (t === 'Win-now' && exp >= 82)) items.push({ type: 'playoffs', target: 0, text: 'Make the playoffs' });
   if (exp >= 92 && (t === 'Win-now' || t === 'Big spender')) items.push({ type: 'series', target: 0, text: 'Win a playoff series' });
   const cbt = league.settings.cbtThreshold;
+  // The payroll goal and your budget are one number: the owner's limit.
   if (t === 'Big spender' && org.budget > cbt) {
     const cap = cbt + league.settings.cbtTierStep;
-    items.push({ type: 'budget', target: cap, text: `Keep the CBT payroll under ${fmtMoney(cap)} (second tax tier)` });
+    org.budget = cap;
+    items.push({ type: 'budget', target: cap, text: `Keep the CBT payroll under ${fmtMoney(cap)} (your budget: the second tax tier)` });
   } else {
-    // Already over? The owner gives a little room rather than an impossible target.
+    // Already over? The owner gives a little room rather than an impossible
+    // target, and raises the budget to match.
     const now = orgPayroll(league, org).cbt;
     const target = Math.max(org.budget, Math.ceil((now + 2e6) / 1e6) * 1e6);
-    items.push({ type: 'budget', target, text: `Keep the CBT payroll under ${fmtMoney(target)}${target === org.budget ? ' (budget)' : ''}` });
+    const raised = target > org.budget;
+    org.budget = target;
+    items.push({ type: 'budget', target, text: `Keep the CBT payroll under ${fmtMoney(target)} (your budget${raised ? ', raised to cover what is already committed' : ''})` });
     if (t !== 'Cheap' && org.budget >= cbt - 15e6) items.push({ type: 'cbt', target: cbt, text: `Stay under the ${fmtMoney(cbt)} luxury tax threshold` });
   }
   org.goals = { season, items, checkins: [] };

@@ -3,6 +3,7 @@
 // sets apart from payroll.
 import type { Dept, League, Org, OwnerType } from './types.ts';
 import { clamp, rand } from './random.ts';
+import { addInbox } from './morale.ts';
 
 export const DEPTS: { key: Dept; label: string; base: number; help: string }[] = [
   { key: 'scouting', label: 'Scouting', base: 12e6, help: 'Sharper ratings everywhere: other teams, the draft, international amateurs and your own players.' },
@@ -64,8 +65,13 @@ export const facilitiesIn = (org: Org, weeks: number): number => facilitiesTarge
 // Winter: owners set operating budgets; AI clubs re-split theirs.
 export function setDeptBudgets(league: League): void {
   for (const org of league.orgs) {
+    const before = org.opBudget;
     org.opBudget = opBudgetFor(org);
     if (org.id !== league.userOrgId) org.depts = aiDepts(org);
+    else if (deptSpend(org) > org.opBudget) {
+      const fmt = (x: number) => `$${(x / 1e6).toFixed(1)}M`;
+      addInbox(league, { from: `Owner ${org.owner.first} ${org.owner.last}`, kind: 'info', pids: [], link: { page: 'departments' }, subject: 'Department spending is over the new budget', text: `The operating budget for departments this year is ${fmt(org.opBudget)}${before && before !== org.opBudget ? ` (was ${fmt(before)})` : ''}. You're set to spend ${fmt(deptSpend(org))}. Bring it in line on the Departments page, or the overage counts against you at every check-in.` });
+    }
   }
 }
 

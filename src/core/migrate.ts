@@ -4,6 +4,7 @@ import { STAFF_ROLES } from './types.ts';
 import { ORG_DEFS } from './teams.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
 import { addInbox } from './morale.ts';
+import { fmtMoney } from './contracts.ts';
 import { onSeasonEnd } from './offseason.ts';
 import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts';
 import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
@@ -14,7 +15,7 @@ import { shiftPendingDays } from './dayShift.ts';
 import { dslEligible } from './rules.ts';
 import { dayToDate } from './settings.ts';
 
-export const CURRENT_VERSION = 10;
+export const CURRENT_VERSION = 11;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -159,6 +160,16 @@ export function migrate(league: League): League {
     l.nextId.staff = sid;
     addInbox(l, { from: 'Scouting director', kind: 'info', pids: [], subject: 'New opening: internal coverage scout', link: { page: 'staff' }, text: "We have budget for an internal coverage scout: he'd write up our own top prospects and 40-man players every couple of months, and sharpen our read on our own minor leaguers. Candidates are on the Staff page." });
     l.version = 10;
+  }
+  if (l.version < 11) {
+    // Your budget and the owner's payroll goal are one number.
+    const org = l.orgs[l.userOrgId];
+    const g = org.goals?.items.find((x) => x.type === 'budget');
+    if (g && g.target !== org.budget) {
+      org.budget = g.target;
+      g.text = `Keep the CBT payroll under ${fmtMoney(g.target)} (your budget)`;
+    }
+    l.version = 11;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;
