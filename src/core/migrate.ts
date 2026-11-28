@@ -3,6 +3,7 @@ import type { League, Staff } from './types.ts';
 import { STAFF_ROLES } from './types.ts';
 import { ORG_DEFS } from './teams.ts';
 import { defaultAgm, makeStaff, refreshStaffPool } from './staff.ts';
+import { addInbox } from './morale.ts';
 import { onSeasonEnd } from './offseason.ts';
 import { generateCbPicks, generateDraftClass, normalizeAdjust } from './draft.ts';
 import { makeOwner, setBudgets, setOwnerGoals, updateStrategies } from './owners.ts';
@@ -13,7 +14,7 @@ import { shiftPendingDays } from './dayShift.ts';
 import { dslEligible } from './rules.ts';
 import { dayToDate } from './settings.ts';
 
-export const CURRENT_VERSION = 9;
+export const CURRENT_VERSION = 10;
 
 export function migrate(league: League): League {
   const l = league as League & { farmDirectors?: Staff[]; settings: League['settings'] & { autoMlbMoves?: boolean } };
@@ -144,6 +145,20 @@ export function migrate(league: League): League {
     // The DSL is only for international signees who haven't played above it.
     for (const p of Object.values(l.players)) if (p.level === 'DSL' && p.orgId !== null && !dslEligible({ ...p, level: null })) p.level = 'CPX';
     l.version = 9;
+  }
+  if (l.version < 10) {
+    // New role: the internal coverage scout. AI clubs hire one; you get the opening.
+    let sid = Math.max(l.nextId.staff, ...l.staff.map((x) => x.id + 1));
+    for (const org of l.orgs) {
+      if (org.staff.ICS !== undefined || org.id === l.userOrgId) continue;
+      const st = makeStaff(sid++, 'ICS', org.id, l.season);
+      l.staff.push(st);
+      org.staff.ICS = st.id;
+    }
+    for (let i = 0; i < 10; i++) l.staff.push(makeStaff(sid++, 'ICS', null, l.season));
+    l.nextId.staff = sid;
+    addInbox(l, { from: 'Scouting director', kind: 'info', pids: [], subject: 'New opening: internal coverage scout', link: { page: 'staff' }, text: "We have budget for an internal coverage scout: he'd write up our own top prospects and 40-man players every couple of months, and sharpen our read on our own minor leaguers. Candidates are on the Staff page." });
+    l.version = 10;
   }
   if (needsSeasonEnd) onSeasonEnd(l);
   return l;

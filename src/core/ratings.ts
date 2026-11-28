@@ -189,7 +189,9 @@ export function scoutFactor(league: League, org: Org, area: ScoutArea, p?: Playe
   const dir = staffEval(league, org, 'SD');
   const d = dir === null ? 1.25 : evalScale(dir, 1.2, 0.8);
   const budget = 1 - 0.2 * deptEffect(org, 'scouting'); // scouting department spending
-  if (area === 'own') return 0.7 * d * budget; // coaches and the farm staff see your own players every day
+  // Coaches and the farm staff see your own players every day; an internal
+  // coverage scout writes them up and sharpens the read further.
+  if (area === 'own') { const ics = staffEval(league, org, 'ICS'); return 0.7 * d * budget * (ics === null ? 1.1 : evalScale(ics, 1.05, 0.8)); }
   const sc = staffEval(league, org, AREA_ROLE[area]);
   // A scout assigned to a focus sees it sharply and the rest of his beat a bit less;
   // the director's own focus helps on top.

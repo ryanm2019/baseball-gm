@@ -9,11 +9,11 @@ import { addNews } from './util.ts';
 import { deptEffect } from './depts.ts';
 
 const r = () => clamp(Math.round(normal(50, 10)), 25, 80);
-const isScout = (role: StaffRole) => role === 'SD' || role === 'PRO' || role === 'AMA' || role === 'INT';
+const isScout = (role: StaffRole) => role === 'SD' || role === 'PRO' || role === 'AMA' || role === 'INT' || role === 'ICS';
 
 const BASE_SALARY: Record<StaffRole, number> = {
   AGM: 450_000, MGR: 1_500_000, PC: 450_000, HC: 400_000, FD: 300_000,
-  SD: 350_000, PRO: 150_000, AMA: 150_000, INT: 150_000,
+  SD: 350_000, PRO: 150_000, AMA: 150_000, INT: 150_000, ICS: 130_000,
 };
 
 export function makeStaff(id: number, role: StaffRole, orgId: number | null, season: number): Staff {

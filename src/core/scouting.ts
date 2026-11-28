@@ -2,8 +2,10 @@
 //  - Each month the scouting director sends every scout out on a set number of
 //    looks, chosen by what the club needs: when buying, pro scouts work other
 //    clubs' big league rosters at your weak spots; when selling, they work the
-//    farm systems of the contenders you'd trade with. The amateur scout follows
-//    the draft class, the international scout the July 2 class.
+//    farm systems of the contenders you'd trade with. The amateur department
+//    covers the draft class from the spring until the draft (about 200 reports),
+//    the international department the new class until signing day (about 100).
+//    The internal coverage scout writes up your own system.
 //  - Every look files a written report: tool grades, a role projection, risk,
 //    and a short write-up. A report sharpens your read on that player for months.
 //  - You can ask for a report on anyone, or rush reports on the players in a
@@ -17,13 +19,14 @@ import { expectedWins } from './owners.ts';
 import { dayToDate, dayShort } from './settings.ts';
 import { posLabel } from './rules.ts';
 import { shuffle } from './random.ts';
+import { offseasonCalendar } from './offseason.ts';
 
 export function scouting(league: League): ScoutingState {
   league.scouting ??= { reports: {}, mode: 'auto', month: '', plan: [], rush: [], requests: [], fresh: [], lastDigest: league.day };
   return league.scouting;
 }
 
-const ROLE_NAME: Record<string, string> = { SD: 'Scouting director', PRO: 'Pro scout', AMA: 'Amateur scout', INT: 'International scout' };
+const ROLE_NAME: Record<string, string> = { SD: 'Scouting director', PRO: 'Pro scout', AMA: 'Amateur scout', INT: 'International scout', ICS: 'Internal coverage scout' };
 export const scoutName = (league: League, role: StaffRole): string => {
   const id = league.orgs[league.userOrgId].staff[role];
   const s = id !== undefined ? league.staff.find((x) => x.id === id) : undefined;
@@ -31,11 +34,19 @@ export const scoutName = (league: League, role: StaffRole): string => {
 };
 
 // Looks per month: better scouts cover more ground; an empty chair covers little.
+// Draft season: the class is out (spring) and the draft hasn't happened.
+export const draftSeason = (league: League): boolean =>
+  (league.phase === 'preseason' || (league.phase === 'regular' && league.day <= league.settings.draftDay)) && Object.values(league.players).some((p) => p.prospect && p.orgId === null && !p.retired);
+// The international class is out and unsigned (posted pros don't count).
+export const intlSeason = (league: League): boolean => Object.values(league.players).some((p) => p.ifa && !p.ifa.posted && p.orgId === null && !p.retired);
+
 export function visitsPerMonth(league: League, role: StaffRole): number {
   const org = league.orgs[league.userOrgId];
   const id = org.staff[role];
   const s = id !== undefined ? league.staff.find((x) => x.id === id) : undefined;
-  const base = role === 'SD' ? 4 : role === 'INT' ? 10 : 14;
+  // In their seasons the amateur departments (area scouts and crosscheckers
+  // behind the lead scout) cover a class broadly.
+  const base = role === 'SD' ? 4 : role === 'AMA' ? (draftSeason(league) ? 40 : 14) : role === 'INT' ? (intlSeason(league) ? 60 : 10) : 14;
   if (!s) return Math.round(base * 0.35);
   return Math.round(base * (0.8 + 0.4 * ((s.evaluation - 20) / 60)));
 }
@@ -109,6 +120,17 @@ export function targetsFor(league: League, role: StaffRole, n: number): { pid: n
     cls.sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a));
     add(cls.slice(0, 150), (p) => `${league.season} draft class (${p.prospect!.college ? 'college' : 'high school'})`, n);
     if (out.length < n) farmTargets(n); // between classes: low-minors coverage
+  } else if (role === 'ICS') {
+    // Your own system: top prospects first, then the rest of the 40-man; each
+    // gets a fresh write-up every couple of months.
+    const mine = orgPlayers(league, user.id).filter((p) => !p.retired && p.level);
+    const prospects = mine.filter((p) => p.level !== 'MLB' && league.season - p.born <= 25).sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a)).slice(0, 30);
+    const forty = mine.filter((p) => p.on40 && p.level !== 'MLB').sort((a, b) => scoutedOvr(league, b) - scoutedOvr(league, a));
+    const mlb = mine.filter((p) => p.level === 'MLB' && league.season - p.born <= 27).sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a));
+    const fresh = (ps: Player[]) => ps.filter((p) => !recent(league, p.id, 60));
+    add(fresh(prospects), (p) => `our system: ${p.level} prospect`, n);
+    add(fresh(forty), (p) => `our 40-man (${p.level})`, n);
+    add(fresh(mlb), () => 'our young big leaguer', n);
   } else if (role === 'INT') {
     const cls = Object.values(league.players).filter((p) => p.ifa && p.orgId === null && !p.retired);
     cls.sort((a, b) => scoutedPot(league, b) - scoutedPot(league, a));
@@ -129,13 +151,38 @@ function planMonth(league: League): void {
   const st = scouting(league);
   st.month = monthKey(league);
   st.plan = [];
-  for (const role of ['PRO', 'AMA', 'INT', 'SD'] as StaffRole[]) {
-    const n = visitsPerMonth(league, role);
-    // Your requests come first (the director and pro scout take them).
-    const asks = role === 'PRO' || role === 'SD' ? st.requests.splice(0, role === 'SD' ? 2 : 4).map((pid) => ({ pid, why: 'you asked for a look' })) : [];
-    const picks = [...asks, ...targetsFor(league, role, n - asks.length)];
-    picks.forEach((t, i) => st.plan.push({ pid: t.pid, by: role, due: league.day + Math.floor(((i + 0.5) * 28) / Math.max(1, picks.length)), why: t.why }));
-  }
+  for (const role of ['PRO', 'AMA', 'INT', 'ICS', 'SD'] as StaffRole[]) planRole(league, role, 28);
+}
+
+// One scout's looks over the next `days` days. Your requests come first: on
+// your own players the internal coverage scout takes them; on anyone else, the
+// pro scout and the director.
+function planRole(league: League, role: StaffRole, days: number): void {
+  const st = scouting(league);
+  const n = Math.max(1, Math.round((visitsPerMonth(league, role) * days) / 28));
+  const ownReq = (pid: number) => league.players[pid]?.orgId === league.userOrgId;
+  const take = (k: number, own: boolean) => {
+    const out: number[] = [];
+    st.requests = st.requests.filter((pid) => { if (out.length < k && ownReq(pid) === own) { out.push(pid); return false; } return true; });
+    return out;
+  };
+  const asks = (role === 'ICS' ? take(4, true) : role === 'PRO' || role === 'SD' ? take(role === 'SD' ? 2 : 4, false) : []).map((pid) => ({ pid, why: 'you asked for a look' }));
+  const picks = [...asks, ...targetsFor(league, role, n - asks.length)];
+  // Amateur looks all land before the class signs (signing day, the draft).
+  const deadline = role === 'INT' && intlSeason(league) ? offseasonCalendar(league).find((e) => e.key === 'ifa-open')?.day
+    : role === 'AMA' && draftSeason(league) ? league.settings.draftDay : undefined;
+  const span = deadline !== undefined && deadline > league.day ? Math.min(days, deadline - league.day) : days;
+  picks.forEach((t, i) => st.plan.push({ pid: t.pid, by: role, due: league.day + Math.floor(((i + 0.5) * span) / Math.max(1, picks.length)), why: t.why }));
+}
+
+// A new class came out mid-month: that department re-plans the rest of it.
+export function replanScout(league: League, role: StaffRole): void {
+  const st = scouting(league);
+  if (!st.month) return;
+  st.plan = st.plan.filter((x) => x.by !== role);
+  const d = dayToDate(league.season, league.day);
+  const left = Math.max(3, Math.round((new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime() - d.getTime()) / 864e5)); // days left this month
+  planRole(league, role, left);
 }
 
 const PITCH: Record<string, string> = { FB: 'Fastball', SI: 'Sinker', CT: 'Cutter', SL: 'Slider', SW: 'Sweeper', CB: 'Curveball', CH: 'Changeup', SP: 'Splitter', KN: 'Knuckleball' };
@@ -237,7 +284,7 @@ export function scoutingDay(league: League): void {
   const rushReports: ScoutReport[] = [];
   for (const r of rushed) {
     const p = league.players[r.pid];
-    if (p && !p.retired) rushReports.push(fileReport(league, p, 'PRO', 'rushed for a trade you are weighing'));
+    if (p && !p.retired) rushReports.push(p.orgId === league.userOrgId ? fileReport(league, p, 'ICS', 'rushed: you asked for a fresh look') : fileReport(league, p, 'PRO', 'rushed for a trade you are weighing'));
   }
   if (rushReports.length) {
     st.fresh = st.fresh.filter((id) => !rushReports.some((r) => r.pid === id));
@@ -249,9 +296,20 @@ export function scoutingDay(league: League): void {
   }
   // Weekly digest of the month's regular reports, highlights first.
   if (league.day - st.lastDigest >= 7 && st.fresh.length) {
-    const reps = st.fresh.map((id) => st.reports[id]).filter(Boolean);
+    const all = st.fresh.map((id) => st.reports[id]).filter(Boolean);
     st.fresh = [];
     st.lastDigest = league.day;
+    const ours = all.filter((r) => r.by === 'ICS');
+    const reps = all.filter((r) => r.by !== 'ICS');
+    if (ours.length) {
+      const up = ours.filter((r) => r.pot >= 50).sort((a, b) => b.pot - a.pot).slice(0, 4);
+      addInbox(league, {
+        from: scoutName(league, 'ICS'), subject: `Internal coverage: ${ours.length} report${ours.length === 1 ? '' : 's'} on our system`,
+        kind: 'info', pids: up.map((r) => r.pid), link: { page: 'scouting', query: { tab: 'ours' } },
+        text: `This week's write-ups on our own players are filed.${up.length ? ` Best of them: ${up.map((r) => `${pname(league.players[r.pid])} (${r.role.toLowerCase()}, ${r.ovr}/${r.pot})`).join('; ')}.` : ''}`,
+      });
+    }
+    if (!reps.length) return;
     const top = [...reps].sort((a, b) => b.pot - a.pot).slice(0, 4);
     addInbox(league, {
       from: scoutName(league, 'SD'), subject: `Scouting: ${reps.length} new report${reps.length === 1 ? '' : 's'}`,

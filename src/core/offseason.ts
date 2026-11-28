@@ -12,6 +12,7 @@
 //  Feb 5      arbitration hearings
 //  Feb 15     new season: aging, development, retirements, new schedule
 //  Opening Day
+import { replanScout } from './scouting.ts';
 import { successorDay } from './successor.ts';
 import type { League, Org, Player } from './types.ts';
 import { LEVELS } from './types.ts';
@@ -636,6 +637,7 @@ function runRollover(league: League): void {
   setOwnerGoals(league);
   hallOfFameVote(league);
   generateDraftClass(league, league.season);
+  replanScout(league, 'AMA'); // the amateur department turns to the new class
   generateCbPicks(league, league.season);
   // Who got better and who got worse over the winter (relative to everyone else).
   const changes = [...preOvr.entries()]
@@ -739,6 +741,7 @@ export function runOffseasonEvents(league: League): string | null {
         for (const p of Object.values(league.players)) if (isIfa(p) && p.ifa!.year !== league.season + 1) delete league.players[p.id];
         generateIfaClass(league, league.season + 1);
         setupIfaPools(league);
+        replanScout(league, 'INT'); // the international department turns to the new class
         if (!delegated(league, user, 'ifa')) return 'The international class is out and negotiations are open. Check asking ranges and make offers on the International page before signing day (January 15). Press Play again when you\'re ready.';
         break;
       case 'ifa-shake': negotiationDay(league); break;

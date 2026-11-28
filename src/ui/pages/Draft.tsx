@@ -1,4 +1,5 @@
 import { useStore, changed, setMessage } from '../../store.ts';
+import { reportCol } from './Scouting.tsx';
 import { href, go, useRoute } from '../../router.ts';
 import type { League, Player } from '../../core/types.ts';
 import { scoutedPot } from '../../core/ratings.ts';
@@ -47,6 +48,7 @@ export default function Draft() {
     { key: 'school', label: 'From', left: true, value: (p) => (p.prospect?.cls === 'SR' ? 'College senior' : p.prospect?.college ? 'College junior' : 'High school') },
     { key: 'sign', label: 'Signability', left: true, value: (p) => signabilityLabel(league, p), render: (p) => { const t = signabilityLabel(league, p); return <span className={t.startsWith('Tough') ? 'neg' : t.includes('cheap') ? 'pos' : ''}>{t}</span>; } },
     ...ratingCols(league),
+    reportCol(league),
   ];
   if (myTurn) {
     cols.push({

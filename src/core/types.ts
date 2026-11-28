@@ -303,7 +303,7 @@ export interface Player {
 
 export type Philosophy = 'Conservative' | 'Balanced' | 'Aggressive';
 
-export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD' | 'SD' | 'PRO' | 'AMA' | 'INT';
+export type StaffRole = 'AGM' | 'MGR' | 'PC' | 'HC' | 'FD' | 'SD' | 'PRO' | 'AMA' | 'INT' | 'ICS';
 
 // A scout's written report on one player (your organization only).
 export interface ScoutReport {
@@ -331,7 +331,7 @@ export interface ScoutingState {
   fresh: number[]; // reports filed since the last digest
   lastDigest: number;
 }
-export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD', 'SD', 'PRO', 'AMA', 'INT'];
+export const STAFF_ROLES: StaffRole[] = ['AGM', 'MGR', 'PC', 'HC', 'FD', 'SD', 'PRO', 'AMA', 'INT', 'ICS'];
 export const STAFF_NAMES: Record<StaffRole, string> = {
   AGM: 'Assistant GM',
   MGR: 'Manager',
@@ -342,8 +342,9 @@ export const STAFF_NAMES: Record<StaffRole, string> = {
   PRO: 'Pro Scout',
   AMA: 'Amateur Scout',
   INT: 'International Scout',
+  ICS: 'Internal Coverage Scout',
 };
-export const SCOUT_ROLES: StaffRole[] = ['SD', 'PRO', 'AMA', 'INT'];
+export const SCOUT_ROLES: StaffRole[] = ['SD', 'PRO', 'AMA', 'INT', 'ICS'];
 
 export type ManagerStyle = 'Old school' | 'Balanced' | 'Analytical';
 

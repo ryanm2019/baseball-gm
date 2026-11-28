@@ -20,6 +20,7 @@ const ROLE_HELP: Record<StaffRole, string> = {
   PRO: 'Covers other organizations and free agents. Better pro scouts make MLB, minor league and free agent ratings more accurate.',
   AMA: 'Covers the amateur draft. Better amateur scouts make draft prospect ratings more accurate.',
   INT: 'Covers international amateurs. Better international scouts make IFA ratings more accurate.',
+  ICS: 'Covers your own system: writes reports on your top prospects and 40-man players every couple of months. Better internal scouts make the ratings of your own players (minor leaguers especially) more accurate.',
 };
 
 const ratingCols = (role: StaffRole): { key: keyof Staff; label: string }[] => {
@@ -121,7 +122,7 @@ export default function StaffPage() {
       <table className="data compact" style={{ maxWidth: 520 }}>
         <thead><tr><th className="l">Players</th><th className="l">Covered by</th><th className="l">Accuracy</th></tr></thead>
         <tbody>
-          {([['own', 'Your organization', 'Scouting director + coaches'], ['pro', 'Other MLB/minor league players, free agents', 'Pro scout'], ['amateur', 'Draft prospects', 'Amateur scout'], ['intl', 'International amateurs', 'International scout']] as const).map(([area, label, who]) => {
+          {([['own', 'Your organization', 'Scouting director, coaches + internal coverage scout'], ['pro', 'Other MLB/minor league players, free agents', 'Pro scout'], ['amateur', 'Draft prospects', 'Amateur department'], ['intl', 'International amateurs', 'International department']] as const).map(([area, label, who]) => {
             const f = scoutFactor(league, org, area);
             const word = f <= 0.6 ? 'Excellent' : f <= 0.85 ? 'Good' : f <= 1.15 ? 'Average' : f <= 1.45 ? 'Poor' : 'Very poor';
             return (

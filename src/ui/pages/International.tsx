@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { reportCol } from './Scouting.tsx';
 import { useStore, changed, setMessage } from '../../store.ts';
 import { href } from '../../router.ts';
 import type { Player } from '../../core/types.ts';
@@ -41,6 +42,7 @@ export default function International() {
     { key: 'country', label: 'From', left: true, value: (p) => p.country + (p.ifa?.posted ? ` (${p.ifa.posted})` : '') },
     { key: 'age', label: 'Age', value: (p) => (p.ifa?.year ?? league.season) - p.born },
     ...ratingCols(league),
+    reportCol(league),
     {
       key: 'ask',
       label: 'Asking (scouted)',
