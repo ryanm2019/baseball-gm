@@ -233,7 +233,13 @@ export function contractInfo(league: League, p: Player): ContractInfo {
   const ctl = controlThrough(league, p);
   const cur = league.phase === 'offseason' ? league.season + 1 : league.season;
   const opt = c.option ? ` + ${c.option.season} ${c.option.type} option${c.option.type === 'player' ? ' (his choice)' : ''}` : '';
-  const signedDeal = c.exp > league.season || (c.sched?.length ?? 1) > 1 || cls === 'FA eligible';
+  // A negotiated deal (free agent signing, extension, multi-year) rather than a
+  // year-to-year renewal; free agent deals can lack a year-by-year schedule.
+  const fromFa = p.faSigned !== undefined && c.signed === p.faSigned;
+  const signedDeal = c.exp > league.season || (c.sched?.length ?? 1) > 1 || cls === 'FA eligible' || fromFa;
+  // What kind of control follows the deal: arbitration once he has 3+ years.
+  const svcAtEnd = serviceYears(p.mlServiceDays, s) + Math.max(0, c.exp - cur + 1);
+  const after = svcAtEnd >= 3 ? 'arbitration' : 'pre-arbitration, then arbitration';
   const faSoon = ctl <= cur ? ctl : null;
   let text: string;
   let tip: string;
@@ -246,7 +252,7 @@ export function contractInfo(league: League, p: Player): ContractInfo {
   } else {
     text = `${fmtMoney(c.salary)} thru ${c.exp}${c.option ? ` (+${c.option.season} opt)` : ''}`;
     compact = `${fmtMoney(c.salary)} thru ${yy(c.exp)}${c.option ? ' +opt' : ''}${ctl > c.exp && !c.option ? ` · ctl ${yy(ctl)}` : ''}`;
-    tip = `Signed through ${c.exp}${opt}.${ctl > c.exp ? ` Still under club control (${cls === 'FA eligible' ? 'arbitration' : cls}) through ${ctl} after the deal.` : ` Free agent after ${ctl}.`}`;
+    tip = `Signed through ${c.exp}${opt}.${ctl > c.exp ? ` He has under 6 years of service, so the club still controls him after the deal (${after}) through ${ctl}.` : ` Free agent after ${ctl}.`}`;
     if (ctl > c.exp && !c.option) text += ` · control thru ${ctl}`;
   }
   if (!c.oneWay) tip += ` Split deal: ${fmtMoney(c.minorSalary)} in the minors.`;
