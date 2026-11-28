@@ -4,7 +4,7 @@
 import type { League, Level, Org, Player } from './types.ts';
 import { MINOR_LEVELS } from './types.ts';
 import { isFreeAgent, isMinorFA } from './freeAgency.ts';
-import { signFreeAgent } from './rules.ts';
+import { dslEligible, signFreeAgent } from './rules.ts';
 import { ovr, scoutedOvr } from './ratings.ts';
 import { activeAt, pname } from './util.ts';
 import { addInbox } from './morale.ts';
@@ -76,21 +76,37 @@ export function milbBidDay(league: League): void {
   for (const p of Object.values(league.players)) {
     const d = milbDecideDay(p);
     if (d === undefined || !isFreeAgent(p) || !p.fa || league.day < d) continue;
-    const offers = milbOffers(p).filter((o) => activeAt(league, o.orgId, o.level).length < league.settings.milbActiveMax[o.level]);
-    const userHad = milbOffers(p).find((o) => o.orgId === league.userOrgId);
+    // Every offer stays in play: a full affiliate doesn't void a minor league
+    // deal; he reports to the nearest level with room instead.
+    const offers = milbOffers(p);
+    const userHad = offers.find((o) => o.orgId === league.userOrgId);
     withdrawAll(p);
     if (!offers.length) continue;
     const best = offers.map((o) => ({ o, s: appeal(league, p, o) })).sort((a, b) => b.s - a.s)[0].o;
-    signFreeAgent(league, p, best.orgId, best.level, false);
+    const lvl = levelWithRoom(league, best.orgId, p, best.level);
+    signFreeAgent(league, p, best.orgId, lvl, false);
     const team = league.orgs[best.orgId].affiliates.MLB.name;
     if (best.orgId === league.userOrgId) {
-      addInbox(league, { from: best.byAgm ? 'Assistant GM' : 'Front office', kind: 'info', pids: [p.id], stop: !best.byAgm, subject: `${pname(p)} signed a minor league deal with you`, text: `${posLabel(p)} ${pname(p)} ${offers.length > 1 ? `picked your offer over ${offers.length - 1} other${offers.length === 2 ? '' : 's'}` : 'took your offer (he had no others)'}: he reports to ${best.level}${best.invite ? ', with an invite to big league camp' : ''}.` });
+      const moved = lvl !== best.level ? ` ${best.level} was full when he signed, so he reports to ${lvl} for now${activeAt(league, best.orgId, lvl).length > league.settings.milbActiveMax[lvl] ? ` (over its roster limit: make a move there)` : ''}.` : '';
+      addInbox(league, { from: best.byAgm ? 'Assistant GM' : 'Front office', kind: 'info', pids: [p.id], stop: !best.byAgm || !!moved, subject: `${pname(p)} signed a minor league deal with you`, text: `${posLabel(p)} ${pname(p)} ${offers.length > 1 ? `picked your offer over ${offers.length - 1} other${offers.length === 2 ? '' : 's'}` : 'took your offer (he had no others)'}: ${moved ? `${moved.trim()}${best.invite ? ' He has an invite to big league camp.' : ''}` : `he reports to ${best.level}${best.invite ? ', with an invite to big league camp' : ''}.`}` });
     } else if (userHad) {
       addInbox(league, { from: userHad.byAgm ? 'Assistant GM' : 'Front office', kind: 'info', pids: [p.id], stop: !userHad.byAgm, subject: `${pname(p)} signed with the ${team}`, text: `${posLabel(p)} ${pname(p)} chose the ${team}'s minor league offer (${best.level}${best.invite ? ', big league camp invite' : ''}) over yours (${userHad.level}${userHad.invite ? ', camp invite' : ''}).` });
     }
   }
   const user = league.orgs[league.userOrgId];
   if (league.phase !== 'regular' && league.day % 7 === 3 && delegated(league, user, 'milbfa')) agmMilbBids(league, user);
+}
+
+// The offered level if it has room, else the nearest one that does (a level
+// down first); if every affiliate is full, the offered level anyway.
+function levelWithRoom(league: League, orgId: number, p: Player, want: Level): Level {
+  const i = MINOR_LEVELS.indexOf(want);
+  const order = MINOR_LEVELS.map((l, j) => ({ l, d: Math.abs(j - i) + (j > i ? 0 : 0.5) })).sort((a, b) => a.d - b.d).map((x) => x.l);
+  for (const l of order) {
+    if (l === 'DSL' && !dslEligible({ ...p, level: null })) continue;
+    if (activeAt(league, orgId, l).length < league.settings.milbActiveMax[l]) return l;
+  }
+  return want;
 }
 
 function withdrawAll(p: Player): void {
